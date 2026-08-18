@@ -1,94 +1,181 @@
 # Research Overview Platform
 
-Transparente KI-Research: Eine local-first Desktop-App mit **eingebautem MCP-Server**, die jede von einer KI genutzte Quelle mit erzwungener Provenienz erfasst (warum diese Quelle / was wurde extrahiert / welcher Beitrag + **wörtlicher Beleg**), Belege **deterministisch verifiziert**, einen **geblindeten Re-Verify-Pass** für beliebige KI-Clients anbietet und am Ende ein **zitierbares Provenienz-Artefakt** exportiert.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Leitprinzip: KI-Einträge sind nie Wahrheit, sondern *zu verifizierende Behauptungen* mit Status und Konfidenz. Der menschliche Sign-off ist nur in der App möglich — keine KI kann ihn über MCP setzen.
+**Transparente KI-Research — local-first, prüfbar, zitierbar.**
 
-**Neu hier oder neuer Chat?** → [HANDOVER.md](HANDOVER.md) gibt den vollständigen Kontext: Ziel, Stand, Architektur, Fallstricke und die Entscheidungen samt Begründung.
+Deep-Research-Werkzeuge liefern Berichte mit Fußnoten. Was fehlt: Nachvollziehbarkeit. Warum wurde diese Quelle genutzt? Was wurde daraus extrahiert? Steht das Zitat wirklich im Original? Die Forschungslage ist ernüchternd: Bei Deep-Research-Agenten sind Links oft valide, aber die **faktische Deckung liegt nur bei 39–77 %** — und **fällt um ~42 %**, wenn die Tool-Calls von 2 auf 150 steigen ([arXiv 2605.06635](https://arxiv.org/abs/2605.06635)).
 
-Konzept & Research: siehe [documentation/](documentation/) (01 Implementation-Plan … 07 KI-Clients).
+Die Research Overview Platform verwandelt KI-Deep-Research von einer Blackbox in ein **prüfbares Audit-Artefakt**. Jede angedockte KI trägt Quellen strukturiert ein; der Server erzwingt Provenienz, verifiziert Belege deterministisch und liefert am Ende ein **zitierbares Export-Paket**.
 
-## Stack
+> **Leitprinzip:** KI-Einträge sind nie Wahrheit, sondern *zu verifizierende Behauptungen* mit Status und Konfidenz. Der menschliche Sign-off ist nur in der App möglich — keine KI kann ihn über MCP setzen.
 
-Electron (Node in-process) · React 18 + Tailwind CSS v4 + Material Symbols · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` v1 (Streamable HTTP auf `127.0.0.1` + stdio) · Zod · Vitest.
+---
 
-## Entwicklung
+## Was die Plattform leistet
+
+| Mechanismus | Was es bedeutet |
+|---|---|
+| **Unfälschbare Zitate** | `fetch_source` speichert den Quelltext; `add_source` nimmt Zeichenpositionen — der Server schneidet das Zitat heraus. Das Modell kann kein Zitat erfinden, nur auf vorhandenen Text zeigen. |
+| **Vollständigkeit** | Abgerufene Quellen müssen per `add_source` oder `exclude_source` dokumentiert werden, bevor weitere Abrufe erlaubt sind. |
+| **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste (`get_coverage_gaps`), Sättigung pro Runde (`next_round`). „Ich bin fertig“ schließt keine Lücke — nur Belege. |
+| **Verifikations-Leiter** | Deterministisch → geblindete KI-Prüfung → optional Cross-Client → menschlicher Sign-off. |
+| **Zwei Betriebsmodi** | Fremdclient (Claude Code, Goose, Cursor …) **oder** eingebaute Engine mit Ollama — dieselbe DB, dasselbe Enforcement. |
+
+---
+
+## Architektur
+
+```mermaid
+flowchart TB
+    subgraph clients [KI-Clients]
+        Claude[Claude Code / Desktop]
+        Goose[Goose / DeepChat / Cursor …]
+        Engine[Eingebaute Engine]
+    end
+
+    subgraph app [Electron-App]
+        MCP[MCP-Server<br/>26 Tools · Streamable HTTP + stdio]
+        Enforce[Enforcement-Layer<br/>Schema · Quote-Check · Coverage]
+        DB[(SQLite WAL · FTS5)]
+        UI[Review-UI<br/>Sign-off · Export]
+    end
+
+    Claude -->|127.0.0.1:8790/mcp| MCP
+    Goose -->|Streamable HTTP| MCP
+    Engine -->|In-Memory Transport| MCP
+    MCP --> Enforce --> DB
+    UI --> DB
+```
+
+**Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` v1 · Zod · Vitest
+
+---
+
+## Schnellstart
+
+### Voraussetzungen
+
+- Node.js 20+
+- npm
+
+### Installation & Entwicklung
 
 ```bash
+git clone https://github.com/renejes/research-overview-platform.git
+cd research-overview-platform
 npm install
 
 # Tests (Node-ABI)
-npm test          # Unit-Tests (Textmatch, Repo)
-npm run smoke     # E2E: echter MCP-Client gegen den eingebauten Server
-                  # inkl. Fabrikations-Erkennung + Multi-Client-Concurrency
+npm test          # Unit-Tests
+npm run smoke     # E2E: MCP-Client, Fabrikations-Erkennung, Concurrency
 
-# App starten (Electron-ABI für better-sqlite3 nötig)
+# App starten (Electron-ABI für better-sqlite3)
 npm run abi:electron
 npm run dev
-
-# zurück zu Tests: npm run abi:node
 ```
 
-`better-sqlite3` ist ein natives Addon — Node- und Electron-ABI unterscheiden sich. `abi:node` / `abi:electron` schalten um (lädt i. d. R. Prebuilds, kein Kompilieren).
+`better-sqlite3` ist ein natives Addon — Node- und Electron-ABI unterscheiden sich. `npm run abi:node` / `npm run abi:electron` schalten um.
 
-## KI-Clients verbinden
+### KI-Client verbinden
 
-**Streamable HTTP** (Claude Desktop Connectors, Cursor, VS Code …): Endpoint aus der App übernehmen (Einstellungen), Standard: `http://127.0.0.1:8790/mcp`. Mehrere Clients können gleichzeitig andocken.
+**Streamable HTTP** (empfohlen): Endpoint aus der App (Einstellungen), Standard `http://127.0.0.1:8790/mcp`. Mehrere Clients können gleichzeitig andocken.
 
-**stdio** (Claude Desktop `claude_desktop_config.json`): Die fertige Config in den App-Einstellungen kopieren — sie startet den gebündelten Server über das Electron-Binary im Node-Modus (`ELECTRON_RUN_AS_NODE=1`), damit die native SQLite-ABI zur App passt:
+**stdio** (Claude Desktop): fertige Config in den App-Einstellungen kopieren — startet den Server über das Electron-Binary im Node-Modus (`ELECTRON_RUN_AS_NODE=1`).
 
-```json
-{
-  "mcpServers": {
-    "research-overview": {
-      "command": "<pfad-zu>/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-      "args": ["<projekt>/out/main/stdio.js"],
-      "env": { "ELECTRON_RUN_AS_NODE": "1" }
-    }
-  }
-}
-```
+Beide Wege teilen dieselbe SQLite-DB (WAL) — Einträge erscheinen live in der App.
 
-(Manueller Start: `npm run mcp:stdio`; unter Node-ABI für Entwicklung: `npm run mcp:stdio:dev`.)
+---
 
-Beide Wege teilen sich dieselbe SQLite-DB (WAL) — Einträge erscheinen live in der App.
+## Empfohlene Nutzung mit Claude Code
+
+Die Plattform nutzt bewusst das Research-Verhalten von Frontier-Modellen und erzwingt Transparenz:
+
+1. **Claude Code** (stärkster Weg): MCP-Server + Skill [`skills/transparent-research`](skills/transparent-research/SKILL.md) + **Provenienz-Gate-Hooks**. Hooks blockieren weitere Web-Recherche, bis die letzte Quelle dokumentiert ist.
+2. **Claude Desktop**: MCP verbinden, Prompt **„Transparente Research starten“** im +‑Menü — Server-Enforcement greift immer.
+3. **Verifikation**: Neue Unterhaltung, Prompt **„Geblindete Verify-Session starten“**; menschlicher Sign-off in der App.
+4. **Diskussion**: Prompt **„Über eine Research sprechen“** — Fragen strikt aus erfassten Quellen, keine neue Recherche.
+
+**Weitere Clients:** [documentation/07-clients.md](documentation/07-clients.md) — empfohlen: **Goose** und **DeepChat** (17 von 20 geprüften Clients unterstützen Streamable HTTP).
+
+---
 
 ## MCP-Tools (Auszug)
 
 | Tool | Zweck |
 |---|---|
-| `create_project` / `list_projects` / `get_project_state` | Projekt-Lebenszyklus (read/write) |
-| `add_source` | Quelle mit Pflicht-Provenienz; Server prüft sofort URL + wörtliches Zitat gegen den echten Quelltext |
-| `log_extraction` / `link_claim_to_source` | Feingranulare Extraktionen; Aussagen↔Quellen (many-to-many, auch `contrasts`) |
-| `add_report_version` / `add_chat_log` | Unveränderliche Berichts-Snapshots; Chat-Protokoll als Provenienz |
-| `flag_uncertainty` / `request_review` | Unsicherheit erst-klassig machen |
-| `re_verify` / `get_next_unverified_claim` / `submit_verdict` | Verifikations-Leiter: deterministischer Pass + **geblindeter** Cross-Context-Judge |
+| `create_project` / `list_projects` / `get_project_state` | Projekt-Lebenszyklus |
+| `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
+| `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
+| `search_literature` | OpenAlex, Crossref, Europe PMC, arXiv parallel |
+| `log_extraction` / `link_claim_to_source` | Extraktionen; Aussagen↔Quellen (many-to-many) |
+| `add_report_version` / `add_chat_log` | Berichts-Snapshots; Chat-Protokoll |
+| `re_verify` / `get_next_unverified_claim` / `submit_verdict` | Verifikations-Leiter |
 
-## Claude Code / Claude Desktop einbinden (empfohlene Nutzung)
+Jeder MCP-Prompt ist zusätzlich als Werkzeug gespiegelt (`start_transparent_research` …) für Clients ohne Prompt-Ausführung.
 
-Die Plattform baut bewusst **keine eigene Research-Engine** — sie macht sich das Research-Verhalten von Claude zunutze und erzwingt dabei Transparenz:
-
-1. **Claude Code (stärkster Weg — deterministisch):** MCP-Server verbinden + Skill [skills/transparent-research](skills/transparent-research/SKILL.md) + **Provenienz-Gate-Hooks** ([provenance-gate.cjs](skills/transparent-research/hooks/provenance-gate.cjs)). Die Hooks blockieren jede weitere Web-Recherche, bis die letzte Quelle per `add_source`/`exclude_source` dokumentiert und jede Suche per `log_search` protokolliert ist — inklusive Turn-Ende-Sperre. Fertiges Settings-Snippet: App → Einstellungen. **Multi-Agent:** `transparent_research` mit `parallel_agents: "4"` lässt einen Orchestrator parallele Recherche-Subagenten ins selbe Projekt loggen (bei Hooks `ROP_MAX_PENDING` erhöhen). **Nachrecherche:** Prompt `extend_research` (project_id + Lücke) ergänzt bestehende Projekte gezielt, mit fortgeführter `[S#]`-Nummerierung und `contrasts`-Meldung bei Widersprüchen.
-2. **Claude Desktop (bequemster Weg):** MCP-Server verbinden, dann im +‑Menü den Prompt **„Transparente Research starten"** wählen — der komplette Arbeitsvertrag wird injiziert (Best-Effort, ohne harte Hooks; das Server-seitige Enforcement — Pflichtfelder, Live-Quote-Check, Nonce-Audit — greift trotzdem immer).
-3. **Verifikation:** Danach in einer *neuen* Unterhaltung den Prompt **„Geblindete Verify-Session starten"** ausführen; menschlicher Sign-off in der App.
-4. **Weiterarbeiten & Diskutieren:** In beliebigen späteren Chats den Prompt **„Über eine Research sprechen"** (`discuss_research`) wählen — die KI lädt das Projekt, beantwortet Fragen strikt aus den erfassten Quellen (inkl. Verifikationsstatus, via `search_sources` gezielt durchsuchbar), überarbeitet den Bericht als neue Version und startet dabei garantiert **keine** neue Recherche. (In Claude Desktop dafür den Research-Modus-Schalter aus lassen.)
+---
 
 ## Verifikations-Leiter
 
-1. **Deterministisch** (kein Modell): URL/DOI-Auflösung + Quote-in-Source (exakt/normalisiert/fuzzy) — läuft automatisch bei `add_source` und per Button in der Übersicht.
-2. **Geblindete KI-Verifikation**: neue Chat-Session, gleicher MCP-Server — sieht nur Aussage + frisch gefetchten Quelltext, nie die Original-Begründung.
-3. **Cross-Client** (optional): Verifikation in einem anderen KI-Anbieter.
-5. **Mensch-Sign-off**: pro Quelle in der App; wird als Review-Kante im append-only `event_log` protokolliert.
+1. **Deterministisch** — URL/DOI-Auflösung + Quote-in-Source (exakt/normalisiert/fuzzy). Kein Modell nötig.
+2. **Geblindete KI-Verifikation** — neue Chat-Session sieht nur Aussage + frisch gefetchten Quelltext, nie die Original-Begründung.
+3. **Cross-Client** (optional) — Verifikation in einem anderen KI-Anbieter.
+4. **Mensch-Sign-off** — pro Quelle in der App; protokolliert im append-only `event_log`.
+
+---
 
 ## Projektstruktur
 
 ```
-src/main/core/        DB (Schema, Repo, Event-Log), Enforcement (textmatch, fetchers, verify), Export, Seed
-src/main/mcp/         MCP-Server (Tools), HTTP-Transport (Session-Map), stdio-Entry
+src/main/core/        DB, Repo, Services (Enforcement), Engine, Provider
+src/main/mcp/         MCP-Server, HTTP-Transport, stdio-Entry
 src/main/index.ts     Electron Main + eingebauter MCP-HTTP-Server
 src/preload/          Typisierte IPC-Brücke
-src/renderer/         React-UI (Tailwind): Übersicht, Quellen-Review, Aussagen, Berichte, Protokoll, Audit
-scripts/smoke.ts      E2E-Smoke (MCP-Client, Fixture-Quelle, Concurrency)
-documentation/        Research- & Plan-Dokumente (01–05)
+src/renderer/         React-UI: Übersicht, Quellen-Review, Berichte, Audit
+skills/               Claude-Code-Skill + Provenienz-Gate-Hooks
+documentation/        Konzept & Research (01–07)
+scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 ```
-# research-overview-platform
+
+---
+
+## Dokumentation
+
+| Dokument | Inhalt |
+|---|---|
+| [HANDOVER.md](HANDOVER.md) | Vollständiger Kontext für neue Contributors |
+| [01 Implementation-Plan](documentation/01-implementationplan.md) | Architektur, Datenmodell, Phasenplan |
+| [02 Projekt-Status](documentation/02-project-status.md) | Stand, Entscheidungen, Risiko-Register |
+| [03 Next Steps](documentation/03-next-steps.md) | Offene Schritte und Spike-Plan |
+| [04 Feasibility](documentation/04-feasability.md) | Machbarkeits-Analyse |
+| [05 Markt-Research](documentation/05-market-research.md) | Wettbewerbsanalyse |
+| [06 Eigene Research-Engine](documentation/06-eigene-research-engine.md) | Engine-Modus, Ollama |
+| [07 KI-Clients](documentation/07-clients.md) | Client-Kompatibilität |
+
+---
+
+## Entwicklung & Qualität
+
+```bash
+npm run typecheck   # TypeScript strict (beide Configs)
+npm run abi:node && npm test   # 149 Tests
+npm run smoke       # E2E gegen echten MCP-Client
+npm run build       # Production-Build
+```
+
+Zusätzlich: `npm run ollama:check <modell>` (Live-Test mit Tool-Call), `npm run lit:check "frage"` (Literatur-APIs).
+
+---
+
+## Lizenz
+
+[MIT](LICENSE) — Copyright (c) 2026 René Jeser
+
+---
+
+## Hintergrund
+
+Open Source, weil ein Provenienz-Werkzeug, dessen Prüflogik nicht nachlesbar ist, ein Widerspruch in sich wäre. Kein Geschäftsmodell — ein Werkzeug für akademische Recherche und Business-Research gleichermaßen.
+
+Fragen, Issues und Pull Requests willkommen.

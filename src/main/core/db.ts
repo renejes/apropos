@@ -1,0 +1,371 @@
+import Database from 'better-sqlite3'
+import { mkdirSync } from 'fs'
+import { dirname } from 'path'
+
+/**
+ * SQLite ist die Source of Truth (documentation/01, Abschnitt "Datenmodell").
+ * FTS5-Tabellen + Trigger werden hier als Raw-SQL gepflegt.
+ * Migrationen: naive user_version-basierte Vorwärts-Migration.
+ */
+
+export type DB = Database.Database
+
+/** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
+export const SCHEMA_VERSION = 5 // v5: engine_runs (Checkpoint/Resume für abgebrochene Langläufe)
+
+const SCHEMA = /* sql */ `
+CREATE TABLE IF NOT EXISTS projects (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  research_question TEXT NOT NULL DEFAULT '',
+  mode         TEXT NOT NULL DEFAULT 'academic' CHECK (mode IN ('academic','business')),
+  policy_preset TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sources (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  title        TEXT NOT NULL,
+  retrieval_method TEXT NOT NULL DEFAULT 'unknown',
+  accessed_at  TEXT NOT NULL,
+  reason       TEXT NOT NULL,
+  extraction   TEXT NOT NULL,
+  contribution TEXT NOT NULL,
+  verbatim_quote TEXT NOT NULL,
+  quote_locator TEXT,
+  quote_verified INTEGER,           -- NULL = ungeprüft, 0/1
+  quote_match_score REAL,
+  url_resolved INTEGER,             -- NULL = ungeprüft, 0/1
+  review_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (review_status IN ('pending','ai_checked','human_signed','rejected')),
+  confidence   TEXT CHECK (confidence IN ('low','medium','high')),
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_sources_project ON sources(project_id);
+
+CREATE TABLE IF NOT EXISTS extractions (
+  id           TEXT PRIMARY KEY,
+  source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  reasoning_freetext TEXT NOT NULL,
+  extracted_fact TEXT NOT NULL,
+  verbatim_quote TEXT NOT NULL,
+  quote_locator TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_extractions_source ON extractions(source_id);
+
+CREATE TABLE IF NOT EXISTS claims (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  claim_text   TEXT NOT NULL,
+  report_section TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project_id);
+
+CREATE TABLE IF NOT EXISTS claim_source_links (
+  id           TEXT PRIMARY KEY,
+  claim_id     TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  quote_span   TEXT NOT NULL,
+  support_type TEXT NOT NULL DEFAULT 'supports'
+    CHECK (support_type IN ('supports','contrasts','mentions')),
+  verification_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (verification_status IN ('pending','supported','partial','unsupported','source_unreachable')),
+  confidence   TEXT CHECK (confidence IN ('low','medium','high')),
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_links_claim ON claim_source_links(claim_id);
+CREATE INDEX IF NOT EXISTS idx_links_source ON claim_source_links(source_id);
+
+CREATE TABLE IF NOT EXISTS report_versions (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  parent_version_id TEXT,
+  content_markdown TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  change_summary TEXT,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_reports_project ON report_versions(project_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  model_id     TEXT,
+  model_version TEXT,
+  provider     TEXT,
+  turn_index   INTEGER,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id);
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id           TEXT PRIMARY KEY,
+  entity_type  TEXT NOT NULL,
+  entity_id    TEXT NOT NULL,
+  reviewer_type TEXT NOT NULL CHECK (reviewer_type IN ('human','ai_judge','deterministic')),
+  reviewer_id  TEXT NOT NULL,
+  verdict      TEXT NOT NULL,
+  confidence   TEXT CHECK (confidence IN ('low','medium','high')),
+  evidence_span TEXT,
+  source_snapshot_hash TEXT,
+  note         TEXT,
+  method       TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_entity ON reviews(entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS uncertainty_flags (
+  id           TEXT PRIMARY KEY,
+  entity_type  TEXT NOT NULL,
+  entity_id    TEXT NOT NULL,
+  uncertainty_reason TEXT NOT NULL,
+  confidence_level TEXT NOT NULL CHECK (confidence_level IN ('low','medium','high')),
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_flags_entity ON uncertainty_flags(entity_type, entity_id);
+
+-- Suchprozess-Transparenz (PRISMA-S): Welche Queries liefen, was wurde
+-- gesehen und bewusst NICHT genutzt (negative Provenienz).
+CREATE TABLE IF NOT EXISTS search_log (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  query        TEXT NOT NULL,
+  engine       TEXT,
+  results_found INTEGER,
+  note         TEXT,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_searchlog_project ON search_log(project_id);
+
+CREATE TABLE IF NOT EXISTS excluded_sources (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  title        TEXT,
+  reason       TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_excluded_project ON excluded_sources(project_id);
+
+-- Recherchetiefe (v3): Teilfragen sind das, wogegen Abdeckung gemessen wird.
+-- Ohne sie kann niemand — auch kein Modell — sagen, ob eine Recherche vollständig ist.
+CREATE TABLE IF NOT EXISTS sub_questions (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  question     TEXT NOT NULL,
+  rationale    TEXT,
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','covered','dropped')),
+  min_sources  INTEGER NOT NULL DEFAULT 2,
+  closed_reason TEXT,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_subq_project ON sub_questions(project_id);
+
+-- Runden dienen der Sättigungsmessung: bringt eine Runde kaum neue belegte
+-- Quellen, ist die Recherche "dry" und die Schleife bricht ab.
+CREATE TABLE IF NOT EXISTS research_rounds (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  round_index  INTEGER NOT NULL,
+  started_at   TEXT NOT NULL,
+  ended_at     TEXT,
+  verified_at_start INTEGER NOT NULL DEFAULT 0,
+  -- Zähler statt Zeitstempel: so ist "hat diese Runde überhaupt Arbeit gesehen?"
+  -- immun gegen Zeitstempel-Kollisionen in derselben Millisekunde.
+  activity_at_start INTEGER NOT NULL DEFAULT 0,
+  new_verified INTEGER,
+  note         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_rounds_project ON research_rounds(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rounds_project_index ON research_rounds(project_id, round_index);
+
+-- v4: Von der App SELBST abgerufener Quelltext.
+-- Zweck 1 (Provenienz): Zitate werden als {document_id, start, end} eingetragen. Der
+--   Server schneidet sie aus DIESEM Text — ein erfundenes Zitat ist damit unmöglich,
+--   statt hinterher erkannt zu werden.
+-- Zweck 2 (Vollständigkeit): Der Abruf läuft durch ein eigenes Tool, also sieht ihn der
+--   Server. Er kann weitere Abrufe verweigern, solange ein Dokument undokumentiert ist —
+--   unabhängig von Harness-Hooks, die in Subagenten nicht verlässlich feuern.
+CREATE TABLE IF NOT EXISTS documents (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  title        TEXT,
+  text         TEXT NOT NULL,
+  char_len     INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  fetched_at   TEXT NOT NULL,
+  fetched_by   TEXT NOT NULL DEFAULT 'unknown',
+  purpose      TEXT,
+  -- 'open' = abgerufen, aber noch nicht dokumentiert (blockiert weitere Abrufe)
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','used','excluded'))
+);
+CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(project_id, status);
+
+-- v5: Läufe der eingebauten Engine.
+-- Zweck: Ein Research-Lauf dauert Minuten bis Stunden. Bricht er ab — durch den
+-- Abbruch-Knopf, ein erschöpftes Kontingent oder einen Absturz —, war bisher nur
+-- der Zustand IN der DB erhalten, aber nichts wusste, dass ein Lauf offen ist.
+-- Diese Tabelle ist der Checkpoint: Sie hält fest, wo der Lauf stand, und macht
+-- ihn damit fortsetzbar statt nur nachträglich rekonstruierbar.
+--
+-- 'running' beim App-Start bedeutet zwingend einen gestorbenen Prozess: Es läuft
+-- höchstens ein Lauf gleichzeitig, und der lebt nur im laufenden Prozess.
+CREATE TABLE IF NOT EXISTS engine_runs (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  model        TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running','finished','aborted','interrupted','failed')),
+  phase        TEXT,
+  round_index  INTEGER,
+  sub_question_id TEXT,
+  stop_reason  TEXT,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  tool_calls   INTEGER NOT NULL DEFAULT 0,
+  failed_tool_calls INTEGER NOT NULL DEFAULT 0,
+  -- Kette der Fortsetzungen: welcher Lauf wurde hier weitergeführt?
+  resumed_from TEXT,
+  started_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  ended_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_engine_runs_project ON engine_runs(project_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_engine_runs_status ON engine_runs(status);
+
+-- Append-only Audit-Trail (Event Sourcing light): nichts wird gelöscht,
+-- Korrekturen sind neue Events.
+CREATE TABLE IF NOT EXISTS event_log (
+  seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id   TEXT,
+  actor        TEXT NOT NULL,
+  event_type   TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_project ON event_log(project_id);
+
+-- FTS5-Volltextsuche (Raw-SQL, per Trigger synchron; siehe documentation/01)
+CREATE VIRTUAL TABLE IF NOT EXISTS sources_fts USING fts5(
+  title, reason, extraction, contribution, verbatim_quote,
+  content='sources', content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS sources_ai AFTER INSERT ON sources BEGIN
+  INSERT INTO sources_fts(rowid, title, reason, extraction, contribution, verbatim_quote)
+  VALUES (new.rowid, new.title, new.reason, new.extraction, new.contribution, new.verbatim_quote);
+END;
+CREATE TRIGGER IF NOT EXISTS sources_ad AFTER DELETE ON sources BEGIN
+  INSERT INTO sources_fts(sources_fts, rowid, title, reason, extraction, contribution, verbatim_quote)
+  VALUES ('delete', old.rowid, old.title, old.reason, old.extraction, old.contribution, old.verbatim_quote);
+END;
+CREATE TRIGGER IF NOT EXISTS sources_au AFTER UPDATE ON sources BEGIN
+  INSERT INTO sources_fts(sources_fts, rowid, title, reason, extraction, contribution, verbatim_quote)
+  VALUES ('delete', old.rowid, old.title, old.reason, old.extraction, old.contribution, old.verbatim_quote);
+  INSERT INTO sources_fts(rowid, title, reason, extraction, contribution, verbatim_quote)
+  VALUES (new.rowid, new.title, new.reason, new.extraction, new.contribution, new.verbatim_quote);
+END;
+`
+
+export function openDb(dbPath: string): DB {
+  if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true })
+  const db = new Database(dbPath)
+  db.pragma('journal_mode = WAL') // Multi-Prozess (App + stdio-Server) auf derselben Datei
+  db.pragma('foreign_keys = ON')
+  db.pragma('busy_timeout = 5000')
+  migrate(db)
+  return db
+}
+
+/**
+ * Vorwärts-Migration, mehrprozess-sicher.
+ *
+ * WICHTIG (Review-Finding, gemessen): `db.transaction()` setzt BEGIN DEFERRED ab.
+ * Die ersten Statements von SCHEMA sind auf einer bestehenden DB reine No-ops
+ * (CREATE ... IF NOT EXISTS) und eröffnen nur eine LESE-Transaktion. Committet ein
+ * zweiter Prozess (App + stdio-Server!) in diesem Fenster, liefert SQLite
+ * SQLITE_BUSY_SNAPSHOT — und dafür wird der Busy-Handler NICHT aufgerufen,
+ * `busy_timeout` ist also wirkungslos. Ergebnis waren reproduzierbare Startabbrüche.
+ *
+ * Deshalb: BEGIN IMMEDIATE (nimmt die Schreibsperre sofort) + Re-Check der Version
+ * INNERHALB der Transaktion (der andere Prozess kann inzwischen fertig sein)
+ * + begrenzter Retry für den Fall, dass die Sperre belegt ist.
+ */
+function migrate(db: DB): void {
+  if ((db.pragma('user_version', { simple: true }) as number) >= SCHEMA_VERSION) return
+
+  const applyOnce = (): boolean => {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      // Re-Check unter der Schreibsperre: ein anderer Prozess war womöglich schneller.
+      if ((db.pragma('user_version', { simple: true }) as number) >= SCHEMA_VERSION) {
+        db.exec('COMMIT')
+        return true
+      }
+      db.exec(SCHEMA)
+      // Spalten-Migrationen brauchen ALTER TABLE — CREATE IF NOT EXISTS erreicht sie nicht.
+      addColumnIfMissing(db, 'sources', 'sub_question_id', 'TEXT REFERENCES sub_questions(id)')
+      // v4: Herkunft des Zitats. Ist document_id gesetzt, stammt verbatim_quote aus einem
+      // vom Server selbst gespeicherten Text — nicht aus dem Gedächtnis des Modells.
+      addColumnIfMissing(db, 'sources', 'document_id', 'TEXT REFERENCES documents(id)')
+      addColumnIfMissing(db, 'sources', 'quote_start', 'INTEGER')
+      addColumnIfMissing(db, 'sources', 'quote_end', 'INTEGER')
+      // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
+      // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
+      // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach
+      // jeder Migration ist billig und schließt das aus.
+      db.exec(`INSERT INTO sources_fts(sources_fts) VALUES('rebuild')`)
+      db.pragma(`user_version = ${SCHEMA_VERSION}`)
+      db.exec('COMMIT')
+      return true
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK')
+      } catch {
+        /* Transaktion war schon beendet */
+      }
+      throw err
+    }
+  }
+
+  const DEADLINE = Date.now() + 10_000
+  for (;;) {
+    try {
+      applyOnce()
+      return
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? ''
+      if (!code.startsWith('SQLITE_BUSY') || Date.now() > DEADLINE) throw err
+      // Kurz warten und erneut versuchen. Synchron, weil openDb synchron ist.
+      const until = Date.now() + 50
+      while (Date.now() < until) {
+        /* spin */
+      }
+    }
+  }
+}
+
+/** Idempotentes ADD COLUMN (SQLite kennt kein "ADD COLUMN IF NOT EXISTS"). */
+function addColumnIfMissing(db: DB, table: string, column: string, definition: string): void {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>
+  if (cols.some((c) => c.name === column)) return
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
+export function nowIso(): string {
+  return new Date().toISOString()
+}
