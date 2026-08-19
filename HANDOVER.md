@@ -1,6 +1,6 @@
 # Handover — Research Overview Platform
 
-> Vollständiger Kontext für einen neuen Chat. Stand: **2026-07-31**.
+> Vollständiger Kontext für einen neuen Chat. Stand: **2026-08-19**.
 > Wer hier anfängt, sollte danach ohne Rückfragen weiterarbeiten können.
 
 ---
@@ -86,7 +86,7 @@ src/main/core/
 src/main/mcp/server.ts     26 Tools + 4 Prompts (dünne Wrapper um die Services)
 src/main/mcp/http.ts       Streamable HTTP auf 127.0.0.1:8790 + Rebinding-Schutz
 src/renderer/src/          UI (Abdeckung, Lücken, Quellen-Review, Engine-Panel)
-.cursor/                   mcp.json + Rule (Cursor-first, kein Hook-System)
+.cursor/                   mcp.json + Rule (Cursor-first). Hooks für WebSearch-Provenienz: nächste Session
 skills/transparent-research/  Claude-Code-Skill + optionale Provenienz-Gate-Hooks
 documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, Engine, Clients
 ```
@@ -169,42 +169,114 @@ Deshalb gehört zu jeder neuen Zusicherung eine **Mutationsprobe**: die Wirkung 
 | | 2026-07-24 (MVP) | 2026-07-30 | 2026-07-31 |
 |---|---|---|---|
 | MCP-Tools | 13 | **26** | 26 |
-| Tests | 17 | 123 | **149** |
+| Tests | 17 | 123 | 149 → **152** (2026-08-19) |
 | Schema | v2 | v4 | **v5** |
 | Betriebsmodi | 1 | **2** | 2 |
+| Primärer Client | — | Claude Code | **Cursor** (2026-08-19) |
 
 Typecheck, Tests, E2E-Smoke und Build sind grün. Die App startet und wurde durchgeklickt.
 
 ---
 
-## 10. Was als Nächstes ansteht
+## 10. Nächste Session — Fixes 2, 3, 4 (dann erst Spike 1)
 
-**Der eine Schritt, an dem alles hängt: ein echter Lauf mit einem echten Modell.** Die gesamte Maschinerie ist gegen Fixtures und ein skriptbares Fake-Modell verifiziert — **nie gegen ein reales**.
+Drei Lücken aus dem Review 2026-08-19. **Nicht** vorher neue Features. Reihenfolge: **4A → 2 → 3**, danach Spike 1 in Cursor. Engine/Ollama ist unabhängig und auf Renés Rechner blockiert (siehe unten).
 
-> **Dieser Schritt ist auf Renés Rechner blockiert, nicht im Code** (gemessen 2026-07-31). Drei Handgriffe fehlen, zwei davon an der Systemkonfiguration:
-> 1. `~/.ollama/server.json`: `"disable_ollama_cloud"` auf `false`. **Die Env-Variable `OLLAMA_NO_CLOUD=false` genügt nicht** — die Datei gewinnt, nachgemessen.
-> 2. `OLLAMA_MODELS` in `~/.zshrc` (steht dort 4×) zeigt auf `/Volumes/RjProgLearn/…`, das es nicht mehr gibt. Auf einen existierenden Pfad umbiegen; `~/.ollama/models` ist derselbe tote Symlink.
-> 3. `ollama signin` — öffnet den Browser, nur interaktiv machbar.
->
-> Der Daemon selbst läuft einwandfrei, sobald `OLLAMA_MODELS` gültig ist (auf Port 11435 verifiziert).
+Leitentscheidung zu **Punkt 3 (René, 2026-08-19):** WebSearch **bleibt erlaubt** (Entdeckung). Was in den Bericht soll, muss trotzdem in die DB. Blocken der Suche ist der falsche Hebel.
 
-```bash
-# 1. Vorbedingungen (15 Min) — siehe Kasten oben, dann:
-ollama serve && ollama signin
-# Modell von ollama.com/search?c=cloud wählen:
-ollama pull <modell>
+### 10.1 Punkt 4 — Alltag (zuerst, klein, sofort spürbar)
 
-# 2. Die entscheidende Minute
-npm run ollama:check <modell>
-#    "✅ Werkzeugaufruf"    -> Engine startklar
-#    "⚠️ KEIN Werkzeugaufruf" -> Modell für die Schleife untauglich
+**Ziel:** Ein Befehl startet die App; MCP-Calls nicht 40× bestätigen.
+
+1. Script `npm start` = `abi:electron` + `electron-vite dev`. README/Settings darauf zeigen.
+2. Cursor-Allowlist, damit Research-Tools ohne Klick-Orgie laufen — `.cursor/permissions.json` (oder user-level `~/.cursor/permissions.json`):
+
+```json
+{
+  "mcpAllowlist": ["research-overview:*"]
+}
 ```
 
-Danach dieselbe Forschungsfrage einmal im MCP-Modus (Cursor Agent / Codex) und einmal im Engine-Modus. Die Auswertung steht ohne Zusatzarbeit in der DB.
+   Nur dieses Projekt, nur dieser Server. Schreib-Tools sind lokal und an 127.0.0.1 gebunden — das ist akzeptabel.
+3. Settings-UI: wenn MCP nicht läuft, klarer Text „App muss gestartet sein; Agent-Modus, nicht Chat“.
+4. Optional: `~/.cursor/mcp.json` erwähnen, falls Projekt-MCP in Multi-Root-Workspaces verschwindet (bekanntes Cursor-Thema).
 
-> **Die Messgröße hat sich verschoben.** Ein Modell *kann* kein Zitat mehr erfinden. Spike 1 misst deshalb nicht mehr „wie oft halluziniert es", sondern **„wie oft zeigt es auf die falsche Stelle"**.
+Kein `electron-builder`/`.dmg` in dieser Session, außer René will es explizit.
 
-Vollständige Reihenfolge: [03 Next Steps](documentation/03-next-steps.md).
+**Fertig wenn:** `npm start` öffnet die App, MCP-Punkt grün, Agent ruft Tools ohne Einzelbestätigung auf.
+
+### 10.2 Punkt 2 — PDF-Text (akademischer Pfad)
+
+**Ziel:** `fetch_source` auf `application/pdf` speichert extrahierten Text; Offset-Zitate bleiben unfälschbar.
+
+Stelle: `src/main/core/enforce/fetchers.ts` (`fetchSourceText`, Zeile ~206) bricht bei PDF/Binär ab. `search_literature` liefert oft genau PDF-URLs (`oa_url` / arXiv).
+
+1. PDF-Bytes lesen (eigenes Limit, z. B. 20 MB, getrennt von 4 MB HTML).
+2. Text extrahieren (`unpdf` oder pdf.js — **kein** Shell-`pdftotext`, muss in Electron mitlaufen).
+3. Gleicher Weg wie HTML: Tabelle `documents`, Fenster mit Offsets, `add_source` mit `document_id` + `quote_start`/`quote_end`.
+4. `search_literature`: **Landing-Page bevorzugen**, `oa_url` extra lassen — nicht die PDF als einzige `url` unterschieben.
+5. Scans/Paywall: bestehender Fallback (`verbatim_quote` ohne `document_id` + menschlicher Sign-off).
+6. Tests: Fixture-PDF mit bekanntem Satz → Offset trifft; Smoke um einen PDF-Fetch erweitern.
+
+**Grenze ehrlich lassen:** Zweispaltig/Formeln/Scan bleiben ungenau. Für arXiv-typischen Fließtext muss es greifen.
+
+**Fertig wenn:** arXiv-PDF per `fetch_source` → `add_source` mit Offset, `quote_verified: true` im Test.
+
+### 10.3 Punkt 3 — WebSearch erlaubt, Eintragen zuverlässig
+
+**Nicht:** WebSearch verbieten. **Doch:** Suche automatisch protokollieren; Quellen nur über den Server.
+
+Zwei Ebenen, nicht vermischen:
+
+| Was der Agent tut | Was Provenienz braucht |
+|---|---|
+| Cursor-**WebSearch** (Snippets, URLs) | `log_search` — Query, Suchort, Treffer. **Kein** Zitat, keine Quelle. |
+| Eine URL soll in den Bericht | `fetch_source` → `add_source` (Offset). Snippets sind **keine** Quelle. |
+| Cursor-**WebFetch** | Umleiten auf `fetch_source` — sonst liegt der Text nicht in `documents`. |
+
+**Realistisch:** Suchprotokoll **deterministisch** (Hook, ohne Modellwohlwollen). Quelleneintrag **fast** zuverlässig, weil Zitate ohne `fetch_source` am Quote-Check scheitern — sobald PDF geht (10.2), entfällt der Hauptgrund, WebFetch zu nehmen. Mutwilliges „nur im Chat, kein MCP“ bleibt unsichtbar; `add_report_version` greift nur, wenn MCP benutzt wird.
+
+**Umsetzung:**
+
+1. **Leichter Ingest neben MCP**, gleicher Express-Server (`src/main/mcp/http.ts`). Hook soll kein Streamable-HTTP-Handshake machen.
+
+   `POST http://127.0.0.1:8790/ingest/search` (nur localhost) → Service `log_search`. Body z. B. `{ project_id?, query, provider: "cursor-websearch", hit_count, urls?: string[] }`.
+
+   `project_id` fehlt oft: Fallback **zuletzt aktualisiertes Projekt** (`list_projects` / `updated_at`), sonst 4xx mit `next_action: create_project`. Optional Env `ROP_PROJECT_ID`.
+
+2. **Cursor-Hook** `.cursor/hooks.json` + Script analog `skills/transparent-research/hooks/provenance-gate.cjs`:
+
+   - `postToolUse` Matcher `WebSearch`: `tool_input` (Query) + `tool_output` (JSON, enthält oft URLs) → `POST /ingest/search`. **Fail-open** (Hook darf die Session nicht bricken).
+   - `preToolUse` Matcher `WebFetch`: **deny** + Reason: `fetch_source` nutzen (Text muss in der DB liegen).
+   - MCP-`fetch_source`/`add_source` nicht blocken.
+
+3. **Auto-Modus-Falle:** Cursor-`WebSearch`-Hooks feuern unter **Auto** oft nicht; mit **benanntem Modell** tun sie es (Cursor-Forum, Mai 2026). In README/Rule/Settings: Research mit benanntem Modell, nicht Auto.
+
+4. **Rule** `.cursor/rules/transparent-research.mdc` anpassen: WebSearch ok; danach zählt nur `fetch_source`. Snippet ≠ Beleg.
+
+5. **Server bleibt die Wahrheit:** `ROP_MAX_PENDING`, Coverage-Gate, Offset-Zitate. Hooks sind Ergänzung, abschaltbar, in Subagenten unzuverlässig — dieselbe Lehre wie bei Claude Code.
+
+Bestehendes Gate (`provenance-gate.cjs`) **nicht** 1:1 kopieren: das **blockt** WebSearch. Neues Script, z. B. `skills/transparent-research/hooks/cursor-search-ingest.cjs`.
+
+**Fertig wenn:** Eine Agent-Session mit benanntem Modell + WebSearch erzeugt `log_search` in der App **ohne** dass das Modell `log_search` aufruft; eine zitierte URL ohne `fetch_source` kommt nicht als `quote_verified` durch; WebFetch wird abgewiesen.
+
+### 10.4 Danach: Spike 1 (echtes Modell)
+
+Erst wenn 10.1–10.3 grün sind. Cursor Agent, App läuft, `start_transparent_research`. Messgröße: **falsche Offsets**, nicht erfundene Zitate.
+
+Ollama/Engine ist **nicht** Voraussetzung für Spike 1. Engine-Blocker (nur für Schritt Engine-Vergleich):
+
+1. `~/.ollama/server.json`: `"disable_ollama_cloud"` → `false` (Env `OLLAMA_NO_CLOUD=false` **genügt nicht**).
+2. `OLLAMA_MODELS` in `~/.zshrc` zeigt auf totes `/Volumes/RjProgLearn/…`.
+3. `ollama signin` (interaktiv).
+
+```bash
+npm run typecheck
+npm run abi:node && npm test
+npm run smoke
+```
+
+Details: [03 Next Steps](documentation/03-next-steps.md).
 
 ---
 
