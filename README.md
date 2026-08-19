@@ -20,7 +20,7 @@ Die Research Overview Platform verwandelt KI-Deep-Research von einer Blackbox in
 | **Vollständigkeit** | Abgerufene Quellen müssen per `add_source` oder `exclude_source` dokumentiert werden, bevor weitere Abrufe erlaubt sind. |
 | **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste (`get_coverage_gaps`), Sättigung pro Runde (`next_round`). „Ich bin fertig“ schließt keine Lücke — nur Belege. |
 | **Verifikations-Leiter** | Deterministisch → geblindete KI-Prüfung → optional Cross-Client → menschlicher Sign-off. |
-| **Zwei Betriebsmodi** | Fremdclient (Claude Code, Goose, Cursor …) **oder** eingebaute Engine mit Ollama — dieselbe DB, dasselbe Enforcement. |
+| **Zwei Betriebsmodi** | Fremdclient (**Cursor**, Goose, Claude Code, …) **oder** eingebaute Engine mit Ollama — dieselbe DB, dasselbe Enforcement. |
 
 ---
 
@@ -29,8 +29,8 @@ Die Research Overview Platform verwandelt KI-Deep-Research von einer Blackbox in
 ```mermaid
 flowchart TB
     subgraph clients [KI-Clients]
-        Claude[Claude Code / Desktop]
-        Goose[Goose / DeepChat / Cursor …]
+        Cursor[Cursor Agent]
+        Others[Goose / Claude / VS Code …]
         Engine[Eingebaute Engine]
     end
 
@@ -41,14 +41,14 @@ flowchart TB
         UI[Review-UI<br/>Sign-off · Export]
     end
 
-    Claude -->|127.0.0.1:8790/mcp| MCP
-    Goose -->|Streamable HTTP| MCP
+    Cursor -->|127.0.0.1:8790/mcp| MCP
+    Others -->|Streamable HTTP| MCP
     Engine -->|In-Memory Transport| MCP
     MCP --> Enforce --> DB
     UI --> DB
 ```
 
-**Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` v1 · Zod · Vitest
+**Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` 1.30 · Zod · Vitest
 
 ---
 
@@ -79,24 +79,34 @@ npm run dev
 
 ### KI-Client verbinden
 
-**Streamable HTTP** (empfohlen): Endpoint aus der App (Einstellungen), Standard `http://127.0.0.1:8790/mcp`. Mehrere Clients können gleichzeitig andocken.
+**Cursor (empfohlen):** App starten, dann `.cursor/mcp.json` (liegt im Repo) oder das Snippet aus den App-Einstellungen. **Agent-Modus** öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Werkzeuge einmalig freigeben. Einstieg: `start_transparent_research`. Die Rule [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc) trägt den Arbeitsvertrag (kein Hook-System).
 
-**stdio** (Claude Desktop): fertige Config in den App-Einstellungen kopieren — startet den Server über das Electron-Binary im Node-Modus (`ELECTRON_RUN_AS_NODE=1`).
+```json
+{
+  "mcpServers": {
+    "research-overview": {
+      "url": "http://127.0.0.1:8790/mcp"
+    }
+  }
+}
+```
 
-Beide Wege teilen dieselbe SQLite-DB (WAL) — Einträge erscheinen live in der App.
+Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld; ein explizites `streamable-http` kann die CLI-Config stillschweigend verwerfen.
+
+**Andere Clients:** derselbe Endpoint. stdio (Claude Desktop) als Fallback in den App-Einstellungen. Beide Wege teilen dieselbe SQLite-DB (WAL) — Einträge erscheinen live in der App.
 
 ---
 
-## Empfohlene Nutzung mit Claude Code
+## Empfohlene Nutzung mit Cursor
 
-Die Plattform nutzt bewusst das Research-Verhalten von Frontier-Modellen und erzwingt Transparenz:
+Die Plattform nutzt das Research-Verhalten von Frontier-Modellen und erzwingt Transparenz serverseitig — unabhängig vom Client:
 
-1. **Claude Code** (stärkster Weg): MCP-Server + Skill [`skills/transparent-research`](skills/transparent-research/SKILL.md) + **Provenienz-Gate-Hooks**. Hooks blockieren weitere Web-Recherche, bis die letzte Quelle dokumentiert ist.
-2. **Claude Desktop**: MCP verbinden, Prompt **„Transparente Research starten“** im +‑Menü — Server-Enforcement greift immer.
-3. **Verifikation**: Neue Unterhaltung, Prompt **„Geblindete Verify-Session starten“**; menschlicher Sign-off in der App.
-4. **Diskussion**: Prompt **„Über eine Research sprechen“** — Fragen strikt aus erfassten Quellen, keine neue Recherche.
+1. **App starten** (`npm run abi:electron && npm run dev`), MCP in Cursor eintragen, Agent-Modus.
+2. **Research:** Werkzeug `start_transparent_research`. Quellen nur per `fetch_source`, nicht per Cursor-Websuche.
+3. **Verifikation:** Neue Agent-Session, `start_verify_session`; menschlicher Sign-off in der App.
+4. **Diskussion:** `start_discuss_research` — Fragen strikt aus erfassten Quellen, keine neue Recherche.
 
-**Weitere Clients:** [documentation/07-clients.md](documentation/07-clients.md) — empfohlen: **Goose** und **DeepChat** (17 von 20 geprüften Clients unterstützen Streamable HTTP).
+Claude Code bleibt optional (Skill + Hooks). Details: [documentation/07-clients.md](documentation/07-clients.md).
 
 ---
 
@@ -133,7 +143,8 @@ src/main/mcp/         MCP-Server, HTTP-Transport, stdio-Entry
 src/main/index.ts     Electron Main + eingebauter MCP-HTTP-Server
 src/preload/          Typisierte IPC-Brücke
 src/renderer/         React-UI: Übersicht, Quellen-Review, Berichte, Audit
-skills/               Claude-Code-Skill + Provenienz-Gate-Hooks
+.cursor/              mcp.json + Rule (Arbeitsvertrag ohne Hooks)
+skills/               Claude-Code-Skill + optionale Provenienz-Gate-Hooks
 documentation/        Konzept & Research (01–07)
 scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 ```
@@ -159,7 +170,7 @@ scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 
 ```bash
 npm run typecheck   # TypeScript strict (beide Configs)
-npm run abi:node && npm test   # 149 Tests
+npm run abi:node && npm test   # 152 Tests
 npm run smoke       # E2E gegen echten MCP-Client
 npm run build       # Production-Build
 ```

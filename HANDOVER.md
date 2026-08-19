@@ -55,7 +55,7 @@ Ein Test hält das fest: Die Modellbehauptung *„Ich bin fertig, alles ist best
 
 | | **MCP-Modus** | **Eingebaute Engine** |
 |---|---|---|
-| Wer treibt | Fremdclient (Claude Code, Codex, Goose, DeepChat …) | die App selbst |
+| Wer treibt | Fremdclient (Cursor, Goose, Codex, Claude Code …) | die App selbst |
 | Modell | das des Clients | Ollama (lokal *oder* Cloud) |
 | Status | erprobt | gebaut, gegen Fake-Modell verifiziert |
 
@@ -72,7 +72,7 @@ Das ist bewusst kein Kompromiss, sondern das Argument: **Die Plattform ist model
 
 ## 4. Stack & Landkarte
 
-**Electron · React 18 · Tailwind v4 · Material Symbols · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` 1.29 · Zod · Vitest**
+**Electron · React 18 · Tailwind v4 · Material Symbols · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` 1.30 · Zod · Vitest**
 
 ```
 src/main/core/
@@ -86,7 +86,8 @@ src/main/core/
 src/main/mcp/server.ts     26 Tools + 4 Prompts (dünne Wrapper um die Services)
 src/main/mcp/http.ts       Streamable HTTP auf 127.0.0.1:8790 + Rebinding-Schutz
 src/renderer/src/          UI (Abdeckung, Lücken, Quellen-Review, Engine-Panel)
-skills/transparent-research/  Claude-Code-Skill + Provenienz-Gate-Hooks
+.cursor/                   mcp.json + Rule (Cursor-first, kein Hook-System)
+skills/transparent-research/  Claude-Code-Skill + optionale Provenienz-Gate-Hooks
 documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, Engine, Clients
 ```
 
@@ -109,7 +110,7 @@ documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, En
 **Verifikation (immer alle drei):**
 ```bash
 npm run typecheck
-npm run abi:node && npm test        # 149 Tests
+npm run abi:node && npm test        # 152 Tests
 npm run smoke                       # E2E gegen echten MCP-Client
 ```
 Zusätzlich: `npm run ollama:check <modell>` (Live-Test inkl. echtem Tool-Call), `npm run lit:check "frage"` (Literatursuche gegen echte Register).
@@ -199,7 +200,7 @@ npm run ollama:check <modell>
 #    "⚠️ KEIN Werkzeugaufruf" -> Modell für die Schleife untauglich
 ```
 
-Danach dieselbe Forschungsfrage einmal im MCP-Modus (Claude Code/Codex) und einmal im Engine-Modus. Die Auswertung steht ohne Zusatzarbeit in der DB.
+Danach dieselbe Forschungsfrage einmal im MCP-Modus (Cursor Agent / Codex) und einmal im Engine-Modus. Die Auswertung steht ohne Zusatzarbeit in der DB.
 
 > **Die Messgröße hat sich verschoben.** Ein Modell *kann* kein Zitat mehr erfinden. Spike 1 misst deshalb nicht mehr „wie oft halluziniert es", sondern **„wie oft zeigt es auf die falsche Stelle"**.
 

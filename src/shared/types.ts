@@ -353,7 +353,7 @@ export interface ServerInfo {
   port: number
   dbPath: string
   running: boolean
-  /** Fertige claude_desktop_config-Bausteine für den stdio-Weg (Electron-as-Node, gleiche ABI). */
+  /** Fertige stdio-Bausteine (Electron-as-Node, gleiche ABI) — Fallback für Claude Desktop. */
   stdio: {
     command: string
     args: string[]

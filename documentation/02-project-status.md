@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 02 — Projekt-Status |
-| **Stand** | 2026-07-31 · v2.1 |
-| **Phase** | Gebauter Prototyp mit zwei Betriebsmodi — Kernannahme empirisch noch ungetestet |
+| **Stand** | 2026-08-19 · v2.2 |
+| **Phase** | Open Source (MIT) · zwei Betriebsmodi · Cursor-first-Onboarding — Kernannahme empirisch noch ungetestet |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [04 Feasibility](04-feasability.md) · [05 Markt-Research](05-market-research.md) · [06 Eigene Research-Engine](06-eigene-research-engine.md) · [07 KI-Clients](07-clients.md)
 
@@ -39,14 +39,25 @@ Beim Nachmessen fielen dabei zwei Löcher auf, die keine Annahme vorhergesagt ha
 - **Quota-Guard vor jedem Spawn.** Ein erschöpftes Kontingent beendet den Lauf sofort. Vorher wurde es je Teilfrage und je Runde erneut angerannt — bei sechs Teilfragen über vier Runden bis zu 24-mal gegen einen Dienst, der bereits Nein gesagt hat (im Test nachgestellt: vier Versuche statt einem). Dazu ein Token-Budget für den **gesamten** Lauf statt nur je Aufruf, mit einer Reserve, die der Synthese vorbehalten bleibt — sonst endet ein knapp budgetierter Lauf im schlechtesten Zustand: Quellen erfasst, kein Bericht geschrieben.
 - **Checkpoint/Resume.** Die neue Tabelle `engine_runs` hält fest, wo ein Lauf steht. Ein Datensatz, der beim App-Start noch auf `running` steht, kann keinen lebenden Prozess mehr haben — er wird als `interrupted` geheilt und damit fortsetzbar. Beim Fortsetzen bekommt das Modell zuerst die Quellen genannt, die der Vorlauf zwischen `fetch_source` und `add_source` liegen ließ; sonst läuft es blind in die Abruf-Sperre.
 
+### Nachtrag 2026-08-19 — Open Source und Cursor-first
+
+**6. Das Projekt ist öffentlich.** MIT-Lizenz, vollständiges Repo auf GitHub. Kein Geschäftsmodell — ein Provenienz-Werkzeug, dessen Prüflogik nicht nachlesbar wäre, wäre ein Widerspruch in sich. Monetarisierungs-Fragen aus dem Risiko-Register sind damit gegenstandslos.
+
+**7. Alltagsweg ist Cursor, nicht Claude Code.** Streamable HTTP auf `127.0.0.1:8790/mcp` war schon client-agnostisch; was fehlte, war das Onboarding. Jetzt: `.cursor/mcp.json` im Repo, Rule `.cursor/rules/transparent-research.mdc` (Arbeitsvertrag ohne Hooks), kopierbare Snippets in den App-Einstellungen, README und [07 KI-Clients](07-clients.md) Cursor-first. Claude-Code-Hooks und stdio bleiben optional. Einstieg über Spiegel-Werkzeuge (`start_transparent_research` …) — Cursor führt MCP-Prompts nicht zuverlässig aus.
+
+**8. MCP-SDK auf 1.30.0.** `package.json` war auf `^1.16.0` gepinnt, das Lockfile schon bei 1.29. Jetzt einheitlich v1.30. Rebinding-Schutz bleibt in der Express-Middleware `hostHeaderValidation` (seit 1.25 nicht mehr im Transport). Typecheck, 152 Tests und E2E-Smoke sind grün.
+
 ### Zahlen zum Stand
 
-| | 2026-07-24 | 2026-07-30 | 2026-07-31 |
-|---|---|---|---|
-| MCP-Tools | 13 | **26** (inkl. 4 Prompt-Spiegel für Clients ohne Prompt-Ausführung) | 26 |
-| Tests | 17 | 123 | **149** |
-| Schema-Version | v2 | v4 | **v5** |
-| Betriebsmodi | MCP (Fremdclient) | MCP **+ eingebaute Engine** | 2 |
+| | 2026-07-24 | 2026-07-30 | 2026-07-31 | 2026-08-19 |
+|---|---|---|---|---|
+| MCP-Tools | 13 | **26** (inkl. 4 Prompt-Spiegel) | 26 | 26 |
+| Tests | 17 | 123 | 149 | **152** |
+| Schema-Version | v2 | v4 | **v5** | v5 |
+| MCP-SDK | — | — | 1.29 (Lockfile) | **1.30.0** |
+| Betriebsmodi | MCP (Fremdclient) | MCP **+ Engine** | 2 | 2 |
+| Primärer Client | Claude Code | Claude Code | Claude Code | **Cursor** |
+| Lizenz | intern | intern | intern | **MIT** |
 
 ### Drei Befunde, die Annahmen widerlegt haben
 
@@ -56,7 +67,7 @@ Beim Nachmessen fielen dabei zwei Löcher auf, die keine Annahme vorhergesagt ha
 
 ### Was weiterhin fehlt
 
-**Die Kernannahme ist unverändert ungetestet.** Alles Gebaute ist gegen Fixtures und ein skriptbares Fake-Modell verifiziert — **nie gegen ein echtes Modell in einer echten Recherche**. Das ist der eine offene Punkt, an dem das Projekt hängt (siehe [03 Next Steps](03-next-steps.md)).
+**Die Kernannahme ist unverändert ungetestet.** Alles Gebaute ist gegen Fixtures und ein skriptbares Fake-Modell verifiziert — **nie gegen ein echtes Modell in einer echten Recherche**. Der Alltagsweg dafür ist jetzt Cursor (Agent-Modus + MCP), nicht mehr Claude Code. Das ist der eine offene Punkt, an dem das Projekt hängt (siehe [03 Next Steps](03-next-steps.md)).
 
 ---
 
@@ -98,8 +109,10 @@ Noch offen aus dem ursprünglichen Spike-Plan: **Spike 1–3 mit echten Frontier
 |---|---|---|
 | Zielgruppe | Akademisch **und** Marketing/Business | Beide leiden am selben Transparenz-Defizit; breitere Marktbasis |
 | Produktform | Hybrid-App + eingebauter MCP-Server | UI liefert Review/Versionierung; MCP macht „jede KI andockbar" |
-| Tech-Stack | TypeScript / Node | Beste MCP-SDK-Reife + ein Stack für Server und UI |
+| Primärer Client | **Cursor** (Agent + Streamable HTTP) | Alltags-IDE seit 2026-08; Claude Code optional (Skill + Hooks) |
+| Tech-Stack | TypeScript / Node, MCP-SDK **1.30** | Beste MCP-SDK-Reife + ein Stack für Server und UI |
 | Speicher | SQLite (Source-of-Truth) + Markdown-Export | Abfragbar **und** portabel/anhängbar |
+| Lizenz / Geschäftsmodell | **MIT**, nicht verkauft | Prüflogik muss nachlesbar sein; Markt-/Preisfragen entfallen |
 
 ## Kern-Erkenntnisse der Research
 
@@ -135,16 +148,17 @@ Das vollständige, priorisierte **Risiko-Register** folgt direkt unten; die Gege
 | **KI-Selbstauskunft ("warum diese Quelle") ist unfaithful** - bis zu 57% korrekter Zitate sind post-hoc rationalisiert, nicht kausal genutzt ([arXiv 2412.18004](https://arxiv.org/abs/2412.18004)); CoT zertifiziert Korrektheit nicht | Begruendungsfelder und Chat-Protokoll wirken belastbar, sind es aber nicht - falsche Sicherheit | **H** | Begruendung als *zu verifizierende Behauptung* modellieren, nicht als Wahrheit. Optionale kontrafaktische Checks (Quelle entfernen, prueft sich die Aussage aendert). UI erzwingt Verifikationsstatus/Confidence pro Kante |
 | **Format-Zwang senkt Reasoning-Qualitaet** (dokumentierter Drop ~10-15 pp, bei unguestandigem Schema mehr; "answer-vor-reason"-Effekt, [arXiv 2408.02442](https://arxiv.org/abs/2408.02442)) | Erzwungenes JSON verschlechtert genau die inhaltliche Bewertung, die das Produkt verkauft | **M** | Reasoning (Freitext-Begruendung) und Formatierung (schema-konformes Eintragen) trennen: erst begruenden lassen, dann separat validiert strukturieren. Begruendungsfelder im Schema VOR dem Bewertungsfeld anordnen. Flache, einfache Schemata (JSONSchemaBench: 96% simpel vs. 30% komplex) |
 | **Prompt-Injection / Tool-Poisoning ueber eingelesene Web-Quellen** - genau das Einlesen manipulierter Quellen ist der Kernzweck (dokumentierte Angriffe, CVE-2025-54136; mcp-remote CVE-2025-6514, CVSS 9.6) | Manipulierte Quelle laesst KI falsche/boesartige Eintraege schreiben oder Daten exfiltrieren; kompromittiert die "pruefbare" DB | **M** | Quellinhalte strikt als *nur Daten, nie Instruktion* behandeln (Datentrennung/Markierung), Input-/Schema-Validierung, Sandboxing, Append-only-/tamper-evident-Log, ggf. Gateway/LLM-Judge, OAuth 2.1. Injection-Abwehr als Kernthema, nicht Add-on |
-| **ChatGPT bindet nur Remote-HTTPS-Server an, kein lokales stdio** - eine reine lokale Desktop-App erreicht ChatGPT-Nutzer nicht | "Jede KI andockbar" gilt de facto nicht fuer ChatGPT ohne Hosting/Tunnel | **M** | App liefert sowohl lokalen stdio- als auch lokalen/remote Streamable-HTTP-Pfad (127.0.0.1) inkl. Auth (Per-Client-Token, OAuth 2.1) und optionalem Hosting-/mcp-remote-Bridge-Pfad |
-| **MCP-Spezifikation ist bewegliches Ziel** - RC 2026-07-28 bringt stateless-Umbau (Wegfall Handshake/Session), deprecatiert roots/sampling/logging ([MCP Blog](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/)) | Laufender Anpassungsaufwand; auf Sampling gebaute Features veralten | **M** | Auf stabiler Spec 2025-11-25 + TS-SDK v1 bauen, keine Kernfunktion auf Sampling/Elicitation stuetzen (Quellenerfassung ueber Tools + Server-Validierung). v2-Beta beobachten (v1 >=6 Monate Fixes) |
-| **Zuverlaessigkeit kollabiert bei vielen Tools / langer Session** (pass^8 faellt bei GPT-4o Retail von ~60% auf ~25%; ~740 Tools nur 0-20%; Fact-Check -42% von 2->150 Tool-Calls) | Grosse Projekte (30-50 Quellen in einer Session) werden inkonsistent erfasst | **M** | Minimaler Tool-Satz (add_source/update_source/get_project), Chunking/Checkpointing pro Quelle, Reviewer-Gates alle N Quellen, Confidence-Scoring + gezielte Retries (bis ~50% Fehlerreduktion, [Cleanlab](https://cleanlab.ai/blog/tau-bench/)) |
-| **Native-Addon/Build-Komplexitaet** (better-sqlite3 fuer FTS5 muss je Electron-Upgrade via @electron/rebuild neu gebaut werden; node:sqlite hat kein FTS5; FTS5-Virtual-Tables von Drizzle/Prisma nicht nativ modelliert) | Verzoegerungen, Packaging-Bugs, kaputte Volltextsuche bei Upgrades | **M** | better-sqlite3 fixieren, Rebuild in CI/Packaging aufnehmen; FTS5-Tabellen + Sync-Trigger in handgeschriebenen SQL-Migrationen, aus Auto-Diff ausklammern. Electron (Node in-process) statt Tauri-Sidecar, wenn Build-Einfachheit Prioritaet hat |
-| **Markt: Quellen-Transparenz ist bereits Commodity** - Elicit (Satz-Zitate, PRISMA), Consensus/Scite betreiben eigene MCP-Server; reine Suche/Discovery kommodifiziert (ResearchRabbit->Litmaps) | Kein Differenzierer, Preiskampf im 8-50 USD-Band der Academia | **M** | Positionierung als *Provenienz-/Review-/Versionierungs-Layer*, nicht als "noch ein MCP-Suchtool". Verteidigbares Bundle: Pro-Quelle-Begruendung + Versionierung + Chat-Protokoll + Mensch/KI-Review + offener MCP + local-first als Audit-Artefakt |
-| **Adoption: Academia preissensitiv, lange Beschaffungszyklen** - Einzelforscher zahlen ungern, Kaufkanal sind institutionelle FTE-Lizenzen ([arXiv 2508.00952](https://arxiv.org/pdf/2508.00952)) | Schwacher ARPU im akademischen Kern, langsame Umsatzkurve | **M** | Zweigleisig: Freemium/guenstig akademisch fuer Sichtbarkeit + Site-License (FTE); Umsatz-Schwerpunkt Enterprise/Business (ChatGPT Enterprise real ~45-75 USD/Sitz fuer Governance/Compliance) |
-| **Akademische Akzeptanz des Export-Artefakts ungeklaert** - Journals/Betreuer akzeptieren KI-Provenienz-Anhang evtl. nicht als zitierbaren Beleg; KI-Chats sind selbst keine abrufbare Quelle (APA "record of use") | "Anhaengbar an Arbeiten" loest kein reales Bedurfnis ein | **M** | An etablierte Standards andocken statt Eigenformat: RO-Crate-konformer Export (JSON-LD/FAIR), DOI-Hinterlegung (Zenodo/OSF), PRISMA-S-Suchdokumentation, TOP-Level-2/3. Prompt+Output als empfohlener Beweisanhang |
-| **Rechtlich/Compliance: fabrizierte Zitate real sanktioniert** (200+ Gerichtsfaelle, Strafen bis 95k USD, inkl. Claude-Fall; Springer-Nature-Buch zurueckgezogen) | Produktversprechen "Null-Halluzination" waere haftungsrelevant und falsch | **M** | NICHT mit Null-Halluzination werben, sondern mit *Pruefbarkeit/Audit*. Automatische DOI/Crossref/Accession-Verifikation jeder Quelle als Pflichtschritt, Verifikationsstatus mitprotokollieren. EU-AI-Act-Logging (Art. 12, ab Aug 2026) als Verkaufsargument nutzen |
-| **Datensouveraenitaet als Versprechen vs. Realitaet** - angedockte KI ist oft US-Cloud-Modell; Prompt-/Quelldaten verlassen das Geraet trotz local-first SQLite | Datenschutz-Positionierung angreifbar, DSGVO/CLOUD-Act-Exposition | **N-M** | Klar kommunizieren: local-first = SoT lokal; zusaetzlich lokale/EU-Modell-Option anbieten. On-prem/EU-Residenz fuer regulierte Kunden als Premium-Feature |
-| **Elicitation nicht clientuebergreifend verlaesslich** (Claude Desktop -32601; Claude Code erst seit v2.1.76) | Interaktive Quellenerfassung bricht auf Zielclients | **N** | Quellenerfassung dauerhaft ueber Tools + serverseitige Schema-Validierung (robust, clientuebergreifend), Elicitation hoechstens als Progressive Enhancement |
+| **ChatGPT bindet nur Remote-HTTPS-Server an, kein lokales stdio** | "Jede KI andockbar" gilt de facto nicht fuer ChatGPT im Browser | **N** | **Gestrichen 2026-07-30.** Codex dockt lokal an; Tunnel/OAuth entfallen. Siehe [03](03-next-steps.md) |
+| **MCP-Spezifikation ist bewegliches Ziel** - RC 2026-07-28 bringt stateless-Umbau, deprecatiert roots/sampling/logging | Laufender Anpassungsaufwand; auf Sampling gebaute Features veralten | **M** | Produktiv: Spec 2025-11-25 + TS-SDK **v1.30**. Keine Kernfunktion auf Sampling/Elicitation. v2-Beta beobachten |
+| **Zuverlaessigkeit kollabiert bei vielen Tools / langer Session** | Grosse Projekte (30-50 Quellen in einer Session) werden inkonsistent erfasst | **M** | Schlanker Tool-Satz, serverseitige Coverage statt Modellabbruch, Checkpointing in der Engine. Cursor: Agent-Modus + Werkzeug-Freigabe, sonst 10–40 Einzelbestaetigungen |
+| **Native-Addon/Build-Komplexitaet** (better-sqlite3 / Electron-ABI) | Verzoegerungen, Packaging-Bugs, kaputte Volltextsuche bei Upgrades | **M** | `abi:node` / `abi:electron` im Workflow; FTS5 in handgeschriebenen Migrationen |
+| **Markt: Quellen-Transparenz ist bereits Commodity** | Kein Differenzierer im Such-/Zitate-Markt | **M** | Positionierung als *Provenienz-/Review-/Versionierungs-Layer*. Open Source, kein Preiskampf |
+| **Adoption: Academia preissensitiv** | Nur relevant bei Verkauf | **N** | **Gegenstandslos** — das Projekt wird nicht verkauft |
+| **Akademische Akzeptanz des Export-Artefakts ungeklaert** | "Anhaengbar an Arbeiten" loest kein reales Bedurfnis ein | **M** | Markdown steht; RO-Crate noch offen (Schritt 6 in [03](03-next-steps.md)) |
+| **Rechtlich/Compliance: fabrizierte Zitate real sanktioniert** | Produktversprechen "Null-Halluzination" waere haftungsrelevant und falsch | **M** | NICHT mit Null-Halluzination werben, sondern mit *Pruefbarkeit/Audit* |
+| **Datensouveraenitaet als Versprechen vs. Realitaet** | Angedockte KI ist oft Cloud-Modell trotz lokaler SQLite | **N-M** | Klar kommunizieren: local-first = SoT lokal; Engine kann lokal über Ollama laufen |
+| **Elicitation nicht clientuebergreifend verlaesslich** | Interaktive Quellenerfassung bricht auf Zielclients | **N** | Quellenerfassung über Tools + Schema-Validierung. Cursor: Spiegel-Werkzeuge, keine Prompts |
+| **Cursor hat kein Hook-System** — Client-Websuche umgeht `fetch_source` | Quellen landen nicht in der DB; Zitate wieder fälschbar | **M** | Server-Enforcement (Fetch-Sperre) + Cursor-Rule. Hooks nur optional für Claude Code |
 
 ## Reifegrad & Konfidenz
 
@@ -154,18 +168,18 @@ Das vollständige, priorisierte **Risiko-Register** folgt direkt unten; die Gege
 | Techn. Machbarkeit — Mechanik (MCP/Tool-Calls) | Bestätigt | **hoch** |
 | Techn. Machbarkeit — Inhalt (Attribution) | Bedingt tragfähig, **auf eigenem Schema noch ungetestet** | mittel |
 | Marktlücke | Belegt (kein Produkt vereint die 5 Bausteine) | mittel-hoch |
-| Monetarisierung / Marktgröße | Grobe Größenordnung; **Bottom-up-SAM/SOM fehlt** | niedrig-mittel |
-| Akademische Akzeptanz des Export-Artefakts | Plausibel via RO-Crate/DOI, **ungeprüft** | niedrig-mittel |
+| Monetarisierung / Marktgröße | Entfällt — Open Source, nicht verkauft | — |
+| Akademische Akzeptanz des Export-Artefakts | Plausibel via Markdown; RO-Crate **offen** | niedrig-mittel |
+| Client-Onboarding (Cursor) | Code und Doku stehen; Hand-Test + Spike 1 **offen** | mittel |
 
 ## Was als Nächstes
 
-Das Gate ist unverändert **Spike 1** — die Kernannahme empirisch testen. Ein eigenes Chat-/Antwort-Panel
-wurde am 2026-07-30 gestrichen: Fragen zur fertigen Research laufen über `discuss_research`, das als
-MCP-Prompt *und* als Werkzeug in jedem Client funktioniert. Was sich geändert hat: Die Infrastruktur dafür steht vollständig, und der Test ist heute **billiger und aussagekräftiger** als geplant.
+Das Gate ist unverändert **Spike 1** — die Kernannahme empirisch testen, jetzt im **Cursor-Agent** gegen denselben MCP-Server. Client-Onboarding und SDK-Update sind erledigt (2026-08-19). Ein eigenes Chat-/Antwort-Panel
+wurde am 2026-07-30 gestrichen: Fragen zur fertigen Research laufen über `discuss_research` / `start_discuss_research`.
 
 - Die Abdeckungsrechnung liefert die Auswertung mit: `quote_verified`-Quote, Lücken je Teilfrage und Sättigung pro Runde stehen nach jedem Lauf in der DB.
-- Beide Betriebsmodi sind vergleichbar — derselbe Server, dieselben Werkzeuge, dasselbe Enforcement. Der MCP-Pfad mit einem Frontier-Modell ist damit der Qualitäts-Referenzpunkt für die eigene Engine.
-- Der Offset-Zitat-Pfad verschiebt die Messgröße: Nicht mehr „wie oft erfindet das Modell ein Zitat" (das kann es nicht mehr), sondern „wie oft zeigt es auf die **falsche** Stelle". Das ist die schärfere und ehrlichere Frage.
+- Beide Betriebsmodi sind vergleichbar — derselbe Server, dieselben Werkzeuge, dasselbe Enforcement. Der MCP-Pfad mit einem Frontier-Modell in Cursor ist der Qualitäts-Referenzpunkt für die eigene Engine.
+- Der Offset-Zitat-Pfad verschiebt die Messgröße: Nicht mehr „wie oft erfindet das Modell ein Zitat", sondern „wie oft zeigt es auf die **falsche** Stelle".
 
 Details und Reihenfolge in [03 Next Steps](03-next-steps.md).
 

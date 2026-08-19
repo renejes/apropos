@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 03 — Next Steps |
-| **Stand** | 2026-07-31 · v2.1 |
-| **Phase** | Gebauter Prototyp — Kernannahme vor dem empirischen Test |
+| **Stand** | 2026-08-19 · v2.4 |
+| **Phase** | Open Source (MIT) · Cursor-first · SDK 1.30 — Kernannahme vor dem empirischen Test |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [04 Feasibility](04-feasability.md) · [05 Markt-Research](05-market-research.md) · [06 Eigene Research-Engine](06-eigene-research-engine.md) · [07 KI-Clients](07-clients.md)
 
@@ -15,33 +15,50 @@
 
 ## Der eine Schritt, an dem alles hängt
 
-**Ein echter Lauf mit einem echten Modell.** Die gesamte Maschinerie ist gegen Fixtures und ein skriptbares Fake-Modell verifiziert — nie gegen ein reales. Das ist Spike 1, und er ist heute eine Sache von Stunden statt Wochen:
+**Ein echter Lauf mit einem echten Modell.** Die gesamte Maschinerie ist gegen Fixtures und ein skriptbares Fake-Modell verifiziert — nie gegen ein reales. Das ist Spike 1, und der **MCP-Pfad hängt nicht an Ollama**:
 
-1. **`npm run ollama:check <modell>`** — beantwortet in einer Minute die Frage, an der die Engine hängt: *Ruft dieses Cloud-Modell die Werkzeuge überhaupt zuverlässig auf?* Sagt der Check „⚠️ KEIN Werkzeugaufruf", ist das Modell für die Schleife untauglich — und das erfährt man vor, nicht nach einem gescheiterten Lauf.
-2. **Eine echte Recherche im MCP-Modus** (Claude Code oder Codex, Skill + Hooks + Server) als Qualitäts-Referenzpunkt.
-3. **Dieselbe Frage im Engine-Modus** mit Ollama Cloud.
+1. **App starten + Cursor Agent** — MCP ist im Repo verdrahtet (`.cursor/mcp.json`). Eine echte Recherche mit `start_transparent_research` als Qualitäts-Referenzpunkt.
+2. **`npm run ollama:check <modell>`** — nur für den Engine-Modus: *Ruft dieses Cloud-Modell die Werkzeuge überhaupt zuverlässig auf?* Sagt der Check „⚠️ KEIN Werkzeugaufruf", ist das Modell für die Schleife untauglich.
+3. **Dieselbe Frage im Engine-Modus** mit Ollama (lokal oder Cloud) — erst nach Schritt 2.
 4. **Auswerten** — die Zahlen stehen ohne Zusatzarbeit in der DB: `quote_verified`-Quote, Lücken je Teilfrage, Sättigung je Runde, Anteil im ersten Anlauf verifizierter Quellen.
 
 Der Vergleich beider Modi auf derselben Frage ist die aussagekräftigste verfügbare Messung — gleicher Server, gleiche Werkzeuge, gleiches Enforcement, nur ein anderes Modell.
 
 > **Die Messgröße hat sich verschoben.** Durch den Offset-Zitat-Pfad *kann* ein Modell kein Zitat mehr erfinden. Die Frage lautet daher nicht mehr „wie oft halluziniert es ein Zitat", sondern **„wie oft zeigt es auf die falsche Stelle"** — und ob die Extraktion die Aussage wirklich trägt. Das Erfolgskriterium bleibt (≥80 % faktische Deckung), misst jetzt aber schärfer.
 
+## MCP-SDK & Client-Agnostik (Cursor) — erledigt 2026-08-19
+
+Der Alltagsweg ist **Cursor**, nicht mehr Claude Code.
+
+| Teil | Stand |
+|---|---|
+| **A · MCP-SDK** | `@modelcontextprotocol/sdk` **1.30.0** (v1-Linie). Rebinding-Schutz bleibt in der Express-Middleware `hostHeaderValidation`. |
+| **B · Onboarding** | `.cursor/mcp.json` im Repo, Rule `.cursor/rules/transparent-research.mdc`, kopierbare Snippets in den App-Einstellungen, README + [07](07-clients.md) Cursor-first. Claude-Hooks sind optional. |
+
+**Noch offen an diesem Strang:** einmaliger Hand-Test (App läuft → Agent verbindet → `start_transparent_research`) und Spike 1 im Cursor-MCP-Modus. Das Erfolgskriterium „unter fünf Minuten ohne Claude Code“ ist im Code erfüllt, empirisch noch ungefahren.
+
+Status-Dokument: [02 Projekt-Status](02-project-status.md) (v2.2, 2026-08-19).
+
+---
+
 ## Reihenfolge
 
 | # | Schritt | Aufwand | Warum |
 |---|---|---|---|
-| 1 | **Vorbedingungen für Ollama Cloud** — `disable_ollama_cloud` in `~/.ollama/server.json` auf `false`, `OLLAMA_MODELS` auf einen existierenden Pfad, `ollama signin`, ein Cloud-Modell registrieren | 15 Min | Ohne das läuft der Engine-Modus nicht. **Braucht René** — siehe unten |
-| 2 | **Spike 1 fahren** (siehe oben) | 1 Tag | **Go/No-Go-Gate** |
-| ~~3~~ | ~~**`hint`-Texte imperativ und selbsttragend** formulieren~~ | — | ✅ **erledigt 2026-07-31.** Jede Fehlerantwort beginnt mit `status: "FEHLER …"` und trägt eine `next_action` im Imperativ; der Hinweis ist Pflichtparameter von `ServiceError`. Beim Nachmessen fielen zwei ungeplante Löcher auf: SDK-Schemafehler (die häufigste Klasse) erreichten die eigenen Handler nie, und ein durchgefallener Beleg kam in einer Antwort **ohne** `isError` zurück. Beides behoben, 16 Tests |
-| ~~4~~ | ~~**Auto-Mode-Härtung**: Checkpoint/Resume nach Abbruch, Quota-Guard vor jedem Spawn~~ | — | ✅ **erledigt 2026-07-31.** Schema v5 (`engine_runs`), Heilung von Phantomläufen beim App-Start, Fortsetzen inkl. Übergabe der undokumentierten Quellen; Quota-Guard mit Lauf-Token-Budget und Synthese-Reserve. Der zuerst geschriebene Test deckte auf, dass ein erschöpftes Kontingent den Lauf **nicht** beendete. 10 Tests |
-| 5 | **Spike 3 messen** (siehe unten) — die Leiter ist gebaut, aber ihr Recall ist unbeziffert | 1–2 Tage | Entscheidet, ob Ebene 3/4 Architektur-Notwendigkeit statt Kür ist |
-| 6 | **RO-Crate-Export** | 2–3 Tage | Markdown steht; RO-Crate ist die Standardkonformität für die akademische Akzeptanz |
-| 7 | **Nebenläufigkeit unter Last** messen (6–16 parallele Agenten gegen einen Prozess) | 1 Tag | Doku und Messung sagen: unkritisch. Bestätigen, bevor ein Vierstundenlauf darauf gesetzt wird |
-| 8 | **Ground-Truth-Set** aufbauen (50–100 Aussage-Quelle-Paare mit bekannter Belegstelle) | 2–3 Tage | Voraussetzung, um Spike 1 quantitativ statt nur beobachtend auszuwerten |
+| ~~0~~ | ~~MCP-SDK + Cursor-first-Onboarding~~ | — | ✅ **2026-08-19.** SDK 1.30; `.cursor/mcp.json` + Rule; Einstellungen/README/[07](07-clients.md); 152 Tests + Smoke |
+| **1** | **Spike 1 im Cursor-MCP-Modus** (Agent, nicht Chat) | 1 Tag | **Go/No-Go-Gate.** Braucht **keine** Ollama-Cloud |
+| 2 | Ollama-Vorbedingungen (`server.json`, `OLLAMA_MODELS`, `ollama signin`) | 15 Min | Nur für den Engine-Vergleich. **Braucht René** |
+| 3 | Dieselbe Frage im Engine-Modus + auswerten | ½ Tag | Vergleich MCP (Cursor) vs. Engine |
+| 4 | Spike 3 messen — Recall der Verifikations-Leiter | 1–2 Tage | Entscheidet, ob Ebene 3/4 Architektur-Notwendigkeit ist |
+| 5 | RO-Crate-Export | 2–3 Tage | Markdown steht; RO-Crate für akademische Akzeptanz |
+| 6 | Nebenläufigkeit unter Last (6–16 parallele Agenten) | 1 Tag | Bestätigen, bevor ein Vierstundenlauf darauf setzt |
+| 7 | Ground-Truth-Set (50–100 Aussage-Quelle-Paare) | 2–3 Tage | Spike 1 quantitativ statt nur beobachtend |
+| ~~A~~ | ~~`hint`-Texte selbsttragend~~ | — | ✅ **2026-07-31.** `status: "FEHLER …"` + `next_action`; SDK-Schemafehler und Beleg-ohne-`isError` behoben |
+| ~~B~~ | ~~Auto-Mode-Härtung (Checkpoint/Quota-Guard)~~ | — | ✅ **2026-07-31.** Schema v5, Phantomläufe, Token-Budget mit Synthese-Reserve |
 
-### Schritt 1 ist blockiert — und zwar auf Renés Rechner, nicht im Code
+### Schritt 2 ist blockiert — auf Renés Rechner, nicht im Code
 
-Gemessen am 2026-07-31:
+Ollama braucht drei Handgriffe, **bevor der Engine-Modus** (nicht Spike 1 in Cursor) laufen kann. Gemessen am 2026-07-31:
 
 | Befund | Zustand | Wirkung |
 |---|---|---|
@@ -73,7 +90,7 @@ Die Forschung stützt diese Annahme *bedingt*: Das **Format-Problem ist gelöst*
 
 **Spike 1 — Attributionsbenchmark auf dem eigenen Schema** (das Gate)
 - **Ziel:** Messen, wie zuverlässig KIs die Provenienz-Felder inhaltlich korrekt befüllen.
-- **Vorgehen:** Ground-Truth-Set (50–100 Aussage-Quelle-Paare) durch beide Betriebsmodi laufen lassen — MCP-Modus mit einem Frontier-Modell, Engine-Modus mit einem Ollama-Cloud-Modell. Je Eintrag bewerten: (a) Link/DOI auflösbar, (b) thematisch relevant, (c) Zitat deckt die Aussage faktisch.
+- **Vorgehen:** Zuerst MCP-Modus in **Cursor Agent** mit einem Frontier-Modell; danach optional Engine-Modus mit einem Ollama-Modell (gleiche Frage). Je Eintrag bewerten: (a) Link/DOI auflösbar, (b) thematisch relevant, (c) Zitat deckt die Aussage faktisch.
 - **Erfolgskriterium:** ≥80 % faktische Deckung beim Frontier-Modell, strukturelle Compliance ≥98 %. Unter 60 % trotz Offset-Zwang → Kernannahme gefährdet, Redesign nötig.
 
 **Spike 2 — Reasoning-vor-Struktur** (billig, 1–2 Tage)
@@ -86,7 +103,7 @@ Die Forschung stützt diese Annahme *bedingt*: Das **Format-Problem ist gelöst*
 - **Stand:** Ebene 1 (deterministisch) läuft bei jedem `add_source` mit, Ebene 2 (geblindete Session) ist gebaut. Was fehlt, ist die **Messung**: Welcher Anteil der faktisch falschen Einträge fliegt auf welcher Ebene auf?
 - **Erfolgskriterium:** Ebene 1+2 flaggen zusammen ≥80 % der faktisch falschen Einträge bei akzeptabler Precision. Darunter wird Ebene 3 (Cross-Client) oder 4 (lokaler Auto-Verifier) zur Architektur-Notwendigkeit statt zur Kür.
 
-> Spike 4 (Multi-Client-Concurrency) ist erledigt und läuft bei jedem `npm run smoke` mit. Spike 5 ist zur Hälfte erledigt — der Markdown-Export steht, RO-Crate ist Schritt 6 oben.
+> Spike 4 (Multi-Client-Concurrency) ist erledigt und läuft bei jedem `npm run smoke` mit. Spike 5 ist zur Hälfte erledigt — der Markdown-Export steht, RO-Crate ist Schritt 5 oben.
 
 ## Entscheidungs-Gate (Klartext)
 
@@ -123,13 +140,15 @@ Klären sich **nicht** von selbst — aber sie sind erst fällig, wenn der Anlas
 - ~~**Verifikations-Backend**~~ — `search_literature` fragt OpenAlex, Crossref, Europe PMC und arXiv ab; DOI-Auflösung läuft im Fetcher.
 - ~~**Desktop-Shell-Entscheidung**~~ — Electron, gebaut und lauffähig.
 - ~~**Versionierungs-Backbone**~~ — append-only `event_log` plus unveränderliche Berichtsversionen mit Snapshot-Hash.
-- ~~**Spec-Strategie**~~ — SDK 1.29, Streamable HTTP; Sampling und Roots werden bewusst nicht genutzt (seit Spec 2026-07-28 deprecated).
+- ~~**Spec-Strategie**~~ — SDK **1.30**, Streamable HTTP; Sampling und Roots bewusst ungenutzt. Cursor-Onboarding 2026-08-19.
 - ~~**Deep-Research-Integration nach Anbietern**~~ — abgelöst durch [06 Eigene Research-Engine](06-eigene-research-engine.md) und [07 KI-Clients](07-clients.md).
+- ~~**Primärer Client**~~ — Cursor (Agent + Streamable HTTP). Claude Code optional.
+- ~~**Lizenz**~~ — MIT, öffentliches Repo. Kein Verkauf.
 
 ---
 
 ## Methodik & Belege
 
-Dieses Dokument fasst mehrere Multi-Agenten-Recherchen zusammen: 2026-07-24 (24 Agenten, MCP/Attribution/Markt), 2026-07-26 (Anbieter- und Abo-Analyse, 23 + 9 Agenten → [06](06-eigene-research-engine.md)) und 2026-07-30 (Client-Kompatibilität, 13 Agenten mit Quellcode-Prüfung → [07](07-clients.md)). Alle mit adversarischer Gegenprüfung je Blickwinkel.
+Dieses Dokument fasst mehrere Multi-Agenten-Recherchen zusammen: 2026-07-24 (24 Agenten, MCP/Attribution/Markt), 2026-07-26 (Anbieter- und Abo-Analyse, 23 + 9 Agenten → [06](06-eigene-research-engine.md)), 2026-07-30 (Client-Kompatibilität, 13 Agenten mit Quellcode-Prüfung → [07](07-clients.md)) und die Cursor-first-Umstellung vom 2026-08-19 (SDK 1.30, Onboarding, Open Source). Alle älteren Recherchen mit adversarischer Gegenprüfung je Blickwinkel.
 
 Trotz Verifikation gilt: KI-gestützte Recherche ist nicht fehlerfrei. Entscheidungskritische Zahlen vor verbindlichen Schritten gegenprüfen — mehrere Erstberichte wurden in der Gegenprüfung als teilweise falsch entlarvt, und zwei Befunde (wirkungsloser Rebinding-Schutz, nicht mehrprozess-sichere Migration) waren echte Fehler im eigenen Code, die nur durch Nachmessen auffielen.

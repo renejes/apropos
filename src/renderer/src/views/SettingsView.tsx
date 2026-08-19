@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ServerInfo } from '../../../shared/types'
 import type { ModelInfo, ProviderHealth } from '../../../main/core/providers/types'
+import { CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
 
 /** MCP-Verbindungsinfos + Demo-Seed. */
@@ -142,13 +143,15 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
     null,
     2
   )
+  const cursorConfig = cursorMcpJson(info.httpUrl)
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-8">
       <div>
         <h1 className="text-lg font-semibold">MCP & Einstellungen</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Verbinde beliebige KI-Clients mit dieser App. Alles, was sie eintragen, landet mit voller Provenienz in der lokalen Datenbank.
+          Primärer Weg: Cursor (Agent-Modus). Andere Clients docken über denselben lokalen Endpoint an. Alles, was sie eintragen,
+          landet mit voller Provenienz in der lokalen Datenbank.
         </p>
       </div>
 
@@ -167,13 +170,47 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
         </div>
         <CodeRow label="Endpoint" value={info.httpUrl} onCopy={copy} copied={copied} />
         <p className="mt-2 text-xs leading-relaxed text-slate-400">
-          Für Clients mit Remote-/HTTP-MCP-Unterstützung (z. B. Claude Desktop → Einstellungen → Connectors, Cursor, VS Code). Der Server
-          ist nur auf 127.0.0.1 erreichbar; mehrere Clients können gleichzeitig andocken.
+          Nur auf 127.0.0.1 erreichbar; mehrere Clients können gleichzeitig andocken. Die App muss laufen, bevor der Client verbindet.
         </p>
       </Card>
 
       <Card className="p-5">
-        <SectionTitle>Alternative: stdio (Claude Desktop claude_desktop_config.json)</SectionTitle>
+        <SectionTitle>Cursor (empfohlen)</SectionTitle>
+        <p className="mb-2 text-sm text-slate-500">
+          Nach <code className="font-mono text-xs">.cursor/mcp.json</code> (Projekt) oder{' '}
+          <code className="font-mono text-xs">~/.cursor/mcp.json</code> (global). Anschließend{' '}
+          <strong>Agent-Modus</strong> öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Werkzeuge einmalig freigeben, sonst bestätigt
+          Cursor jeden der 10–40 Aufrufe einzeln.
+        </p>
+        <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{cursorConfig}</pre>
+        <div className="mt-2">
+          <Button icon="content_copy" onClick={() => copy('cursor', cursorConfig)}>
+            {copied === 'cursor' ? 'Kopiert ✓' : 'mcp.json kopieren'}
+          </Button>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">
+          Kein <code className="font-mono">type</code>-Feld: Cursor erkennt Streamable HTTP am <code className="font-mono">url</code>
+          -Feld. Einstieg im Agent: Werkzeug <code className="font-mono">start_transparent_research</code>.
+        </p>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle>Cursor-Rule (Arbeitsvertrag)</SectionTitle>
+        <p className="mb-2 text-sm text-slate-500">
+          Cursor hat keine Claude-Hooks. Diese Rule ersetzt den Skill: Quellen nur per{' '}
+          <code className="font-mono text-xs">fetch_source</code>, nicht per Websuche. Datei:{' '}
+          <code className="font-mono text-xs">.cursor/rules/transparent-research.mdc</code>.
+        </p>
+        <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{CURSOR_RULE_MDC}</pre>
+        <div className="mt-2">
+          <Button icon="content_copy" onClick={() => copy('rule', CURSOR_RULE_MDC)}>
+            {copied === 'rule' ? 'Kopiert ✓' : 'Rule kopieren'}
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle>Optional: stdio (Claude Desktop)</SectionTitle>
         <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{claudeDesktopConfig}</pre>
         <div className="mt-2 flex gap-2">
           <Button icon="content_copy" onClick={() => copy('config', claudeDesktopConfig)}>
@@ -181,18 +218,17 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
           </Button>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">
-          Der stdio-Server teilt sich die Datenbank mit dieser App (WAL) — Einträge erscheinen hier live. Er startet über das
-          Electron-Binary im Node-Modus, damit die native SQLite-Bibliothek zur App passt.
+          In <code className="font-mono">claude_desktop_config.json</code>. Der stdio-Server teilt sich die Datenbank mit dieser App
+          (WAL) und startet über das Electron-Binary im Node-Modus, damit die native SQLite-Bibliothek zur App passt.
         </p>
       </Card>
 
       {info.hookScriptPath && (
         <Card className="p-5">
-          <SectionTitle>Claude Code: deterministisches Provenienz-Gate (empfohlen)</SectionTitle>
+          <SectionTitle>Optional: Claude Code Provenienz-Gate</SectionTitle>
           <p className="mb-2 text-sm text-slate-500">
-            Hooks blockieren in Claude Code jede weitere Web-Recherche, bis die letzte Quelle dokumentiert ist — Transparenz wird
-            <em> erzwungen</em>, nicht erbeten. Snippet in die <code className="font-mono text-xs">.claude/settings.json</code> des
-            Projekts (oder <code className="font-mono text-xs">~/.claude/settings.json</code>) einfügen:
+            Nur für Claude Code. Hooks blockieren weitere Web-Recherche, bis die letzte Quelle dokumentiert ist. Snippet in{' '}
+            <code className="font-mono text-xs">.claude/settings.json</code>:
           </p>
           <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{hooksConfig(info.hookScriptPath)}</pre>
           <div className="mt-2">
@@ -201,9 +237,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
             </Button>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-slate-400">
-            Dazu den Skill <code className="font-mono">skills/transparent-research</code> nutzen (Projekt-Skill in Claude Code oder
-            Zip-Upload auf claude.ai). Regelwerk: max. 3 unprotokollierte Fetches (ROP_MAX_PENDING), Such-Protokoll-Pflicht nach jeder
-            Suche, Turn-Ende blockiert bei offenen Pflichten.
+            Dazu den Skill <code className="font-mono">skills/transparent-research</code>. In Cursor greift stattdessen die Rule oben;
+            der Server erzwingt Provenienz unabhängig vom Client.
           </p>
         </Card>
       )}

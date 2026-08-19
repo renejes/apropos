@@ -9,7 +9,7 @@ import { Badge, Button, Card, fmtDate, Icon, SectionTitle } from './ui'
  *
  * Bewusst ein JOB-MONITOR, kein Chat: Ein Research-Lauf ist kein Dialog, sondern
  * eine Eingabe, minutenlange autonome Arbeit und ein Abbruch-Knopf. Ein
- * Chat-Fenster wäre hier eine schlechtere Version von Claude Code.
+ * Chat-Fenster wäre hier eine schlechtere Version eines Agent-Clients.
  */
 
 /** Nur die Ereignisse, die für einen Menschen etwas bedeuten. */

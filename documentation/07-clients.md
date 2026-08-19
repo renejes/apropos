@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 07 — KI-Clients anbinden |
-| **Stand** | 2026-07-30 · v1.0 |
-| **Grundlage** | Quellcode-Prüfung von 20 Clients, adversarisch gegengeprüft |
+| **Stand** | 2026-08-19 · v1.1 |
+| **Grundlage** | Quellcode-Prüfung von 20 Clients (2026-07-30), Cursor-Onboarding 2026-08-19 |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [04 Feasibility](04-feasability.md) · [05 Markt-Research](05-market-research.md) · [06 Eigene Research-Engine](06-eigene-research-engine.md) · [07 KI-Clients](07-clients.md)
 
@@ -15,11 +15,11 @@
 
 ## Kurzfassung
 
-Der Server ist **nicht an Claude Desktop gebunden**. Streamable HTTP auf `127.0.0.1:8790/mcp` funktioniert in 17 von 20 geprüften Clients — der Transport war nie das Problem.
+Der Server ist **nicht an einen Client gebunden**. Streamable HTTP auf `127.0.0.1:8790/mcp` funktioniert in 17 von 20 geprüften Clients — der Transport war nie das Problem.
 
-Was bricht, sind **MCP-Prompts**: Nur sechs Clients können sie mit Argumenten *ausführen*. Deshalb spiegelt der Server seit dem 30.07.2026 jeden Prompt zusätzlich als Werkzeug (`start_transparent_research` usw.) — damit ist der Einstieg überall erreichbar.
+Was bricht, sind **MCP-Prompts**: Nur sechs Clients können sie mit Argumenten *ausführen*. Deshalb spiegelt der Server jeden Prompt zusätzlich als Werkzeug (`start_transparent_research` usw.) — damit ist der Einstieg überall erreichbar.
 
-**Empfohlen und dokumentiert: Goose und DeepChat.** Beide erfüllen alle fünf tragenden Eigenschaften. Cherry Studio funktioniert mit Einschränkungen.
+**Primärer Alltagsweg: Cursor.** Der Server-Enforcement plus die Projekt-Rule ersetzen Claude-Code-Hooks. Für Ollama-Desktop weiter empfohlen: **Goose** und **DeepChat**. Cherry Studio funktioniert mit Einschränkungen.
 
 ## Was ein Client können muss
 
@@ -35,7 +35,47 @@ MCP-Prompts sind **kein** Muss mehr — die Spiegel-Werkzeuge decken das ab.
 
 ---
 
-## Goose (empfohlen)
+## Cursor (primärer Alltagsweg)
+
+Cursor spricht Streamable HTTP nativ. Es gibt **kein Hook-System** wie in Claude Code — Provenienz hängt am Server plus einer Cursor-Rule.
+
+### Einrichten
+
+1. Research Overview Platform starten (`npm run abi:electron && npm run dev`), bis der Endpoint in den Einstellungen „läuft“ zeigt.
+2. MCP eintragen — im Repo liegt bereits [`.cursor/mcp.json`](../.cursor/mcp.json). Global: `~/.cursor/mcp.json`.
+
+```json
+{
+  "mcpServers": {
+    "research-overview": {
+      "url": "http://127.0.0.1:8790/mcp"
+    }
+  }
+}
+```
+
+Kein `"type"`-Feld. Cursor erkennt den Transport am `url`-Schlüssel. `"type": "streamable-http"` kann `cursor-agent mcp list` die **gesamte** Datei stillschweigend verwerfen (IDE akzeptiert es, CLI nicht).
+
+3. Fenster neu laden. Status-Punkt am Server muss grün sein.
+4. **Agent-Modus** (nicht Chat) — MCP-Werkzeuge werden im Chat ignoriert.
+5. Werkzeuge einmalig freigeben. Standard ist Bestätigung pro Aufruf; eine Recherche braucht 10–40 Calls.
+
+Die Rule [`.cursor/rules/transparent-research.mdc`](../.cursor/rules/transparent-research.mdc) ist der Arbeitsvertrag. Kopierbar aus den App-Einstellungen.
+
+### Research starten
+
+Im Agent: *„Starte eine transparente Research zur Frage …“* oder das Werkzeug `start_transparent_research` aufrufen. Nicht den MCP-Prompt `transparent_research` erwarten — Cursor führt Prompts mit Argumenten nicht zuverlässig aus.
+
+### Fallstricke
+
+- **Chat statt Agent** — Werkzeuge existieren, werden aber nicht aufgerufen.
+- **App nicht gestartet** — `127.0.0.1:8790` ist tot, Cursor zeigt den Server rot.
+- **Client-Websuche statt `fetch_source`** — Quellen landen nicht in der DB, Zitate sind wieder fälschbar. Die Rule und die Tool-Beschreibung sagen das; der Server kann Cursor-Websuche nicht blocken.
+- **Tool-Limit / Freigaben** — mittendrin abbrechen wirkt wie ein Fehler der Plattform.
+
+---
+
+## Goose (empfohlen für Ollama-Desktop)
 
 Apache-2.0, Linux Foundation. Desktop **und** CLI. Der einzige geprüfte Client, der alle fünf Eigenschaften erfüllt **und** die Server-Instructions automatisch in den System-Prompt zieht.
 

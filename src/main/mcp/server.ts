@@ -227,7 +227,7 @@ const PROMPT_TOOL_NAMES: Record<string, string> = {
  * Grund (Client-Recherche 2026-07-30): MCP-Prompts sind die eigentliche Bruchlinie
  * im Ökosystem. Von 20 geprüften Clients können sie nur sechs mit Argumenten
  * AUSFÜHREN; Cherry Studio hat die Fähigkeit in v2 sogar wieder entfernt. Ohne
- * Spiegel-Werkzeug ist der dokumentierte Einstieg in Open WebUI, LibreChat, Jan,
+ * Spiegel-Werkzeug ist der dokumentierte Einstieg in Cursor, Open WebUI, LibreChat, Jan,
  * AnythingLLM, Chatbox, Witsy, Cline und Cherry Studio v2 schlicht nicht erreichbar.
  *
  * Beide Pfade rufen dieselbe Callback-Funktion — eine Quelle der Wahrheit.
@@ -549,7 +549,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Quelle abrufen (und für Offset-Zitate speichern)',
       description:
-        'STATT WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft sie ab, speichert den Text und gibt ein ' +
+        'STATT Client-Websuche / WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft sie ab, speichert den Text und gibt ein ' +
         'Textfenster mit Zeichenpositionen zurück. Danach add_source mit document_id + quote_start + quote_end — der Server ' +
         'schneidet das Zitat selbst. Weitere Abrufe werden verweigert, solange abgerufene Quellen undokumentiert sind. ' +
         'Lange Dokumente in Fenstern lesen (offset).',
@@ -1068,8 +1068,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
   )
 
   // ---------------------------------------------------------------- Prompts
-  // MCP-Prompts = der Workflow als nativer Server-Bestandteil. Clients bieten sie
-  // dem Nutzer direkt an (Claude Desktop: +-Menü, Claude Code: /mcp__…-Command).
+  // MCP-Prompts = der Workflow als nativer Server-Bestandteil. Clients, die Prompts
+  // ausführen können, bieten sie direkt an. Cursor und die meisten anderen führen
+  // Prompts nicht aus — deshalb ist jedes Prompt zusätzlich als Werkzeug gespiegelt
+  // (start_transparent_research, start_verify_session, …).
   definePromptAndTool(
     server,
     'transparent_research',
@@ -1083,7 +1085,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         parallel_agents: z
           .string()
           .optional()
-          .describe('Optional: Anzahl paralleler Recherche-Agenten (nur in Umgebungen mit Subagenten, z. B. Claude Code). Z. B. "4"'),
+          .describe('Optional: Anzahl paralleler Recherche-Agenten (nur in Umgebungen mit Subagenten, z. B. Cursor oder Claude Code). Z. B. "4"'),
       },
     },
     ({ research_question, mode, parallel_agents }) => ({
@@ -1102,7 +1104,7 @@ ARBEITSVERTRAG (verbindlich, während der GESAMTEN Research):
 
 ${
               parallel_agents && Number(parallel_agents) > 1
-                ? `2b. MULTI-AGENT-MODUS (nur wenn deine Umgebung Subagenten unterstützt, z. B. Claude Code — sonst sequenziell arbeiten):
+                ? `2b. MULTI-AGENT-MODUS (nur wenn deine Umgebung Subagenten unterstützt, z. B. Cursor oder Claude Code — sonst sequenziell arbeiten):
    Spawne bis zu ${parallel_agents} PARALLELE Recherche-Subagenten, einen je Teilfrage.
    Jeder Subagent erhält in seinem Auftrag: die project_id, SEINE sub_question_id UND den vollständigen Arbeitsvertrag aus Punkt 3.
    Alle Agenten schreiben ins SELBE Projekt — der Server verkraftet parallele Einträge.
@@ -1113,7 +1115,7 @@ ${
             }3. WÄHREND DER RECHERCHE — die Kernregel: **Dokumentiere im Moment des Lesens, nie rückwirkend aus dem Gedächtnis.** Arbeite Teilfrage für Teilfrage.
    - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, arXiv parallel): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
    - Für graue Literatur/News/Marktquellen: Websuche, und vor/nach JEDER solchen Suche log_search mit exakter Query, Suchort und Trefferzahl.
-   - Quellen liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text im Projekt und gibt dir ein Textfenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end — der Server schneidet das Zitat selbst heraus. Du tippst nichts ab, und ein falsch erinnertes Zitat ist ausgeschlossen. Gib zusätzlich die sub_question_id der Teilfrage an, an der du arbeitest; ohne sie zählt die Quelle bei keiner Teilfrage zur Abdeckung.
+   - Quellen liest du mit fetch_source (nicht mit der Websuche / WebFetch deines Clients): Es speichert den Text im Projekt und gibt dir ein Textfenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end — der Server schneidet das Zitat selbst heraus. Du tippst nichts ab, und ein falsch erinnertes Zitat ist ausgeschlossen. Gib zusätzlich die sub_question_id der Teilfrage an, an der du arbeitest; ohne sie zählt die Quelle bei keiner Teilfrage zur Abdeckung.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
    - Nur wenn fetch_source scheitert (PDF/Paywall): add_source mit verbatim_quote statt document_id. Der Server prüft dann selbst; bei quote_verified=false das Zitat korrigieren, nicht ignorieren.
    - Für JEDE gesichtete, aber verworfene Quelle: exclude_source mit ehrlichem Grund.
@@ -1127,7 +1129,7 @@ ${
 
 5. SYNTHESE: Verknüpfe jede zentrale Aussage per link_claim_to_source mit Quelle + wörtlicher Belegstelle — widersprechende Quellen ausdrücklich als support_type=contrasts. Lege den Bericht mit add_report_version ab; Aussagen tragen [S#]-Marker. Der Server lehnt ab, solange Lücken offen sind; das ist Absicht. Nur wenn der Nutzer ausdrücklich einen Zwischenstand will: acknowledge_gaps=true mit ehrlicher gap_acknowledgement.
 
-6. ABSCHLUSS: re_verify mit depth=deterministic aufrufen und das Ergebnis zusammenfassen. Protokolliere den Verlauf per add_chat_log. Weise den Nutzer darauf hin, dass (a) eine geblindete Verify-Session (Prompt "verify_session" in einer NEUEN Unterhaltung) und (b) sein menschlicher Sign-off in der App noch ausstehen.
+6. ABSCHLUSS: re_verify mit depth=deterministic aufrufen und das Ergebnis zusammenfassen. Protokolliere den Verlauf per add_chat_log. Weise den Nutzer darauf hin, dass (a) eine geblindete Verify-Session (Werkzeug start_verify_session in einer NEUEN Unterhaltung) und (b) sein menschlicher Sign-off in der App noch ausstehen.
 
 Beginne jetzt mit Schritt 1.`,
           },
@@ -1170,7 +1172,7 @@ ABLAUF:
    - Wenn der Bericht dadurch veraltet: add_report_version mit parent_version_id der aktuellen Fassung und change_summary "Nachrecherche: ${gap}". Bestehende [S#]-Nummerierung weiterführen, nicht neu vergeben.
    - Falls ein früheres Unsicherheits-Flag durch die Nachrecherche beantwortet ist: in der neuen Berichtsfassung vermerken.
 
-4. ABSCHLUSS: re_verify (depth: deterministic) für die neuen Quellen, kompakte Zusammenfassung: was wurde ergänzt, was widerspricht Bestehendem, was bleibt offen. Hinweis: Die neuen Quellen brauchen noch geblindete Verifikation (verify_session) und meinen Sign-off in der App.
+4. ABSCHLUSS: re_verify (depth: deterministic) für die neuen Quellen, kompakte Zusammenfassung: was wurde ergänzt, was widerspricht Bestehendem, was bleibt offen. Hinweis: Die neuen Quellen brauchen noch geblindete Verifikation (Werkzeug start_verify_session) und meinen Sign-off in der App.
 
 Beginne mit Schritt 1.`,
           },
@@ -1208,9 +1210,9 @@ VERBINDLICHE REGELN:
 2. **Jede inhaltliche Antwort ist geerdet**: Beziehe dich auf konkrete Quellen mit [S#]-Marker, Titel und URL — und nenne IMMER deren Verifikationsstatus ehrlich dazu (Beleg verifiziert? menschlich freigegeben? nur pending?). Aussagen aus unverifizierten oder abgelehnten Quellen kennzeichnest du ausdrücklich als solche.
 3. **Unterscheide sauber**: (a) was die Quellen belegen, (b) was die Research daraus geschlossen hat (Bericht), (c) was deine eigene Einschätzung in dieser Unterhaltung ist. Vermische das nie.
 4. **Bearbeiten erwünscht**: Wenn wir Verbesserungen am Bericht erarbeiten, lege sie per add_report_version als NEUE Version ab (parent_version_id + change_summary angeben). Neue Bedenken → flag_uncertainty oder request_review. Zentrale Aussagen, die wir schärfen, per link_claim_to_source nachverankern (nur mit Belegstellen aus bereits erfassten Quellen!).
-5. **Neubewertung**: Wenn ich um eine Neubewertung einzelner Quellen bitte, nutze request_review — die geblindete Prüfung selbst gehört in eine separate Verify-Session (Prompt "verify_session"), nicht hierher.
+5. **Neubewertung**: Wenn ich um eine Neubewertung einzelner Quellen bitte, nutze request_review — die geblindete Prüfung selbst gehört in eine separate Verify-Session (Werkzeug start_verify_session), nicht hierher.
 
-Hinweis an mich selbst als Nutzer: In Claude Desktop den Research-Modus-Schalter für diese Unterhaltung AUS lassen.
+Hinweis: Keine neue Web-Recherche in dieser Unterhaltung — auch nicht „nur kurz nachschauen“.
 
 Beginne: Lade den Projektzustand und gib mir einen kompakten Überblick (Forschungsfrage, Quellenlage inkl. Verifikationsstand, zentrale Aussagen, offene Unsicherheiten) — dann stelle ich meine Fragen.`,
           },
