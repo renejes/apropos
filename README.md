@@ -181,7 +181,7 @@ Zusätzlich: `npm run ollama:check <modell>` (Live-Test mit Tool-Call), `npm run
 
 ## Lizenz
 
-[MIT](LICENSE) — Copyright (c) 2026 René Jeser
+[MIT](LICENSE) — Copyright (c) 2026 René Jesser
 
 ---
 
