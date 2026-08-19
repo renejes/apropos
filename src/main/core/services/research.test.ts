@@ -9,6 +9,7 @@ import {
   ServiceError,
   advanceRound,
   computeCoverage,
+  ingestSearch,
   linkClaim,
   planResearch,
   recordReportVersion,
@@ -722,5 +723,50 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
       ACTOR
     )
     expect(res.sub_questions).toHaveLength(2)
+  })
+})
+
+describe('Such-Ingest (Hook-Pfad)', () => {
+  let db: DB
+  let repo: Repo
+  const ACTOR = 'hook:cursor-websearch'
+
+  beforeEach(() => {
+    db = openDb(':memory:')
+    repo = new Repo(db)
+    delete process.env.ROP_PROJECT_ID
+  })
+
+  it('fällt ohne project_id auf das zuletzt aktualisierte Projekt zurück', async () => {
+    const older = repo.createProject({ title: 'Alt', research_question: 'a?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    await new Promise((r) => setTimeout(r, 15))
+    const newer = repo.createProject({ title: 'Neu', research_question: 'b?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    expect(older.updated_at < newer.updated_at).toBe(true)
+    const entry = ingestSearch(repo, { query: 'transformer attention', provider: 'cursor-websearch', hit_count: 3, urls: ['https://arxiv.org/abs/1706.03762'] }, ACTOR)
+    expect(entry.project_id).toBe(newer.id)
+    expect(entry.engine).toBe('cursor-websearch')
+    expect(entry.results_found).toBe(3)
+    expect(entry.note).toMatch(/arxiv\.org/)
+  })
+
+  it('respektiert eine explizite project_id und ROP_PROJECT_ID', () => {
+    const a = repo.createProject({ title: 'A', research_question: 'a?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    const b = repo.createProject({ title: 'B', research_question: 'b?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    const explicit = ingestSearch(repo, { project_id: a.id, query: 'explizit' }, ACTOR)
+    expect(explicit.project_id).toBe(a.id)
+    process.env.ROP_PROJECT_ID = b.id
+    const viaEnv = ingestSearch(repo, { query: 'aus env' }, ACTOR)
+    expect(viaEnv.project_id).toBe(b.id)
+  })
+
+  it('wirft, wenn es kein Projekt gibt', () => {
+    expect(() => ingestSearch(repo, { query: 'ohne projekt' }, ACTOR)).toThrow(ServiceError)
+    try {
+      ingestSearch(repo, { query: 'ohne projekt' }, ACTOR)
+    } catch (err) {
+      expect(err).toBeInstanceOf(ServiceError)
+      expect((err as ServiceError).code).toBe('no_project')
+      expect((err as ServiceError).hint).toMatch(/create_project/)
+    }
   })
 })

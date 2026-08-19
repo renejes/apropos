@@ -32,7 +32,7 @@ Nicht „prüfbar", sondern **unfälschbar**. Der Weg:
 
 Das Modell kann kein Zitat mehr erfinden; es kann nur auf vorhandenen Text zeigen. Gibt es zusätzlich einen Zitattext an, der nicht zu den Positionen passt, wird der Eintrag abgewiesen (im E2E-Test belegt).
 
-Der alte Weg (`verbatim_quote` ohne `document_id`, Server holt die Quelle und prüft exakt/normalisiert/fuzzy) bleibt für PDFs und Paywalls erhalten.
+Der alte Weg (`verbatim_quote` ohne `document_id`, Server holt die Quelle und prüft exakt/normalisiert/fuzzy) bleibt für **Scans ohne Textschicht** und Paywalls erhalten.
 
 ### (b) Vollständigkeit — dokumentieren ist nicht optional
 
@@ -86,8 +86,8 @@ src/main/core/
 src/main/mcp/server.ts     26 Tools + 4 Prompts (dünne Wrapper um die Services)
 src/main/mcp/http.ts       Streamable HTTP auf 127.0.0.1:8790 + Rebinding-Schutz
 src/renderer/src/          UI (Abdeckung, Lücken, Quellen-Review, Engine-Panel)
-.cursor/                   mcp.json + Rule (Cursor-first). Hooks für WebSearch-Provenienz: nächste Session
-skills/transparent-research/  Claude-Code-Skill + optionale Provenienz-Gate-Hooks
+.cursor/                   mcp.json, permissions.json, hooks.json, Rule
+skills/transparent-research/  Claude-Code-Skill + Cursor-Such-Ingest-Hook + optionale Provenienz-Gate-Hooks
 documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, Engine, Clients
 ```
 
@@ -110,7 +110,7 @@ documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, En
 **Verifikation (immer alle drei):**
 ```bash
 npm run typecheck
-npm run abi:node && npm test        # 152 Tests
+npm run abi:node && npm test
 npm run smoke                       # E2E gegen echten MCP-Client
 ```
 Zusätzlich: `npm run ollama:check <modell>` (Live-Test inkl. echtem Tool-Call), `npm run lit:check "frage"` (Literatursuche gegen echte Register).
@@ -130,12 +130,14 @@ Diese Punkte sind recherchiert und entschieden. Sie wieder vorzuschlagen kostet 
 - **MCP Sampling und Roots.** Seit Spec 2026-07-28 deprecated; von den großen Hosts nie implementiert.
 - **Server-seitige Suche der Modellanbieter.** Moonshot gibt nur eine opake `search_id` zurück, DeepSeek nur `encrypted_content` — ohne echte URLs bricht die Verifikations-Kette.
 - **Phasenweises Ausblenden von Tools per `list_changed`.** Bei parallelen Agenten schädlich: Agent A blendet aus, was Agent B braucht.
+- **Zotero als Pflichtweg** (2026-08-19). Easy Writing liest `references.bib` auf der Platte und hat ein Zotero-Plugin in v1 bewusst nicht. Zotero wäre ein dritter Prozess für dieselbe Datei. Optional später: Push signierter Quellen als Extra-Export, nie als Source of Truth.
 
 **Bewusst so gebaut:**
 
 - **Suche entkoppelt einkaufen** (0–10 $/Monat), primär über die **kostenlosen akademischen APIs** — die liefern DOIs statt geratener URLs.
 - **Verifikation nutzt nie fremd-extrahierten Text.** Zwei Extraktoren normalisieren unterschiedlich; korrekte Zitate würden scheitern, erfundene durchrutschen. Ein einziger versionierter Extraktor, lokal.
 - **Kein Chat für Engine-Läufe.** Ein Research-Lauf ist ein **Job-Monitor** (Eingabe, autonome Arbeit, Abbruch-Knopf), kein Dialog.
+- **Akademischer Schreibweg = `.bib` + `[@key]` aus der Plattform** (2026-08-19) → [Easy Writing](https://github.com/renejes/easy-writing). Die KI serialisiert keine Bibliografie aus dem Gedächtnis; der Server schreibt geprüfte Metadaten (Crossref/OpenAlex/DOI). Siehe 10.5.
 
 ---
 
@@ -169,7 +171,7 @@ Deshalb gehört zu jeder neuen Zusicherung eine **Mutationsprobe**: die Wirkung 
 | | 2026-07-24 (MVP) | 2026-07-30 | 2026-07-31 |
 |---|---|---|---|
 | MCP-Tools | 13 | **26** | 26 |
-| Tests | 17 | 123 | 149 → **152** (2026-08-19) |
+| Tests | 17 | 123 | 149 → **152** (2026-08-19) → **173** (Abend: PDF, Ingest, Hooks) |
 | Schema | v2 | v4 | **v5** |
 | Betriebsmodi | 1 | **2** | 2 |
 | Primärer Client | — | Claude Code | **Cursor** (2026-08-19) |
@@ -178,91 +180,29 @@ Typecheck, Tests, E2E-Smoke und Build sind grün. Die App startet und wurde durc
 
 ---
 
-## 10. Nächste Session — Fixes 2, 3, 4 (dann erst Spike 1)
+## 10. Nächste Session — Spike 1 (Fixes 4A / 2 / 3 sind erledigt)
 
-Drei Lücken aus dem Review 2026-08-19. **Nicht** vorher neue Features. Reihenfolge: **4A → 2 → 3**, danach Spike 1 in Cursor. Engine/Ollama ist unabhängig und auf Renés Rechner blockiert (siehe unten).
+Drei Lücken aus dem Review 2026-08-19 sind **im Code**. Reihenfolge war **4A → 2 → 3**; als Nächstes **Spike 1 in Cursor**. **10.5 (BibTeX / Easy Writing) kommt danach**, nicht in derselben Session. Engine/Ollama ist unabhängig und auf Renés Rechner blockiert (siehe unten).
 
 Leitentscheidung zu **Punkt 3 (René, 2026-08-19):** WebSearch **bleibt erlaubt** (Entdeckung). Was in den Bericht soll, muss trotzdem in die DB. Blocken der Suche ist der falsche Hebel.
 
-### 10.1 Punkt 4 — Alltag (zuerst, klein, sofort spürbar)
+### 10.1 Punkt 4 — Alltag ✅
 
-**Ziel:** Ein Befehl startet die App; MCP-Calls nicht 40× bestätigen.
+`npm start` = `abi:electron` + `electron-vite dev`. `.cursor/permissions.json` mit `research-overview:*`. Settings: klarer Text, wenn MCP nicht läuft; Hinweis auf Agent-Modus und `~/.cursor/mcp.json` bei Multi-Root.
 
-1. Script `npm start` = `abi:electron` + `electron-vite dev`. README/Settings darauf zeigen.
-2. Cursor-Allowlist, damit Research-Tools ohne Klick-Orgie laufen — `.cursor/permissions.json` (oder user-level `~/.cursor/permissions.json`):
+### 10.2 Punkt 2 — PDF-Text ✅
 
-```json
-{
-  "mcpAllowlist": ["research-overview:*"]
-}
-```
+`fetch_source` extrahiert PDF (unpdf, 20 MB). Offset-Zitate wie HTML. `search_literature`: Landing-Page als `url`, PDF in `oa_url`. Scans/Paywall: `verbatim_quote` ohne `document_id`. Tests + Smoke.
 
-   Nur dieses Projekt, nur dieser Server. Schreib-Tools sind lokal und an 127.0.0.1 gebunden — das ist akzeptabel.
-3. Settings-UI: wenn MCP nicht läuft, klarer Text „App muss gestartet sein; Agent-Modus, nicht Chat“.
-4. Optional: `~/.cursor/mcp.json` erwähnen, falls Projekt-MCP in Multi-Root-Workspaces verschwindet (bekanntes Cursor-Thema).
+### 10.3 Punkt 3 — WebSearch erlaubt, Eintragen zuverlässig ✅
 
-Kein `electron-builder`/`.dmg` in dieser Session, außer René will es explizit.
+`POST /ingest/search` → `log_search` (Fallback: zuletzt aktualisiertes Projekt / `ROP_PROJECT_ID`). Cursor-Hook: WebSearch fail-open ingestieren, WebFetch deny. Rule: WebSearch ok, Snippet ≠ Beleg. Auto-Modus-Falle dokumentiert.
 
-**Fertig wenn:** `npm start` öffnet die App, MCP-Punkt grün, Agent ruft Tools ohne Einzelbestätigung auf.
-
-### 10.2 Punkt 2 — PDF-Text (akademischer Pfad)
-
-**Ziel:** `fetch_source` auf `application/pdf` speichert extrahierten Text; Offset-Zitate bleiben unfälschbar.
-
-Stelle: `src/main/core/enforce/fetchers.ts` (`fetchSourceText`, Zeile ~206) bricht bei PDF/Binär ab. `search_literature` liefert oft genau PDF-URLs (`oa_url` / arXiv).
-
-1. PDF-Bytes lesen (eigenes Limit, z. B. 20 MB, getrennt von 4 MB HTML).
-2. Text extrahieren (`unpdf` oder pdf.js — **kein** Shell-`pdftotext`, muss in Electron mitlaufen).
-3. Gleicher Weg wie HTML: Tabelle `documents`, Fenster mit Offsets, `add_source` mit `document_id` + `quote_start`/`quote_end`.
-4. `search_literature`: **Landing-Page bevorzugen**, `oa_url` extra lassen — nicht die PDF als einzige `url` unterschieben.
-5. Scans/Paywall: bestehender Fallback (`verbatim_quote` ohne `document_id` + menschlicher Sign-off).
-6. Tests: Fixture-PDF mit bekanntem Satz → Offset trifft; Smoke um einen PDF-Fetch erweitern.
-
-**Grenze ehrlich lassen:** Zweispaltig/Formeln/Scan bleiben ungenau. Für arXiv-typischen Fließtext muss es greifen.
-
-**Fertig wenn:** arXiv-PDF per `fetch_source` → `add_source` mit Offset, `quote_verified: true` im Test.
-
-### 10.3 Punkt 3 — WebSearch erlaubt, Eintragen zuverlässig
-
-**Nicht:** WebSearch verbieten. **Doch:** Suche automatisch protokollieren; Quellen nur über den Server.
-
-Zwei Ebenen, nicht vermischen:
-
-| Was der Agent tut | Was Provenienz braucht |
-|---|---|
-| Cursor-**WebSearch** (Snippets, URLs) | `log_search` — Query, Suchort, Treffer. **Kein** Zitat, keine Quelle. |
-| Eine URL soll in den Bericht | `fetch_source` → `add_source` (Offset). Snippets sind **keine** Quelle. |
-| Cursor-**WebFetch** | Umleiten auf `fetch_source` — sonst liegt der Text nicht in `documents`. |
-
-**Realistisch:** Suchprotokoll **deterministisch** (Hook, ohne Modellwohlwollen). Quelleneintrag **fast** zuverlässig, weil Zitate ohne `fetch_source` am Quote-Check scheitern — sobald PDF geht (10.2), entfällt der Hauptgrund, WebFetch zu nehmen. Mutwilliges „nur im Chat, kein MCP“ bleibt unsichtbar; `add_report_version` greift nur, wenn MCP benutzt wird.
-
-**Umsetzung:**
-
-1. **Leichter Ingest neben MCP**, gleicher Express-Server (`src/main/mcp/http.ts`). Hook soll kein Streamable-HTTP-Handshake machen.
-
-   `POST http://127.0.0.1:8790/ingest/search` (nur localhost) → Service `log_search`. Body z. B. `{ project_id?, query, provider: "cursor-websearch", hit_count, urls?: string[] }`.
-
-   `project_id` fehlt oft: Fallback **zuletzt aktualisiertes Projekt** (`list_projects` / `updated_at`), sonst 4xx mit `next_action: create_project`. Optional Env `ROP_PROJECT_ID`.
-
-2. **Cursor-Hook** `.cursor/hooks.json` + Script analog `skills/transparent-research/hooks/provenance-gate.cjs`:
-
-   - `postToolUse` Matcher `WebSearch`: `tool_input` (Query) + `tool_output` (JSON, enthält oft URLs) → `POST /ingest/search`. **Fail-open** (Hook darf die Session nicht bricken).
-   - `preToolUse` Matcher `WebFetch`: **deny** + Reason: `fetch_source` nutzen (Text muss in der DB liegen).
-   - MCP-`fetch_source`/`add_source` nicht blocken.
-
-3. **Auto-Modus-Falle:** Cursor-`WebSearch`-Hooks feuern unter **Auto** oft nicht; mit **benanntem Modell** tun sie es (Cursor-Forum, Mai 2026). In README/Rule/Settings: Research mit benanntem Modell, nicht Auto.
-
-4. **Rule** `.cursor/rules/transparent-research.mdc` anpassen: WebSearch ok; danach zählt nur `fetch_source`. Snippet ≠ Beleg.
-
-5. **Server bleibt die Wahrheit:** `ROP_MAX_PENDING`, Coverage-Gate, Offset-Zitate. Hooks sind Ergänzung, abschaltbar, in Subagenten unzuverlässig — dieselbe Lehre wie bei Claude Code.
-
-Bestehendes Gate (`provenance-gate.cjs`) **nicht** 1:1 kopieren: das **blockt** WebSearch. Neues Script, z. B. `skills/transparent-research/hooks/cursor-search-ingest.cjs`.
-
-**Fertig wenn:** Eine Agent-Session mit benanntem Modell + WebSearch erzeugt `log_search` in der App **ohne** dass das Modell `log_search` aufruft; eine zitierte URL ohne `fetch_source` kommt nicht als `quote_verified` durch; WebFetch wird abgewiesen.
+Bestehendes Gate (`provenance-gate.cjs`) **nicht** 1:1 kopiert: das **blockt** WebSearch. Neues Script: `skills/transparent-research/hooks/cursor-search-ingest.cjs`.
 
 ### 10.4 Danach: Spike 1 (echtes Modell)
 
-Erst wenn 10.1–10.3 grün sind. Cursor Agent, App läuft, `start_transparent_research`. Messgröße: **falsche Offsets**, nicht erfundene Zitate.
+Erst wenn 10.1–10.3 grün sind — **sind sie**. Cursor Agent, App läuft (`npm start`), `start_transparent_research`. Messgröße: **falsche Offsets**, nicht erfundene Zitate.
 
 Ollama/Engine ist **nicht** Voraussetzung für Spike 1. Engine-Blocker (nur für Schritt Engine-Vergleich):
 
@@ -277,6 +217,43 @@ npm run smoke
 ```
 
 Details: [03 Next Steps](documentation/03-next-steps.md).
+
+### 10.5 Danach: BibTeX + `[@key]` für Easy Writing (akademisch schreiben)
+
+**Entscheidung (René, 2026-08-19):** Der Schreibweg ist **`.bib` + `[@citekey]` aus dieser Plattform**, nicht Zotero. Ziel-App: [Easy Writing](https://github.com/renejes/easy-writing) (`references.bib` im Ordner, Zitate `[@key]` / `[@key, p. 12]`, Stil APA/Chicago/Harvard/Vancouver beim Export dort).
+
+**Ist das akademisch korrekt?** Ja, auf dem einfachsten integrativen Weg — *wenn* die `.bib` nicht vom Modell erfunden wird:
+
+| Schicht | Wer | Akademische Rolle |
+|---|---|---|
+| Provenienz (Zitat im Original) | diese Plattform, Offset + Sign-off | Beleg, nicht nur Fußnote |
+| Bibliografische Daten (Autoren, Jahr, Journal, DOI) | Crossref / OpenAlex / DOI-Resolver, **gespeichert an der Quelle** | zitierbarer Eintrag, CSL-tauglich |
+| Satz und Zitierstil | Easy Writing / Pandoc | APA etc. — nicht Aufgabe dieser App |
+| Autorschaft | Mensch | ICMJE: die KI ist kein Autor; Sign-off bleibt in der UI |
+
+Ohne DOI: ehrliches `@misc` mit URL und Zugriffsdatum — für Graue Literatur/Blogs in Ordnung, für Journal-Paper zu dünn. Dann Crossref nachziehen oder die Quelle nicht als `@article` exportieren.
+
+**Was fehlt heute:** `sources` hat kein DOI/Autoren/Jahr/Venue/Citekey. `search_literature` kennt die Felder, `add_source` legt sie nicht ab. Markdown-Export spricht `[S#]`, Easy Writing spricht `[@key]`.
+
+**Umsetzung (nach 10.1–10.3, nicht in derselben Nacht wie PDF/Hooks):**
+
+1. Schema: an `sources` (oder 1:1 `source_biblio`) `doi`, `authors_json`, `year`, `venue`, `entry_type`, `citekey`. Citekey stabil (z. B. `nachnameJahrKurztitel`), Kollisionen mit Suffix — **nicht** aus `[S3]` ableiten.
+2. Beim `add_source`: DOI aus Literatur-Hit oder URL; Metadaten von Crossref nachziehen, nicht vom Modell übernehmen.
+3. Export-Paket neben dem bestehenden Markdown:
+
+```
+research-export/
+  references.bib
+  bericht.md          # [S3] → [@vaswani2017attention] bzw. Seitenzahl aus quote_locator
+```
+
+   Ordner in Easy Writing als Paper-Projekt öffnen (oder `references.bib` + Kapitel kopieren). Kein Live-Sync, keine zweite Datenbank.
+
+4. UI: Button „Für Easy Writing exportieren“. Optional MCP-Tool `export_bibliography`.
+
+**Fertig wenn:** Ein Projekt mit DOI-Quellen erzeugt eine `.bib`, die Easy Writing autocompleted (`@…`), und der Bericht zitiert dieselben Keys. Ein Eintrag ohne DOI wird `@misc`, nie ein gefälschtes `@article`.
+
+**Nicht bauen:** Zotero-OAuth, Better-BibTeX-Bridge, Live-Kopplung der zwei Desktop-Apps.
 
 ---
 

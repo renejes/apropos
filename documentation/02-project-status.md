@@ -45,14 +45,22 @@ Beim Nachmessen fielen dabei zwei Löcher auf, die keine Annahme vorhergesagt ha
 
 **7. Alltagsweg ist Cursor, nicht Claude Code.** Streamable HTTP auf `127.0.0.1:8790/mcp` war schon client-agnostisch; was fehlte, war das Onboarding. Jetzt: `.cursor/mcp.json` im Repo, Rule `.cursor/rules/transparent-research.mdc` (Arbeitsvertrag ohne Hooks), kopierbare Snippets in den App-Einstellungen, README und [07 KI-Clients](07-clients.md) Cursor-first. Claude-Code-Hooks und stdio bleiben optional. Einstieg über Spiegel-Werkzeuge (`start_transparent_research` …) — Cursor führt MCP-Prompts nicht zuverlässig aus.
 
-**8. MCP-SDK auf 1.30.0.** `package.json` war auf `^1.16.0` gepinnt, das Lockfile schon bei 1.29. Jetzt einheitlich v1.30. Rebinding-Schutz bleibt in der Express-Middleware `hostHeaderValidation` (seit 1.25 nicht mehr im Transport). Typecheck, 152 Tests und E2E-Smoke sind grün.
+**8. MCP-SDK auf 1.30.0.** `package.json` war auf `^1.16.0` gepinnt, das Lockfile schon bei 1.29. Jetzt einheitlich v1.30. Rebinding-Schutz bleibt in der Express-Middleware `hostHeaderValidation` (seit 1.25 nicht mehr im Transport). Typecheck, Tests und E2E-Smoke sind grün.
+
+### Nachtrag 2026-08-19 (Abend) — Alltag, PDF, Such-Ingest
+
+**9. Ein Befehl startet die App** (`npm start` = Electron-ABI + Dev-Server). `.cursor/permissions.json` erlaubt `research-overview:*` ohne Einzelbestätigung. Die Einstellungen sagen klar, wenn MCP nicht läuft: App muss gestartet sein, Agent-Modus, nicht Chat.
+
+**10. PDF-Text ist unfälschbar wie HTML.** `fetch_source` extrahiert PDF-Text (unpdf/pdf.js, 20-MB-Limit); `add_source` mit Offsets schneidet aus dem gespeicherten Text. `search_literature` bevorzugt die Landing-Page als `url` und lässt `oa_url` die PDF. Scans ohne Textschicht fallen auf den alten `verbatim_quote`-Pfad plus menschlichen Sign-off.
+
+**11. WebSearch bleibt erlaubt, Eintragen wird zuverlässiger.** `POST /ingest/search` (kein MCP-Handshake) schreibt `log_search` ins zuletzt aktualisierte Projekt. Der Cursor-Hook protokolliert WebSearch fail-open und weist WebFetch ab. Research mit benanntem Modell, nicht Auto.
 
 ### Zahlen zum Stand
 
 | | 2026-07-24 | 2026-07-30 | 2026-07-31 | 2026-08-19 |
 |---|---|---|---|---|
 | MCP-Tools | 13 | **26** (inkl. 4 Prompt-Spiegel) | 26 | 26 |
-| Tests | 17 | 123 | 149 | **152** |
+| Tests | 17 | 123 | 149 | **173** |
 | Schema-Version | v2 | v4 | **v5** | v5 |
 | MCP-SDK | — | — | 1.29 (Lockfile) | **1.30.0** |
 | Betriebsmodi | MCP (Fremdclient) | MCP **+ Engine** | 2 | 2 |
@@ -158,7 +166,7 @@ Das vollständige, priorisierte **Risiko-Register** folgt direkt unten; die Gege
 | **Rechtlich/Compliance: fabrizierte Zitate real sanktioniert** | Produktversprechen "Null-Halluzination" waere haftungsrelevant und falsch | **M** | NICHT mit Null-Halluzination werben, sondern mit *Pruefbarkeit/Audit* |
 | **Datensouveraenitaet als Versprechen vs. Realitaet** | Angedockte KI ist oft Cloud-Modell trotz lokaler SQLite | **N-M** | Klar kommunizieren: local-first = SoT lokal; Engine kann lokal über Ollama laufen |
 | **Elicitation nicht clientuebergreifend verlaesslich** | Interaktive Quellenerfassung bricht auf Zielclients | **N** | Quellenerfassung über Tools + Schema-Validierung. Cursor: Spiegel-Werkzeuge, keine Prompts |
-| **Cursor hat kein Hook-System** — Client-Websuche umgeht `fetch_source` | Quellen landen nicht in der DB; Zitate wieder fälschbar | **M** | Server-Enforcement (Fetch-Sperre) + Cursor-Rule. Hooks nur optional für Claude Code |
+| **Cursor-WebSearch umgeht `fetch_source`** | Snippets im Bericht, Text nicht in `documents` | **M** | Hook `POST /ingest/search` + WebFetch-Deny; Server bleibt die Wahrheit (Offset, Coverage). Auto-Modus: Hooks unzuverlässig |
 
 ## Reifegrad & Konfidenz
 
@@ -174,7 +182,7 @@ Das vollständige, priorisierte **Risiko-Register** folgt direkt unten; die Gege
 
 ## Was als Nächstes
 
-Das Gate ist unverändert **Spike 1** — die Kernannahme empirisch testen, jetzt im **Cursor-Agent** gegen denselben MCP-Server. Client-Onboarding und SDK-Update sind erledigt (2026-08-19). Ein eigenes Chat-/Antwort-Panel
+Das Gate ist unverändert **Spike 1** — die Kernannahme empirisch testen, jetzt im **Cursor-Agent** gegen denselben MCP-Server. Alltag (`npm start`, Allowlist), PDF-Text und Such-Ingest sind erledigt (2026-08-19, Abend). Ein eigenes Chat-/Antwort-Panel
 wurde am 2026-07-30 gestrichen: Fragen zur fertigen Research laufen über `discuss_research` / `start_discuss_research`.
 
 - Die Abdeckungsrechnung liefert die Auswertung mit: `quote_verified`-Quote, Lücken je Teilfrage und Sättigung pro Runde stehen nach jedem Lauf in der DB.

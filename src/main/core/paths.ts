@@ -18,3 +18,6 @@ export function defaultDbPath(): string {
 }
 
 export const DEFAULT_MCP_PORT = 8790
+
+/** Leichter Ingest neben MCP — Hooks sollen kein Streamable-HTTP-Handshake machen. */
+export const DEFAULT_INGEST_URL = `http://127.0.0.1:${DEFAULT_MCP_PORT}/ingest/search`

@@ -37,11 +37,11 @@ MCP-Prompts sind **kein** Muss mehr — die Spiegel-Werkzeuge decken das ab.
 
 ## Cursor (primärer Alltagsweg)
 
-Cursor spricht Streamable HTTP nativ. Es gibt **kein Hook-System** wie in Claude Code — Provenienz hängt am Server plus einer Cursor-Rule.
+Cursor spricht Streamable HTTP nativ. WebSearch darf entdecken (Hook → `POST /ingest/search`); WebFetch wird abgewiesen. Berichtsquellen nur über `fetch_source`. Provenienz hängt am Server, nicht am Modellwohlwollen.
 
 ### Einrichten
 
-1. Research Overview Platform starten (`npm run abi:electron && npm run dev`), bis der Endpoint in den Einstellungen „läuft“ zeigt.
+1. Research Overview Platform starten (`npm start`), bis der Endpoint in den Einstellungen „läuft“ zeigt.
 2. MCP eintragen — im Repo liegt bereits [`.cursor/mcp.json`](../.cursor/mcp.json). Global: `~/.cursor/mcp.json`.
 
 ```json
@@ -58,9 +58,10 @@ Kein `"type"`-Feld. Cursor erkennt den Transport am `url`-Schlüssel. `"type": "
 
 3. Fenster neu laden. Status-Punkt am Server muss grün sein.
 4. **Agent-Modus** (nicht Chat) — MCP-Werkzeuge werden im Chat ignoriert.
-5. Werkzeuge einmalig freigeben. Standard ist Bestätigung pro Aufruf; eine Recherche braucht 10–40 Calls.
+5. Werkzeuge über `.cursor/permissions.json` (`research-overview:*`) ohne Einzelbestätigung. Standard ohne Allowlist: Bestätigung pro Aufruf; eine Recherche braucht 10–40 Calls.
+6. Research mit einem **benannten Modell**, nicht Auto — WebSearch-Hooks feuern unter Auto oft nicht.
 
-Die Rule [`.cursor/rules/transparent-research.mdc`](../.cursor/rules/transparent-research.mdc) ist der Arbeitsvertrag. Kopierbar aus den App-Einstellungen.
+Die Rule [`.cursor/rules/transparent-research.mdc`](../.cursor/rules/transparent-research.mdc) ist der Arbeitsvertrag. Der Hook [`.cursor/hooks.json`](../.cursor/hooks.json) protokolliert WebSearch nach `/ingest/search` und weist WebFetch ab. Kopierbar aus den App-Einstellungen.
 
 ### Research starten
 
@@ -69,9 +70,10 @@ Im Agent: *„Starte eine transparente Research zur Frage …“* oder das Werkz
 ### Fallstricke
 
 - **Chat statt Agent** — Werkzeuge existieren, werden aber nicht aufgerufen.
-- **App nicht gestartet** — `127.0.0.1:8790` ist tot, Cursor zeigt den Server rot.
-- **Client-Websuche statt `fetch_source`** — Quellen landen nicht in der DB, Zitate sind wieder fälschbar. Die Rule und die Tool-Beschreibung sagen das; der Server kann Cursor-Websuche nicht blocken.
-- **Tool-Limit / Freigaben** — mittendrin abbrechen wirkt wie ein Fehler der Plattform.
+- **App nicht gestartet** — `127.0.0.1:8790` ist tot, Cursor zeigt den Server rot. Start: `npm start`.
+- **WebFetch statt `fetch_source`** — der Hook weist WebFetch ab; Berichtsquellen müssen in `documents` liegen. WebSearch darf entdecken, Snippets sind keine Quelle.
+- **Auto statt benanntem Modell** — WebSearch-Hooks feuern oft nicht.
+- **Tool-Limit / Freigaben** — mittendrin abbrechen wirkt wie ein Fehler der Plattform. `.cursor/permissions.json` setzt `research-overview:*`.
 
 ---
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CURSOR_RULE_MDC, DEFAULT_MCP_HTTP_URL, cursorMcpJson } from './cursor-onboarding'
+import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, DEFAULT_MCP_HTTP_URL, cursorMcpJson } from './cursor-onboarding'
 
 describe('cursorMcpJson', () => {
   it('schreibt nur url, kein type-Feld', () => {
@@ -17,9 +17,17 @@ describe('cursorMcpJson', () => {
     expect(parsed.mcpServers['research-overview'].url).toBe(DEFAULT_MCP_HTTP_URL)
   })
 
-  it('Rule nennt fetch_source und Agent-Modus', () => {
+  it('Rule erlaubt WebSearch zur Entdeckung und verlangt fetch_source für Belege', () => {
     expect(CURSOR_RULE_MDC).toContain('fetch_source')
     expect(CURSOR_RULE_MDC).toContain('Agent-Modus')
     expect(CURSOR_RULE_MDC).toContain('start_transparent_research')
+    expect(CURSOR_RULE_MDC).toContain('WebSearch')
+    expect(CURSOR_RULE_MDC).toContain('benannten Modell')
+    expect(CURSOR_RULE_MDC).toMatch(/Snippets sind keine Quelle/)
+  })
+
+  it('Allowlist gilt nur für research-overview', () => {
+    const parsed = JSON.parse(CURSOR_PERMISSIONS_JSON) as { mcpAllowlist: string[] }
+    expect(parsed.mcpAllowlist).toEqual(['research-overview:*'])
   })
 })

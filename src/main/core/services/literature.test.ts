@@ -27,7 +27,7 @@ describe('Literatursuche über offene Register', () => {
     doi: 'https://doi.org/10.5555/3295222.3295349',
     publication_year: 2017,
     authorships: [{ author: { display_name: 'Ashish Vaswani' } }],
-    primary_location: { source: { display_name: 'NeurIPS' } },
+    primary_location: { source: { display_name: 'NeurIPS' }, landing_page_url: 'https://papers.nips.cc/paper/7181' },
     open_access: { is_oa: true, oa_url: 'https://arxiv.org/pdf/1706.03762' },
     cited_by_count: 100_000,
     abstract_inverted_index: { The: [0], dominant: [1], sequence: [2] },
@@ -72,6 +72,7 @@ describe('Literatursuche über offene Register', () => {
     expect(res.hits[0].found_via.sort()).toEqual(['crossref', 'openalex'])
     // Felder werden ergänzt, nicht überschrieben: OA-Link kommt nur von OpenAlex
     expect(res.hits[0].oa_url).toBe('https://arxiv.org/pdf/1706.03762')
+    expect(res.hits[0].url).toBe('https://papers.nips.cc/paper/7181')
     expect(res.hits[0].venue).toBe('NeurIPS')
   })
 
@@ -123,6 +124,7 @@ describe('Literatursuche über offene Register', () => {
     // Round-Robin: arXiv ist vertreten, obwohl cited_by_count null ist
     expect(res.hits.some((h) => h.found_via.includes('arxiv'))).toBe(true)
     expect(res.hits.find((h) => h.found_via.includes('arxiv'))?.oa_url).toBe('http://arxiv.org/pdf/2401.00001v1')
+    expect(res.hits.find((h) => h.found_via.includes('arxiv'))?.url).toBe('http://arxiv.org/abs/2401.00001v1')
   })
 
   it('überlebt den Ausfall eines Registers und protokolliert ihn', async () => {
@@ -169,6 +171,14 @@ describe('Literatursuche über offene Register', () => {
     stubFetch({ openalex: { results: [openAlexWork({ doi: 'HTTPS://DOI.ORG/10.5555/ABC.' })] } })
     const res = await search({ backends: ['openalex'] })
     expect(res.hits[0].doi).toBe('10.5555/abc')
+  })
+
+  it('bevorzugt die Landing-Page als url und lässt oa_url die PDF', async () => {
+    stubFetch({ openalex: { results: [openAlexWork()] } })
+    const res = await search({ backends: ['openalex'] })
+    expect(res.hits[0].url).toBe('https://papers.nips.cc/paper/7181')
+    expect(res.hits[0].oa_url).toBe('https://arxiv.org/pdf/1706.03762')
+    expect(res.hits[0].url).not.toMatch(/\.pdf/i)
   })
 
   it('lehnt einen widersprüchlichen Jahresbereich ab', async () => {

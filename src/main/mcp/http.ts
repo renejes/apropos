@@ -6,6 +6,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { buildMcpServer, type McpDeps } from './server'
+import { ServiceError, ingestSearch } from '../core/services/research'
 
 /**
  * Lokaler Streamable-HTTP-Endpoint auf 127.0.0.1 — Multi-Client-fähig
@@ -140,6 +141,41 @@ export async function startMcpHttpServer(deps: McpDeps, port: number): Promise<R
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, sessions: sessions.size })
+  })
+
+  /**
+   * Leichter Ingest neben MCP: Cursor-Hooks sollen kein Streamable-HTTP-Handshake
+   * machen. Nur localhost (Bind + Host-Allowlist). Schreibpfad = Service, nicht Repo.
+   */
+  app.post('/ingest/search', (req, res) => {
+    try {
+      const entry = ingestSearch(deps.repo, req.body ?? {}, `hook:${String((req.body as { provider?: string })?.provider ?? 'cursor-websearch')}`)
+      res.json({
+        stored: true,
+        search_id: entry.id,
+        project_id: entry.project_id,
+        query: entry.query,
+        engine: entry.engine,
+        results_found: entry.results_found,
+      })
+    } catch (err) {
+      if (err instanceof ServiceError) {
+        const status = err.code === 'project_not_found' || err.code === 'no_project' ? 404 : 400
+        res.status(status).json({
+          status: `FEHLER ${err.code}`,
+          code: err.code,
+          error: err.message,
+          next_action: err.hint,
+        })
+        return
+      }
+      res.status(500).json({
+        status: 'FEHLER internal',
+        code: 'internal',
+        error: err instanceof Error ? err.message : String(err),
+        next_action: 'Prüfe, ob die App läuft, und wiederhole POST /ingest/search.',
+      })
+    }
   })
 
   const httpServer: HttpServer = await new Promise((resolve, reject) => {

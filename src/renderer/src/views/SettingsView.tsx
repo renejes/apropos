@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ServerInfo } from '../../../shared/types'
 import type { ModelInfo, ProviderHealth } from '../../../main/core/providers/types'
-import { CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
+import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
 
 /** MCP-Verbindungsinfos + Demo-Seed. */
@@ -150,8 +150,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       <div>
         <h1 className="text-lg font-semibold">MCP & Einstellungen</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Primärer Weg: Cursor (Agent-Modus). Andere Clients docken über denselben lokalen Endpoint an. Alles, was sie eintragen,
-          landet mit voller Provenienz in der lokalen Datenbank.
+          Primärer Weg: Cursor (Agent-Modus, nicht Chat). Start: <code className="font-mono text-xs">npm start</code>. Andere Clients
+          docken über denselben lokalen Endpoint an. Alles, was sie eintragen, landet mit voller Provenienz in der lokalen Datenbank.
         </p>
       </div>
 
@@ -169,18 +169,26 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
           )}
         </div>
         <CodeRow label="Endpoint" value={info.httpUrl} onCopy={copy} copied={copied} />
-        <p className="mt-2 text-xs leading-relaxed text-slate-400">
-          Nur auf 127.0.0.1 erreichbar; mehrere Clients können gleichzeitig andocken. Die App muss laufen, bevor der Client verbindet.
-        </p>
+        {info.running ? (
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+            Nur auf 127.0.0.1 erreichbar; mehrere Clients können gleichzeitig andocken. Werkzeuge greifen nur im{' '}
+            <strong>Agent-Modus</strong>, nicht im Chat.
+          </p>
+        ) : (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900">
+            MCP läuft nicht. Die App muss gestartet sein (<code className="font-mono text-xs">npm start</code>). In Cursor den{' '}
+            <strong>Agent-Modus</strong> öffnen, nicht den Chat — sonst bleiben die Werkzeuge unsichtbar.
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">
         <SectionTitle>Cursor (empfohlen)</SectionTitle>
         <p className="mb-2 text-sm text-slate-500">
           Nach <code className="font-mono text-xs">.cursor/mcp.json</code> (Projekt) oder{' '}
-          <code className="font-mono text-xs">~/.cursor/mcp.json</code> (global). Anschließend{' '}
-          <strong>Agent-Modus</strong> öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Werkzeuge einmalig freigeben, sonst bestätigt
-          Cursor jeden der 10–40 Aufrufe einzeln.
+          <code className="font-mono text-xs">~/.cursor/mcp.json</code> (global — nötig, wenn das Projekt-MCP in einem Multi-Root-Workspace
+          verschwindet). Anschließend <strong>Agent-Modus</strong> öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Research mit einem{' '}
+          <strong>benannten Modell</strong>, nicht Auto: WebSearch-Hooks feuern unter Auto oft nicht.
         </p>
         <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{cursorConfig}</pre>
         <div className="mt-2">
@@ -190,15 +198,30 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
         </div>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">
           Kein <code className="font-mono">type</code>-Feld: Cursor erkennt Streamable HTTP am <code className="font-mono">url</code>
-          -Feld. Einstieg im Agent: Werkzeug <code className="font-mono">start_transparent_research</code>.
+          -Feld. Einstieg im Agent: Werkzeug <code className="font-mono">start_transparent_research</code>. WebSearch darf entdecken;
+          Berichtsquellen nur per <code className="font-mono">fetch_source</code>. WebFetch wird vom Projekt-Hook abgewiesen.
         </p>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle>Cursor-Allowlist (ohne Klick-Orgie)</SectionTitle>
+        <p className="mb-2 text-sm text-slate-500">
+          Datei <code className="font-mono text-xs">.cursor/permissions.json</code> (liegt im Repo). Cursor Settings → Agents →
+          Approvals: <strong>Allowlist</strong> oder <strong>Auto-review</strong> — sonst fragt Cursor jeden der 10–40 Aufrufe einzeln.
+        </p>
+        <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{CURSOR_PERMISSIONS_JSON}</pre>
+        <div className="mt-2">
+          <Button icon="content_copy" onClick={() => copy('allowlist', CURSOR_PERMISSIONS_JSON)}>
+            {copied === 'allowlist' ? 'Kopiert ✓' : 'permissions.json kopieren'}
+          </Button>
+        </div>
       </Card>
 
       <Card className="p-5">
         <SectionTitle>Cursor-Rule (Arbeitsvertrag)</SectionTitle>
         <p className="mb-2 text-sm text-slate-500">
-          Cursor hat keine Claude-Hooks. Diese Rule ersetzt den Skill: Quellen nur per{' '}
-          <code className="font-mono text-xs">fetch_source</code>, nicht per Websuche. Datei:{' '}
+          Cursor hat keine Claude-Hooks. Diese Rule ist der Arbeitsvertrag: WebSearch darf entdecken, Berichtsquellen nur per{' '}
+          <code className="font-mono text-xs">fetch_source</code>. Datei:{' '}
           <code className="font-mono text-xs">.cursor/rules/transparent-research.mdc</code>.
         </p>
         <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{CURSOR_RULE_MDC}</pre>

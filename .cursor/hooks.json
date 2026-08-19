@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node skills/transparent-research/hooks/cursor-search-ingest.cjs",
+        "matcher": "WebFetch",
+        "failClosed": false
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node skills/transparent-research/hooks/cursor-search-ingest.cjs",
+        "matcher": "WebSearch",
+        "failClosed": false
+      }
+    ]
+  }
+}

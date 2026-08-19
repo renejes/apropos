@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { lookup } from 'dns/promises'
 import { isIP } from 'net'
+import { contentTypeIsPdf, extractPdfText, isPdfMagic, MAX_PDF_BYTES, urlLooksLikePdf } from './pdf'
 import { htmlToText } from './textmatch'
 
 /**
@@ -16,7 +17,7 @@ import { htmlToText } from './textmatch'
  */
 
 const FETCH_TIMEOUT_MS = 15_000
-const MAX_BODY_BYTES = 4_000_000 // 4 MB reichen für Text-Checks
+const MAX_BODY_BYTES = 4_000_000 // 4 MB reichen für HTML/Text-Checks
 const MAX_REDIRECTS = 5
 const USER_AGENT = 'ResearchOverviewPlatform/0.1 (provenance verification; +local)'
 
@@ -193,7 +194,7 @@ export async function fetchSourceText(rawUrl: string): Promise<SourceTextResult>
   }
 
   try {
-    const res = await guardedFetch(rawUrl, 'GET', 'text/html,text/plain,application/xhtml+xml,*/*')
+    const res = await guardedFetch(rawUrl, 'GET', 'text/html,text/plain,application/xhtml+xml,application/pdf,*/*')
     if (res.status >= 400) {
       try {
         await res.body?.cancel()
@@ -203,22 +204,61 @@ export async function fetchSourceText(rawUrl: string): Promise<SourceTextResult>
       return { ok: false, text: '', snapshotHash: null, status: res.status, note: `HTTP ${res.status}` }
     }
     const contentType = res.headers.get('content-type') ?? ''
-    if (/application\/(pdf|octet-stream)|image\/|video\/|audio\//i.test(contentType)) {
-      try {
-        await res.body?.cancel()
-      } catch {
-        /* egal */
-      }
+    const pdfHint = contentTypeIsPdf(contentType) || urlLooksLikePdf(rawUrl) || /octet-stream/i.test(contentType)
+    const maxBytes = pdfHint ? MAX_PDF_BYTES : MAX_BODY_BYTES
+    const bytes = await readBodyLimitedBytes(res, maxBytes)
+    if (bytes.byteLength >= maxBytes && pdfHint) {
       return {
         ok: false,
         text: '',
         snapshotHash: null,
         status: res.status,
-        note: `Binary content-type: ${contentType} (Quote-Check für PDF/Binär noch nicht unterstützt)`,
+        note: `PDF größer als ${MAX_PDF_BYTES} Bytes — Limit überschritten`,
       }
     }
 
-    const raw = await readBodyLimited(res, MAX_BODY_BYTES)
+    if (contentTypeIsPdf(contentType) || isPdfMagic(bytes)) {
+      try {
+        const extracted = await extractPdfText(bytes)
+        if (!extracted.text) {
+          return {
+            ok: false,
+            text: '',
+            snapshotHash: null,
+            status: res.status,
+            note: 'PDF ohne extrahierbare Textschicht (Scan/Bild). Fallback: add_source ohne document_id mit verbatim_quote — menschlicher Sign-off.',
+          }
+        }
+        const snapshotHash = createHash('sha256').update(extracted.text).digest('hex').slice(0, 16)
+        return {
+          ok: true,
+          text: extracted.text,
+          snapshotHash,
+          status: res.status,
+          note: `ok (pdf, ${extracted.pages} Seite(n), ${contentType || 'application/pdf'})`,
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          text: '',
+          snapshotHash: null,
+          status: res.status,
+          note: `PDF-Extraktion fehlgeschlagen: ${errMsg(err)}. Fallback: add_source ohne document_id mit verbatim_quote.`,
+        }
+      }
+    }
+
+    if (/image\/|video\/|audio\//i.test(contentType)) {
+      return {
+        ok: false,
+        text: '',
+        snapshotHash: null,
+        status: res.status,
+        note: `Binary content-type: ${contentType} (kein Text, Quote-Check nicht möglich)`,
+      }
+    }
+
+    const raw = decodeUtf8(bytes)
     const text = /html/i.test(contentType) || raw.trimStart().startsWith('<') ? htmlToText(raw) : raw
     const snapshotHash = createHash('sha256').update(text).digest('hex').slice(0, 16)
     return { ok: true, text, snapshotHash, status: res.status, note: `ok (${contentType || 'unknown type'})` }
@@ -227,8 +267,11 @@ export async function fetchSourceText(rawUrl: string): Promise<SourceTextResult>
   }
 }
 
-async function readBodyLimited(res: Response, maxBytes: number): Promise<string> {
-  if (!res.body) return await res.text()
+async function readBodyLimitedBytes(res: Response, maxBytes: number): Promise<Uint8Array> {
+  if (!res.body) {
+    const buf = new Uint8Array(await res.arrayBuffer())
+    return buf.byteLength > maxBytes ? buf.subarray(0, maxBytes) : buf
+  }
   const reader = res.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
@@ -256,7 +299,11 @@ async function readBodyLimited(res: Response, maxBytes: number): Promise<string>
     offset += slice.byteLength
     if (offset >= buf.byteLength) break
   }
-  return new TextDecoder('utf-8', { fatal: false }).decode(buf)
+  return buf
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
 }
 
 function errMsg(err: unknown): string {

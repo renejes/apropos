@@ -283,7 +283,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '',
         '1. PLANEN VOR SUCHEN. Zerlege die Frage mit plan_research in 3–8 Teilfragen. Ohne Teilfragen kann',
         '   der Server keine Abdeckung messen und lehnt am Ende den Bericht ab.',
-        '2. QUELLEN LIEST DU MIT fetch_source, nicht mit der Websuche deines Clients. Du bekommst eine',
+        '2. QUELLEN LIEST DU MIT fetch_source, nicht mit WebFetch. WebSearch darf entdecken;',
+        '   was in den Bericht soll, muss über fetch_source in der DB liegen. Du bekommst eine',
         '   document_id und ein Textfenster mit Zeichenpositionen.',
         '3. DANACH SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id.',
         '   Der Server schneidet das Zitat selbst aus dem gespeicherten Text — du tippst nichts ab, und ein',
@@ -517,7 +518,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       description:
         'Bei wissenschaftlichen Fragen VOR der Websuche nutzen: durchsucht OpenAlex, Crossref, Europe PMC und arXiv parallel ' +
         'und führt die Treffer über DOI zusammen. Liefert DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen ' +
-        'frei zugänglichen Volltext (oa_url) — der geht direkt in fetch_source. Protokolliert sich selbst; kein log_search nötig. ' +
+        'frei zugänglichen Volltext (oa_url, auch PDF) — der geht direkt in fetch_source. url ist die Landing-Page/DOI. ' +
+        'Protokolliert sich selbst; kein log_search nötig. ' +
         'Mehrfach gefundene Arbeiten stehen oben.',
       inputSchema: {
         project_id: z.string(),
@@ -549,7 +551,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Quelle abrufen (und für Offset-Zitate speichern)',
       description:
-        'STATT Client-Websuche / WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft sie ab, speichert den Text und gibt ein ' +
+        'STATT WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft HTML und PDF ab, speichert den Text und gibt ein ' +
         'Textfenster mit Zeichenpositionen zurück. Danach add_source mit document_id + quote_start + quote_end — der Server ' +
         'schneidet das Zitat selbst. Weitere Abrufe werden verweigert, solange abgerufene Quellen undokumentiert sind. ' +
         'Lange Dokumente in Fenstern lesen (offset).',
@@ -1114,10 +1116,10 @@ ${
                 : ''
             }3. WÄHREND DER RECHERCHE — die Kernregel: **Dokumentiere im Moment des Lesens, nie rückwirkend aus dem Gedächtnis.** Arbeite Teilfrage für Teilfrage.
    - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, arXiv parallel): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
-   - Für graue Literatur/News/Marktquellen: Websuche, und vor/nach JEDER solchen Suche log_search mit exakter Query, Suchort und Trefferzahl.
-   - Quellen liest du mit fetch_source (nicht mit der Websuche / WebFetch deines Clients): Es speichert den Text im Projekt und gibt dir ein Textfenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end — der Server schneidet das Zitat selbst heraus. Du tippst nichts ab, und ein falsch erinnertes Zitat ist ausgeschlossen. Gib zusätzlich die sub_question_id der Teilfrage an, an der du arbeitest; ohne sie zählt die Quelle bei keiner Teilfrage zur Abdeckung.
+   - Für graue Literatur/News/Marktquellen: WebSearch ist zur Entdeckung erlaubt (Suchprotokoll kommt vom Hook). Was in den Bericht soll: fetch_source, nicht WebFetch. Snippets sind keine Quelle.
+   - Quellen liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text im Projekt und gibt dir ein Textfenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end — der Server schneidet das Zitat selbst heraus. Du tippst nichts ab, und ein falsch erinnertes Zitat ist ausgeschlossen. Gib zusätzlich die sub_question_id der Teilfrage an, an der du arbeitest; ohne sie zählt die Quelle bei keiner Teilfrage zur Abdeckung.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
-   - Nur wenn fetch_source scheitert (PDF/Paywall): add_source mit verbatim_quote statt document_id. Der Server prüft dann selbst; bei quote_verified=false das Zitat korrigieren, nicht ignorieren.
+   - Nur wenn fetch_source scheitert (Scan ohne Textschicht / Paywall): add_source mit verbatim_quote statt document_id. Der Server prüft dann selbst; bei quote_verified=false das Zitat korrigieren, nicht ignorieren.
    - Für JEDE gesichtete, aber verworfene Quelle: exclude_source mit ehrlichem Grund.
    - Weitere Erkenntnisse aus einer schon erfassten Quelle: log_extraction (nicht erneut add_source).
    - Bei Unsicherheit, dünner Beleglage oder Widersprüchen: flag_uncertainty. Lieber einmal zu viel.

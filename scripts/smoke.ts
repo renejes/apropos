@@ -21,12 +21,14 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { openDb } from '../src/main/core/db'
 import { Repo } from '../src/main/core/repo'
 import { startMcpHttpServer } from '../src/main/mcp/http'
+import { buildMinimalPdf } from '../src/main/core/enforce/minimal-pdf'
 
 const QUOTE = 'Verifiable provenance is the foundation of trustworthy AI research.'
 const FIXTURE_HTML = `<!doctype html><html><head><title>Fixture Paper</title></head>
 <body><h1>On Trustworthy AI Research</h1>
 <p>Many systems assert correctness without evidence. ${QUOTE} Systems that cannot show
 their sources should not be trusted with high-stakes conclusions.</p></body></html>`
+const FIXTURE_PDF = buildMinimalPdf(QUOTE)
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -56,6 +58,9 @@ async function main(): Promise<void> {
     if (req.url === '/paper') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       res.end(FIXTURE_HTML)
+    } else if (req.url === '/paper.pdf') {
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': FIXTURE_PDF.length })
+      res.end(FIXTURE_PDF)
     } else {
       res.writeHead(404)
       res.end('not found')
@@ -64,6 +69,7 @@ async function main(): Promise<void> {
   await new Promise<void>((resolve) => fixture.listen(0, '127.0.0.1', resolve))
   const fixturePort = (fixture.address() as { port: number }).port
   const paperUrl = `http://127.0.0.1:${fixturePort}/paper`
+  const pdfUrl = `http://127.0.0.1:${fixturePort}/paper.pdf`
   console.log(`Fixture-Quelle: ${paperUrl}`)
 
   // 2. MCP-Server mit Temp-DB
@@ -165,6 +171,47 @@ async function main(): Promise<void> {
     )
     check('add_source per Offset: Zitat serverseitig geschnitten, verifiziert', offsetSource?.checks?.quote_verified === true, offsetSource?.checks)
     check('Offset-Beleg wird als offset_exact auditiert', String(offsetSource?.checks?.note ?? '').startsWith('offset_exact'), offsetSource?.checks?.note)
+
+    // --- PDF: fetch_source extrahiert Text, Offset bleibt unfälschbar
+    const pdfDoc = parseResult(
+      await client.callTool({
+        name: 'fetch_source',
+        arguments: { project_id: proj.project_id, url: pdfUrl, purpose: 'PDF-Volltext für Offset-Zitat abrufen' },
+      })
+    )
+    check('fetch_source auf PDF liefert document_id + Text', typeof pdfDoc?.document_id === 'string' && String(pdfDoc?.window?.text ?? '').includes(QUOTE), {
+      note: pdfDoc?.hint,
+      char_len: pdfDoc?.char_len,
+    })
+    const pdfStart = String(pdfDoc?.window?.text ?? '').indexOf(QUOTE)
+    const pdfAbsStart = (pdfDoc?.window?.offset ?? 0) + pdfStart
+    const pdfAdded = parseResult(
+      await client.callTool({
+        name: 'add_source',
+        arguments: {
+          project_id: proj.project_id,
+          url: pdfUrl,
+          title: 'Fixture PDF',
+          retrieval_method: 'fetch_source',
+          reason: 'Beleg per Offset aus dem selbst abgerufenen PDF geschnitten.',
+          extraction: 'Verifizierbare Provenienz ist die Grundlage vertrauenswürdiger KI-Research.',
+          contribution: 'PDF-Pfad für akademische Volltexte.',
+          document_id: pdfDoc.document_id,
+          quote_start: pdfAbsStart,
+          quote_end: pdfAbsStart + QUOTE.length,
+          sub_question_id: subQuestionId,
+        },
+      })
+    )
+    check('add_source per PDF-Offset: quote_verified true', pdfAdded?.checks?.quote_verified === true, pdfAdded?.checks)
+
+    const ingestRes = await fetch(`http://127.0.0.1:${mcp.port}/ingest/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ project_id: proj.project_id, query: 'hook ingest smoke', provider: 'cursor-websearch', hit_count: 1 }),
+    })
+    const ingestJson = (await ingestRes.json()) as { stored?: boolean }
+    check('POST /ingest/search protokolliert ohne MCP-Handshake', ingestRes.ok && ingestJson.stored === true)
 
     // Erfundenes Zitat zu echten Offsets muss scheitern
     const forged = await client

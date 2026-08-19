@@ -35,7 +35,7 @@ Der Alltagsweg ist **Cursor**, nicht mehr Claude Code.
 | **A · MCP-SDK** | `@modelcontextprotocol/sdk` **1.30.0** (v1-Linie). Rebinding-Schutz bleibt in der Express-Middleware `hostHeaderValidation`. |
 | **B · Onboarding** | `.cursor/mcp.json` im Repo, Rule `.cursor/rules/transparent-research.mdc`, kopierbare Snippets in den App-Einstellungen, README + [07](07-clients.md) Cursor-first. Claude-Hooks sind optional. |
 
-**Noch offen an diesem Strang:** einmaliger Hand-Test (App läuft → Agent verbindet → `start_transparent_research`) und Spike 1 im Cursor-MCP-Modus. Das Erfolgskriterium „unter fünf Minuten ohne Claude Code“ ist im Code erfüllt, empirisch noch ungefahren.
+**Noch offen an diesem Strang:** Spike 1 im Cursor-MCP-Modus (App läuft, Agent, `start_transparent_research`). Alltag, PDF-Text und Such-Ingest sind seit 2026-08-19 (Abend) im Code.
 
 Status-Dokument: [02 Projekt-Status](02-project-status.md) (v2.2, 2026-08-19).
 
@@ -45,7 +45,8 @@ Status-Dokument: [02 Projekt-Status](02-project-status.md) (v2.2, 2026-08-19).
 
 | # | Schritt | Aufwand | Warum |
 |---|---|---|---|
-| ~~0~~ | ~~MCP-SDK + Cursor-first-Onboarding~~ | — | ✅ **2026-08-19.** SDK 1.30; `.cursor/mcp.json` + Rule; Einstellungen/README/[07](07-clients.md); 152 Tests + Smoke |
+| ~~0~~ | ~~MCP-SDK + Cursor-first-Onboarding~~ | — | ✅ **2026-08-19.** SDK 1.30; `.cursor/mcp.json` + Rule; Einstellungen/README/[07](07-clients.md) |
+| ~~4A / 2 / 3~~ | ~~Alltag, PDF-Text, WebSearch-Ingest~~ | — | ✅ **2026-08-19 Abend.** `npm start`, Allowlist, PDF-Offsets, `POST /ingest/search`, Cursor-Hooks |
 | **1** | **Spike 1 im Cursor-MCP-Modus** (Agent, nicht Chat) | 1 Tag | **Go/No-Go-Gate.** Braucht **keine** Ollama-Cloud |
 | 2 | Ollama-Vorbedingungen (`server.json`, `OLLAMA_MODELS`, `ollama signin`) | 15 Min | Nur für den Engine-Vergleich. **Braucht René** |
 | 3 | Dieselbe Frage im Engine-Modus + auswerten | ½ Tag | Vergleich MCP (Cursor) vs. Engine |

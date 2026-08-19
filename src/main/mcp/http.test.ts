@@ -108,3 +108,74 @@ describe('MCP-HTTP-Endpoint: DNS-Rebinding-Schutz', () => {
     }
   })
 })
+
+describe('POST /ingest/search', () => {
+  let db: DB
+  let mcp: RunningHttpServer
+  let repo: Repo
+
+  beforeEach(async () => {
+    db = openDb(':memory:')
+    repo = new Repo(db)
+    mcp = await startMcpHttpServer({ repo, actorLabel: 'test' }, 0)
+  })
+  afterEach(async () => {
+    await mcp.close()
+    delete process.env.ROP_PROJECT_ID
+  })
+
+  const postIngest = (body: unknown, host?: string): Promise<{ status: number; json: any }> =>
+    new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body)
+      const req = httpRequest(
+        {
+          hostname: '127.0.0.1',
+          port: mcp.port,
+          path: '/ingest/search',
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'content-length': Buffer.byteLength(payload),
+            ...(host ? { host } : {}),
+          },
+        },
+        (res) => {
+          let raw = ''
+          res.on('data', (c) => (raw += c))
+          res.on('end', () => {
+            let json: unknown = null
+            try {
+              json = JSON.parse(raw)
+            } catch {
+              json = raw
+            }
+            resolve({ status: res.statusCode ?? 0, json })
+          })
+        }
+      )
+      req.on('error', reject)
+      req.write(payload)
+      req.end()
+    })
+
+  it('protokolliert eine Suche ins zuletzt aktualisierte Projekt', async () => {
+    const p = repo.createProject({ title: 'Hook-Projekt', research_question: 'x?', mode: 'academic', policy_preset: null, actor: 't' })
+    const res = await postIngest({ query: 'cursor websearch test', provider: 'cursor-websearch', hit_count: 2 })
+    expect(res.status).toBe(200)
+    expect(res.json.stored).toBe(true)
+    expect(res.json.project_id).toBe(p.id)
+    expect(repo.listSearchLog(p.id)).toHaveLength(1)
+  })
+
+  it('antwortet 404 ohne Projekt, mit next_action create_project', async () => {
+    const res = await postIngest({ query: 'ohne projekt' })
+    expect(res.status).toBe(404)
+    expect(res.json.status).toMatch(/FEHLER/)
+    expect(res.json.next_action).toMatch(/create_project/)
+  })
+
+  it('weist einen fremden Host auch am Ingest ab', async () => {
+    const res = await postIngest({ query: 'angriff' }, 'boese.example.com')
+    expect(res.status).toBe(403)
+  })
+})

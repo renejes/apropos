@@ -20,7 +20,7 @@ Zwei Gründe:
 
 Client-Websuche bleibt für Beiläufiges erlaubt. Sobald eine Quelle in den Bericht soll, führt der Weg über `fetch_source`.
 
-Wenn `fetch_source` scheitert (PDF, Paywall, Binärformat): `add_source` mit `verbatim_quote` statt `document_id`. Der Server holt die Quelle dann selbst und prüft das Zitat; klappt auch das nicht, braucht die Quelle menschlichen Sign-off in der App.
+Wenn `fetch_source` scheitert (Scan ohne Textschicht, Paywall, Binärformat): `add_source` mit `verbatim_quote` statt `document_id`. Der Server holt die Quelle dann selbst und prüft das Zitat; klappt auch das nicht, braucht die Quelle menschlichen Sign-off in der App. PDFs mit Textschicht gehen über `fetch_source`.
 
 ## Ablauf
 
@@ -79,7 +79,7 @@ Fehlen Quellen oder Inhalte, wird NICHT neu gestartet: Das Werkzeug `start_exten
 
 ## Optional: Claude Code Hooks
 
-Dieses Skill-Paket enthält ein deterministisches Provenienz-Gate: [hooks/provenance-gate.cjs](hooks/provenance-gate.cjs). Es gilt **nur für Claude Code** (Cursor hat kein Hook-System; dort trägt die Rule `.cursor/rules/transparent-research.mdc` plus Server-Enforcement).
+Dieses Skill-Paket enthält ein deterministisches Provenienz-Gate: [hooks/provenance-gate.cjs](hooks/provenance-gate.cjs). Es gilt **nur für Claude Code**. In Cursor: [hooks/cursor-search-ingest.cjs](hooks/cursor-search-ingest.cjs) (WebSearch protokollieren, WebFetch abweisen) plus Rule `.cursor/rules/transparent-research.mdc` plus Server-Enforcement.
 
 - Nach jeder **WebSearch**: nächster Schritt geblockt, bis `log_search` aufgerufen wurde.
 - Nach **WebFetch**: Quelle wird als „unprotokolliert" vorgemerkt; ab 3 offenen Quellen (konfigurierbar via `ROP_MAX_PENDING`) wird jeder weitere Fetch geblockt, bis `add_source`/`exclude_source` nachgeholt sind.

@@ -234,8 +234,8 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
     throw new ServiceError(
       'fetch_failed',
       `Quelle konnte nicht abgerufen werden: ${fetched.note}`,
-      'Suche eine HTML-Fassung derselben Quelle und rufe die ab (PDFs und Binärformate werden noch nicht unterstützt). ' +
-        'Gibt es keine, erfasse die Quelle mit add_source OHNE document_id und mit wörtlichem verbatim_quote — ' +
+      'Prüfe die URL und rufe fetch_source erneut auf. PDFs mit Textschicht werden extrahiert; Bilder, Scans ohne Text und Paywalls nicht. ' +
+        'Gibt es keine HTML/PDF-Fassung, erfasse die Quelle mit add_source OHNE document_id und mit wörtlichem verbatim_quote — ' +
         'sie geht dann in die menschliche Prüfung. Oder schließe sie mit exclude_source begründet aus.'
     )
   }
@@ -523,6 +523,59 @@ export function recordSearch(repo: Repo, rawInput: unknown, actor: string): Sear
     note: input.note ?? null,
     actor,
   })
+}
+
+/**
+ * Suchprotokoll vom Cursor-Hook (POST /ingest/search).
+ * project_id fehlt oft: Fallback ROP_PROJECT_ID, sonst das zuletzt aktualisierte Projekt.
+ */
+export const ingestSearchSchema = z.object({
+  project_id: z.string().min(1).optional(),
+  query: z.string().min(2),
+  provider: z.string().min(1).optional(),
+  engine: z.string().optional(),
+  hit_count: z.number().int().min(0).optional(),
+  results_found: z.number().int().min(0).optional(),
+  urls: z.array(z.string()).optional(),
+  note: z.string().optional(),
+})
+
+export function resolveIngestProjectId(repo: Repo, explicit?: string | null): string {
+  if (explicit) {
+    assertProject(repo, explicit)
+    return explicit
+  }
+  const fromEnv = process.env.ROP_PROJECT_ID?.trim()
+  if (fromEnv) {
+    assertProject(repo, fromEnv)
+    return fromEnv
+  }
+  const latest = repo.listProjects()[0]
+  if (latest) return latest.id
+  throw new ServiceError(
+    'no_project',
+    'Kein Projekt vorhanden — die Suche kann nicht protokolliert werden.',
+    'Lege zuerst mit create_project ein Projekt an, dann wiederhole die Suche.'
+  )
+}
+
+export function ingestSearch(repo: Repo, rawInput: unknown, actor: string): SearchLogEntry {
+  const input = parseOrThrow(ingestSearchSchema, rawInput, 'search_invalid')
+  const projectId = resolveIngestProjectId(repo, input.project_id)
+  const urls = (input.urls ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 20)
+  const hitCount = input.hit_count ?? input.results_found ?? (urls.length > 0 ? urls.length : null)
+  const noteParts = [input.note, urls.length > 0 ? `urls: ${urls.join(' ')}` : null].filter(Boolean)
+  return recordSearch(
+    repo,
+    {
+      project_id: projectId,
+      query: input.query,
+      engine: input.provider ?? input.engine ?? 'cursor-websearch',
+      results_found: hitCount,
+      note: noteParts.length > 0 ? noteParts.join(' | ') : null,
+    },
+    actor
+  )
 }
 
 export function recordExclusion(repo: Repo, rawInput: unknown, actor: string): ExcludedSource {

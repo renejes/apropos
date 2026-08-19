@@ -41,9 +41,9 @@ export interface LiteratureHit {
   authors: string[]
   year: number | null
   doi: string | null
-  /** Beste abrufbare URL: Open-Access-Volltext, sonst DOI-Resolver, sonst Landing-Page. */
+  /** Beste abrufbare URL: Landing-Page oder DOI-Resolver — nicht die PDF unterschieben. */
   url: string | null
-  /** Frei zugänglicher Volltext — der Kandidat für fetch_source. */
+  /** Frei zugänglicher Volltext (oft PDF) — der Kandidat für fetch_source. */
   oa_url: string | null
   venue: string | null
   abstract: string | null
@@ -110,6 +110,22 @@ function stripTags(s: unknown): string | null {
   return t ? t.slice(0, 1500) : null
 }
 
+function looksLikePdfUrl(u: string | null | undefined): boolean {
+  if (!u) return false
+  try {
+    const path = new URL(u).pathname.toLowerCase()
+    return path.endsWith('.pdf') || path.includes('/pdf/')
+  } catch {
+    return /\.pdf(\?|#|$)/i.test(u) || /\/pdf\//i.test(u)
+  }
+}
+
+/** Landing-Page/DOI vor PDF — sonst würde fetch_source die PDF als einzige url bekommen. */
+function preferLanding(...candidates: Array<string | null | undefined>): string | null {
+  const list = candidates.filter((c): c is string => typeof c === 'string' && c.length > 0)
+  return list.find((u) => !looksLikePdfUrl(u)) ?? list[0] ?? null
+}
+
 // ------------------------------------------------------------------ Backends
 
 async function searchOpenAlex(q: string, limit: number, o: { yearFrom?: number; yearTo?: number; oaOnly?: boolean }): Promise<LiteratureHit[]> {
@@ -125,13 +141,14 @@ async function searchOpenAlex(q: string, limit: number, o: { yearFrom?: number; 
   const data = (await getJson(url)) as { results?: Array<Record<string, any>> }
   return (data.results ?? []).map((w) => {
     const doi = cleanDoi(w.doi)
-    const oa = w.open_access?.oa_url ?? w.best_oa_location?.pdf_url ?? w.best_oa_location?.landing_page_url ?? null
+    const landing = w.primary_location?.landing_page_url ?? w.best_oa_location?.landing_page_url ?? null
+    const oa = w.open_access?.oa_url ?? w.best_oa_location?.pdf_url ?? null
     return {
       title: String(w.display_name ?? w.title ?? '(ohne Titel)'),
       authors: (w.authorships ?? []).slice(0, 12).map((a: any) => String(a?.author?.display_name ?? '')).filter(Boolean),
       year: typeof w.publication_year === 'number' ? w.publication_year : null,
       doi,
-      url: oa ?? (doi ? `https://doi.org/${doi}` : (w.primary_location?.landing_page_url ?? null)),
+      url: preferLanding(landing, doi ? `https://doi.org/${doi}` : null, oa),
       oa_url: oa,
       venue: w.primary_location?.source?.display_name ?? null,
       abstract: fromInvertedIndex(w.abstract_inverted_index),
@@ -163,7 +180,7 @@ async function searchCrossref(q: string, limit: number, o: { yearFrom?: number; 
         .filter(Boolean),
       year: typeof year === 'number' ? year : null,
       doi,
-      url: doi ? `https://doi.org/${doi}` : (it.URL ?? null),
+      url: preferLanding(doi ? `https://doi.org/${doi}` : null, it.URL ?? null),
       oa_url: null, // Crossref sagt nichts Verlässliches über Volltext-Zugang
       venue: Array.isArray(it['container-title']) ? (it['container-title'][0] ?? null) : null,
       abstract: stripTags(it.abstract),
@@ -187,12 +204,13 @@ async function searchEuropePmc(q: string, limit: number, o: { yearFrom?: number;
     const doi = cleanDoi(r.doi)
     const full = (r.fullTextUrlList?.fullTextUrl ?? []).find((u: any) => u?.availability === 'Open access') ?? null
     const oa = full?.url ?? (r.isOpenAccess === 'Y' && r.pmcid ? `https://europepmc.org/article/PMC/${r.pmcid}` : null)
+    const landing = r.pmcid ? `https://europepmc.org/article/PMC/${r.pmcid}` : null
     return {
       title: String(r.title ?? '(ohne Titel)'),
       authors: typeof r.authorString === 'string' ? r.authorString.split(/,\s*/).slice(0, 12) : [],
       year: r.pubYear ? Number(r.pubYear) : null,
       doi,
-      url: oa ?? (doi ? `https://doi.org/${doi}` : null),
+      url: preferLanding(doi ? `https://doi.org/${doi}` : null, landing, oa),
       oa_url: oa,
       venue: r.journalTitle ?? null,
       abstract: stripTags(r.abstractText),
@@ -218,7 +236,7 @@ async function searchArxiv(q: string, limit: number): Promise<LiteratureHit[]> {
       authors: [...e.matchAll(/<name>([\s\S]*?)<\/name>/g)].slice(0, 12).map((m) => m[1].trim()),
       year: published ? Number(published.slice(0, 4)) : null,
       doi,
-      url: id,
+      url: preferLanding(id, doi ? `https://doi.org/${doi}` : null, pdf),
       oa_url: pdf ?? id, // arXiv ist immer frei zugänglich
       venue: 'arXiv',
       abstract: stripTags(pick('summary')),
@@ -421,7 +439,8 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       (triangulated > 0 ? `, ${triangulated} in mehreren Registern gefunden (stehen oben)` : '') +
       '. ' +
       'Die Suchen sind bereits protokolliert — log_search ist hier NICHT nötig. ' +
-      'Nächster Schritt: oa_url mit fetch_source abrufen und die Quelle per document_id + Offsets belegen. ' +
+      'Nächster Schritt: oa_url (HTML oder PDF) mit fetch_source abrufen und die Quelle per document_id + Offsets belegen. ' +
+      'url ist die Landing-Page/DOI — nicht automatisch die PDF. ' +
       'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — dann exclude_source mit Grund "Paywall" ' +
       'oder eine frei zugängliche Fassung suchen.',
   }

@@ -10,6 +10,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'project' | 'settings'>('project')
   const [showNew, setShowNew] = useState(false)
+  const [mcpRunning, setMcpRunning] = useState<boolean | null>(null)
 
   const refresh = useCallback(async () => {
     const list = await window.api.listProjects()
@@ -24,6 +25,13 @@ export default function App() {
     const t = setInterval(() => void refresh(), 5000)
     return () => clearInterval(t)
   }, [refresh])
+
+  useEffect(() => {
+    const load = () => window.api.serverInfo().then((i) => setMcpRunning(i.running))
+    void load()
+    const t = setInterval(() => void load(), 5000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <div className="flex h-full">
@@ -89,6 +97,12 @@ export default function App() {
           >
             <Icon name="settings" className="icon-sm" />
             MCP & Einstellungen
+            {mcpRunning != null && (
+              <span
+                className={`ml-auto h-2 w-2 rounded-full ${mcpRunning ? 'bg-emerald-500' : 'bg-red-500'}`}
+                title={mcpRunning ? 'MCP läuft' : 'MCP gestoppt — App muss gestartet sein; Agent-Modus, nicht Chat'}
+              />
+            )}
           </button>
         </div>
       </aside>

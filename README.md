@@ -70,16 +70,15 @@ npm install
 npm test          # Unit-Tests
 npm run smoke     # E2E: MCP-Client, Fabrikations-Erkennung, Concurrency
 
-# App starten (Electron-ABI für better-sqlite3)
-npm run abi:electron
-npm run dev
+# App starten (Electron-ABI für better-sqlite3, dann Dev-Server)
+npm start
 ```
 
 `better-sqlite3` ist ein natives Addon — Node- und Electron-ABI unterscheiden sich. `npm run abi:node` / `npm run abi:electron` schalten um.
 
 ### KI-Client verbinden
 
-**Cursor (empfohlen):** App starten, dann `.cursor/mcp.json` (liegt im Repo) oder das Snippet aus den App-Einstellungen. **Agent-Modus** öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Werkzeuge einmalig freigeben. Einstieg: `start_transparent_research`. Die Rule [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc) trägt den Arbeitsvertrag (kein Hook-System).
+**Cursor (empfohlen):** App starten (`npm start`), dann `.cursor/mcp.json` (liegt im Repo) oder das Snippet aus den App-Einstellungen. In Multi-Root-Workspaces ggf. `~/.cursor/mcp.json`. **Agent-Modus** öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Allowlist: `.cursor/permissions.json` (`research-overview:*`). Einstieg: `start_transparent_research`. Die Rule [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc) trägt den Arbeitsvertrag; der Hook [`.cursor/hooks.json`](.cursor/hooks.json) protokolliert WebSearch und weist WebFetch ab.
 
 ```json
 {
@@ -101,8 +100,8 @@ Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld; ein explizi
 
 Die Plattform nutzt das Research-Verhalten von Frontier-Modellen und erzwingt Transparenz serverseitig — unabhängig vom Client:
 
-1. **App starten** (`npm run abi:electron && npm run dev`), MCP in Cursor eintragen, Agent-Modus.
-2. **Research:** Werkzeug `start_transparent_research`. Quellen nur per `fetch_source`, nicht per Cursor-Websuche.
+1. **App starten** (`npm start`), MCP in Cursor eintragen, Agent-Modus mit **benanntem Modell** (nicht Auto).
+2. **Research:** Werkzeug `start_transparent_research`. WebSearch darf entdecken; Berichtsquellen nur per `fetch_source` (auch PDF). WebFetch wird vom Projekt-Hook abgewiesen.
 3. **Verifikation:** Neue Agent-Session, `start_verify_session`; menschlicher Sign-off in der App.
 4. **Diskussion:** `start_discuss_research` — Fragen strikt aus erfassten Quellen, keine neue Recherche.
 
@@ -143,8 +142,8 @@ src/main/mcp/         MCP-Server, HTTP-Transport, stdio-Entry
 src/main/index.ts     Electron Main + eingebauter MCP-HTTP-Server
 src/preload/          Typisierte IPC-Brücke
 src/renderer/         React-UI: Übersicht, Quellen-Review, Berichte, Audit
-.cursor/              mcp.json + Rule (Arbeitsvertrag ohne Hooks)
-skills/               Claude-Code-Skill + optionale Provenienz-Gate-Hooks
+.cursor/              mcp.json, permissions.json, hooks.json, Rule
+skills/               Claude-Code-Skill + Cursor-Such-Ingest-Hook + optionale Provenienz-Gate-Hooks
 documentation/        Konzept & Research (01–07)
 scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 ```
@@ -170,7 +169,7 @@ scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 
 ```bash
 npm run typecheck   # TypeScript strict (beide Configs)
-npm run abi:node && npm test   # 152 Tests
+npm run abi:node && npm test
 npm run smoke       # E2E gegen echten MCP-Client
 npm run build       # Production-Build
 ```
