@@ -454,7 +454,7 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — dann exclude_source mit Grund "Paywall" ' +
       'oder eine frei zugängliche Fassung suchen.' +
       (brief?.discipline === 'psychology'
-        ? ' Disziplin Psychologie: OpenAlex/Crossref/Europe PMC (PubMed teilweise). PSYNDEX ist nicht angebunden — deutschsprachige Fachliteratur bleibt eine ehrliche Lücke im Brief.'
+        ? ` Disziplin Psychologie: OpenAlex/Crossref/Europe PMC (PubMed teilweise). PSYNDEX hat keine offene API (Institutszugang über EBSCO/Ovid; Einzelnutzer: PubPsych im Browser, https://www.pubpsych.eu — Query «${input.query}»). Treffer von dort mit fetch_source einlesen, das Portal nicht scrapen.`
         : ''),
   }
 }

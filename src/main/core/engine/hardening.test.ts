@@ -117,7 +117,7 @@ describe('Auto-Mode-Härtung', () => {
 
   it('behandelt einen unerreichbaren Dienst ebenfalls als endgültig', async () => {
     plan(3)
-    const down: FakeTurn = { error: new ProviderError('unreachable', 'Ollama antwortet nicht') }
+    const down: FakeTurn = { error: new ProviderError('unreachable', 'Modell-Anbieter antwortet nicht') }
     const { provider, engine } = engineWith([down, down, down, down])
     const { result } = await runWith(provider, engine)
     expect(provider.turnsUsed).toBe(1)

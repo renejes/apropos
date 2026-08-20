@@ -1,12 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ModelInfo, ProviderHealth } from '../main/core/providers/types'
-import type { EngineEvent, EngineRunResult } from '../main/core/engine/research-engine'
-import type { EngineStatus, StartEngineInput } from '../main/engine-runner'
 import type {
   CoverageReport,
   DeterministicVerifyResult,
   DocumentExcerpt,
-  EngineRun,
   EventLogEntry,
   FetchedDocument,
   Mark,
@@ -95,20 +91,6 @@ const api = {
     jpeg_base64?: string
   }): Promise<{ dir: string; files: string[]; source_ids: string[]; claim_ids: string[]; scope: string }> =>
     ipcRenderer.invoke('export:writingPack', input),
-
-  startEngine: (input: StartEngineInput): Promise<EngineRunResult> => ipcRenderer.invoke('engine:start', input),
-  stopEngine: (): Promise<boolean> => ipcRenderer.invoke('engine:stop'),
-  engineStatus: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:status'),
-  engineResumable: (projectId: string): Promise<EngineRun | null> => ipcRenderer.invoke('engine:resumable', projectId),
-  engineRuns: (projectId: string): Promise<EngineRun[]> => ipcRenderer.invoke('engine:runs', projectId),
-  onEngineEvent: (cb: (e: EngineEvent) => void): (() => void) => {
-    const listener = (_e: unknown, payload: EngineEvent) => cb(payload)
-    ipcRenderer.on('engine:event', listener)
-    return () => ipcRenderer.removeListener('engine:event', listener)
-  },
-
-  providerHealth: (): Promise<ProviderHealth> => ipcRenderer.invoke('provider:health'),
-  providerModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke('provider:models'),
 
   serverInfo: (): Promise<ServerInfo> => ipcRenderer.invoke('server:info'),
   seedDemo: (): Promise<string> => ipcRenderer.invoke('demo:seed'),

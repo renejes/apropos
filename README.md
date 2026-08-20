@@ -4,23 +4,76 @@
 
 **Transparente KI-Research — local-first, prüfbar, zitierbar.**
 
-Deep-Research-Werkzeuge liefern Berichte mit Fußnoten. Was fehlt: Nachvollziehbarkeit. Warum wurde diese Quelle genutzt? Was wurde daraus extrahiert? Steht das Zitat wirklich im Original? Die Forschungslage ist ernüchternd: Bei Deep-Research-Agenten sind Links oft valide, aber die **faktische Deckung liegt nur bei 39–77 %** — und **fällt um ~42 %**, wenn die Tool-Calls von 2 auf 150 steigen ([arXiv 2605.06635](https://arxiv.org/abs/2605.06635)).
+Deep-Research-Werkzeuge liefern Berichte mit Fußnoten. Was fehlt: Nachvollziehbarkeit. Warum wurde diese Quelle genutzt? Was wurde daraus extrahiert? Steht das Zitat wirklich im Original? Bei Deep-Research-Agenten sind Links oft valide, aber die **faktische Deckung liegt nur bei 39–77 %** — und **fällt um ~42 %**, wenn die Tool-Calls von 2 auf 150 steigen ([arXiv 2605.06635](https://arxiv.org/abs/2605.06635)).
 
-Die Research Overview Platform verwandelt KI-Deep-Research von einer Blackbox in ein **prüfbares Audit-Artefakt**. Jede angedockte KI trägt Quellen strukturiert ein; der Server erzwingt Provenienz, verifiziert Belege deterministisch und liefert am Ende ein **zitierbares Export-Paket**.
+Diese App macht daraus ein **prüfbares Artefakt**: die KI recherchiert in der App, der Server erzwingt Provenienz, du signierst — und übergibst ein Schreibpaket an die nächste App, statt einen fertigen Artikel zu erzeugen.
 
 > **Leitprinzip:** KI-Einträge sind nie Wahrheit, sondern *zu verifizierende Behauptungen* mit Status und Konfidenz. Der menschliche Sign-off ist nur in der App möglich — keine KI kann ihn über MCP setzen.
 
 ---
 
-## Was die Plattform leistet
+## Für wen
+
+Zwei Lieferformen, ein Korpus:
+
+| Du schreibst … | Was hier zählt |
+|---|---|
+| **Blogs / Kundenstücke** | Blickwinkel und Frame. Der Text selbst ist Commodity — wertvoll ist, *was du behaupten darfst*. |
+| **Hausarbeiten, Papers, Abschlussarbeiten** | Zitate mit Seite, empirische Papers, ehrliche Lücken. Nicht „viele Quellen“, sondern passende. |
+
+Die App **schreibt den Artikel nicht**. Nach der Research geht es so weiter:
+
+1. **Recherchieren und prüfen** — diese Plattform
+2. **Schreiben** — [Easy Writing](https://github.com/renejes/easy-writing) (Ordnerprojekt, Markdown/MDX, `[@citekey]` / `[@citekey, p. 12]`, Fußnoten)
+3. **Setzen und gestalten** — [Penwright](https://github.com/renejes/penwright) (Typst-WYSIWYG: Layout, Preview, Print-PDF)
+
+```mermaid
+flowchart LR
+    R[Research Overview] -->|Schreibpaket<br/>Plan · .bib · Claims · Karte| E[Easy Writing]
+    E -->|MDX-Export<br/>Kapitel · assets · references.bib| P[Penwright]
+```
+
+Easy Writing öffnet den Exportordner und autocompleted dieselben Citekeys. Penwright setzt denselben Ordner — `[@key]` bleibt `[@key]`, die `.bib` bleibt die `.bib`. Wortlaut-Änderungen gehören zurück nach Easy Writing, nicht in den Setzer.
+
+---
+
+## Wie es funktioniert
+
+Alltagsweg: **Cursor-Agent in der App** (dein Cursor-Abo, inkl. WebSearch). Chat links, Beweis rechts. Die IDE ist optional; Goose oder Claude Code können per MCP-HTTP an dieselbe Datenbank andocken.
+
+```
+Brief entwerfen → du bestätigst
+        │
+        ▼
+Teilfragen aus dem Brief  (nicht aus der Luft)
+        │
+        ▼
+Gezielte Suche  (Literaturregister + WebSearch)
+        │
+        ▼
+fetch_source → add_source  oder  exclude_source
+        │
+        ▼
+Server misst Lücken und Sättigung  — „ich bin fertig“ zählt nicht
+        │
+        ▼
+Karte, Marks, Sign-off
+        │
+        ▼
+Schreibpaket → Easy Writing → optional Penwright
+```
+
+Ohne adoptierten Research-Brief lehnen Suche und Quellenabruf ab. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen — nicht als Such-Snippet.
 
 | Mechanismus | Was es bedeutet |
 |---|---|
-| **Unfälschbare Zitate** | `fetch_source` speichert den Quelltext; `add_source` nimmt Zeichenpositionen — der Server schneidet das Zitat heraus. Das Modell kann kein Zitat erfinden, nur auf vorhandenen Text zeigen. |
-| **Vollständigkeit** | Abgerufene Quellen müssen per `add_source` oder `exclude_source` dokumentiert werden, bevor weitere Abrufe erlaubt sind. |
-| **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste (`get_coverage_gaps`), Sättigung pro Runde (`next_round`). „Ich bin fertig“ schließt keine Lücke — nur Belege. |
-| **Verifikations-Leiter** | Deterministisch → geblindete KI-Prüfung → optional Cross-Client → menschlicher Sign-off. |
-| **Zwei Betriebsmodi** | Fremdclient (**Cursor**, Goose, Claude Code, …) **oder** eingebaute Engine mit Ollama — dieselbe DB, dasselbe Enforcement. |
+| **Unfälschbare Zitate** | `fetch_source` speichert den Text (HTML und PDF). `add_source` bekommt Zeichenpositionen — der Server schneidet das Zitat heraus. Das Modell tippt nichts ab. |
+| **Vollständigkeit** | Abgerufene Quellen müssen dokumentiert oder verworfen sein, bevor weitere Abrufe erlaubt sind. |
+| **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste, Sättigung pro Runde. |
+| **Was darfst du sagen** | Grün = signiert und Quote ok. Gelb = belegt, unsigniert. Rot = Widerspruch, Flag, Lücke, Tabu. |
+| **Schreibpaket** | Immer aus einer Kartensicht oder aus Markiertem: Plan, `references.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte. |
+
+Local-first heißt: die **SQLite-Datenbank** bleibt auf deinem Rechner. Die Modelle laufen über Cursor Cloud.
 
 ---
 
@@ -28,57 +81,49 @@ Die Research Overview Platform verwandelt KI-Deep-Research von einer Blackbox in
 
 ```mermaid
 flowchart TB
-    subgraph clients [KI-Clients]
-        Cursor[Cursor Agent]
-        Others[Goose / Claude / VS Code …]
-        Engine[Eingebaute Engine]
+    subgraph clients [KI]
+        Cursor[Cursor-Agent in der App]
+        Others[Goose / Claude / IDE …]
     end
 
     subgraph app [Electron-App]
-        MCP[MCP-Server<br/>26 Tools · Streamable HTTP + stdio]
-        Enforce[Enforcement-Layer<br/>Schema · Quote-Check · Coverage]
+        MCP[MCP-Server · HTTP + stdio]
+        Enforce[Enforcement<br/>Brief · Quote · Coverage]
         DB[(SQLite WAL · FTS5)]
-        UI[Review-UI<br/>Sign-off · Export]
+        UI[Review-UI<br/>Sign-off · Karte · Export]
     end
 
-    Cursor -->|127.0.0.1:8790/mcp| MCP
-    Others -->|Streamable HTTP| MCP
-    Engine -->|In-Memory Transport| MCP
+    Cursor -->|customTools / In-Memory| MCP
+    Others -->|127.0.0.1:8790/mcp| MCP
     MCP --> Enforce --> DB
     UI --> DB
 ```
 
-**Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@modelcontextprotocol/sdk` 1.30 · Zod · Vitest
+**Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@cursor/sdk` · `@modelcontextprotocol/sdk` 1.30 · Zod · Vitest
 
 ---
 
 ## Schnellstart
 
-### Voraussetzungen
-
-- Node.js 20+
-- npm
-
-### Installation & Entwicklung
+Voraussetzungen: Node.js 20+, npm, ein [Cursor](https://cursor.com)-Konto (für den Agent-Chat).
 
 ```bash
 git clone https://github.com/renejes/research-overview-platform.git
 cd research-overview-platform
 npm install
 
-# Tests (Node-ABI)
-npm test          # Unit-Tests
-npm run smoke     # E2E: MCP-Client, Fabrikations-Erkennung, Concurrency
-
-# App starten (Electron-ABI für better-sqlite3, dann Dev-Server)
-npm start
+npm test          # Unit-Tests (Node-ABI)
+npm run smoke     # E2E gegen den MCP-HTTP-Server
+npm start         # App (Electron-ABI + Dev-Server)
 ```
 
-`better-sqlite3` ist ein natives Addon — Node- und Electron-ABI unterscheiden sich. `npm run abi:node` / `npm run abi:electron` schalten um.
+`better-sqlite3` ist ein natives Addon. `npm run abi:node` / `npm run abi:electron` schalten zwischen Tests und App um. `npm start` macht den Electron-Rebuild selbst.
 
-### KI-Client verbinden
+In der App: Einstellungen → bei Cursor anmelden → benanntes Modell wählen (nicht Auto) → Projekt anlegen → im Chat den Brief erarbeiten, dann erst suchen.
 
-**Cursor (empfohlen):** App starten (`npm start`), dann `.cursor/mcp.json` (liegt im Repo) oder das Snippet aus den App-Einstellungen. In Multi-Root-Workspaces ggf. `~/.cursor/mcp.json`. **Agent-Modus** öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Allowlist: `.cursor/permissions.json` (`research-overview:*`). Einstieg: `start_transparent_research`. Die Rule [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc) trägt den Arbeitsvertrag; der Hook [`.cursor/hooks.json`](.cursor/hooks.json) protokolliert WebSearch und weist WebFetch ab.
+### MCP für die IDE (optional)
+
+Dieselbe App muss laufen, sonst ist Port 8790 tot. Config liegt im Repo (`.cursor/mcp.json`) und in den Einstellungen:
 
 ```json
 {
@@ -90,22 +135,9 @@ npm start
 }
 ```
 
-Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld; ein explizites `streamable-http` kann die CLI-Config stillschweigend verwerfen.
+Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld. **Agent-Modus**, nicht Chat. Allowlist: `.cursor/permissions.json`. Arbeitsvertrag: [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc).
 
-**Andere Clients:** derselbe Endpoint. stdio (Claude Desktop) als Fallback in den App-Einstellungen. Beide Wege teilen dieselbe SQLite-DB (WAL) — Einträge erscheinen live in der App.
-
----
-
-## Empfohlene Nutzung mit Cursor
-
-Die Plattform nutzt das Research-Verhalten von Frontier-Modellen und erzwingt Transparenz serverseitig — unabhängig vom Client:
-
-1. **App starten** (`npm start`), MCP in Cursor eintragen, Agent-Modus mit **benanntem Modell** (nicht Auto).
-2. **Research:** Werkzeug `start_transparent_research`. WebSearch darf entdecken; Berichtsquellen nur per `fetch_source` (auch PDF). WebFetch wird vom Projekt-Hook abgewiesen.
-3. **Verifikation:** Neue Agent-Session, `start_verify_session`; menschlicher Sign-off in der App.
-4. **Diskussion:** `start_discuss_research` — Fragen strikt aus erfassten Quellen, keine neue Recherche.
-
-Claude Code bleibt optional (Skill + Hooks). Details: [documentation/07-clients.md](documentation/07-clients.md).
+stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen dieselbe SQLite (WAL).
 
 ---
 
@@ -113,39 +145,38 @@ Claude Code bleibt optional (Skill + Hooks). Details: [documentation/07-clients.
 
 | Tool | Zweck |
 |---|---|
-| `create_project` / `list_projects` / `get_project_state` | Projekt-Lebenszyklus |
+| `draft_research_brief` / `adopt_research_brief` | Blickwinkel und Plan, bevor gesucht wird |
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
-| `search_literature` | OpenAlex, Crossref, Europe PMC, arXiv parallel |
-| `log_extraction` / `link_claim_to_source` | Extraktionen; Aussagen↔Quellen (many-to-many) |
-| `add_report_version` / `add_chat_log` | Berichts-Snapshots; Chat-Protokoll |
+| `search_literature` | OpenAlex, Crossref, Europe PMC |
+| `ingest_local_file` / `list_inbox` | PDFs und Text aus der Projekt-Inbox |
+| `describe_evidence_map` / `prepare_view` / `toggle_mark` | Karte und Arbeitsset |
+| `export_bibliography` / `export_writing_pack` | `.bib` und Schreibpaket für Easy Writing |
 | `re_verify` / `get_next_unverified_claim` / `submit_verdict` | Verifikations-Leiter |
 
-Jeder MCP-Prompt ist zusätzlich als Werkzeug gespiegelt (`start_transparent_research` …) für Clients ohne Prompt-Ausführung.
+Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` …), weil die meisten Clients Prompts nicht ausführen.
 
 ---
 
 ## Verifikations-Leiter
 
-1. **Deterministisch** — URL/DOI-Auflösung + Quote-in-Source (exakt/normalisiert/fuzzy). Kein Modell nötig.
-2. **Geblindete KI-Verifikation** — neue Chat-Session sieht nur Aussage + frisch gefetchten Quelltext, nie die Original-Begründung.
-3. **Cross-Client** (optional) — Verifikation in einem anderen KI-Anbieter.
-4. **Mensch-Sign-off** — pro Quelle in der App; protokolliert im append-only `event_log`.
+1. **Deterministisch** — Quote-in-Source am gespeicherten Text. Kein Modell nötig.
+2. **Geblindete KI-Prüfung** — neue Session sieht nur Aussage + Quelltext, nie die Original-Begründung.
+3. **Cross-Client** (optional) — dieselbe Prüfung in einem anderen Anbieter.
+4. **Mensch-Sign-off** — nur in der App, append-only `event_log`.
 
 ---
 
 ## Projektstruktur
 
 ```
-src/main/core/        DB, Repo, Services (Enforcement), Engine, Provider
-src/main/mcp/         MCP-Server, HTTP-Transport, stdio-Entry
-src/main/index.ts     Electron Main + eingebauter MCP-HTTP-Server
+src/main/core/        DB, Repo, Enforcement, Cursor-Agent, Testharness
+src/main/mcp/         MCP-Server, HTTP, stdio
 src/preload/          Typisierte IPC-Brücke
-src/renderer/         React-UI: Übersicht, Quellen-Review, Berichte, Audit
+src/renderer/         React-UI: Chat, Übersicht, Quellen, Karte, Export
 .cursor/              mcp.json, permissions.json, hooks.json, Rule
-skills/               Claude-Code-Skill + Cursor-Such-Ingest-Hook + optionale Provenienz-Gate-Hooks
-documentation/        Konzept & Research (01–07)
-scripts/              Smoke-Tests, Ollama-/Literatur-Checks
+skills/               Claude-Code-Skill + Such-Ingest-Hook
+documentation/        Plan, Status, Next Steps · Archiv in documentation/done/
 ```
 
 ---
@@ -154,27 +185,27 @@ scripts/              Smoke-Tests, Ollama-/Literatur-Checks
 
 | Dokument | Inhalt |
 |---|---|
-| [HANDOVER.md](HANDOVER.md) | Vollständiger Kontext für neue Contributors |
-| [01 Implementation-Plan](documentation/01-implementationplan.md) | Architektur, Datenmodell, Phasenplan |
-| [02 Projekt-Status](documentation/02-project-status.md) | Stand, Entscheidungen, Risiko-Register |
-| [03 Next Steps](documentation/03-next-steps.md) | Offene Schritte und Spike-Plan |
-| [04 Feasibility](documentation/04-feasability.md) | Machbarkeits-Analyse |
-| [05 Markt-Research](documentation/05-market-research.md) | Wettbewerbsanalyse |
-| [06 Eigene Research-Engine](documentation/06-eigene-research-engine.md) | Engine-Modus, Ollama |
-| [07 KI-Clients](documentation/07-clients.md) | Client-Kompatibilität |
+| [01 Implementation-Plan](documentation/01-implementationplan.md) | Architektur und Phasen (A/B/E–H gebaut) |
+| [02 Projekt-Status](documentation/02-project-status.md) | Aktueller Stand und Funktionsweise |
+| [03 Next Steps](documentation/03-next-steps.md) | Empirische Tests (echter Modell-Lauf) |
+| [HANDOVER.md](HANDOVER.md) | Kontext für Contributors |
+| Archiv | [04](documentation/done/04-feasability.md) · [05](documentation/done/05-market-research.md) · [06](documentation/done/06-eigene-research-engine.md) · [07](documentation/done/07-clients.md) |
+
+```bash
+npm run typecheck
+npm run abi:node && npm test
+npm run smoke
+```
 
 ---
 
-## Entwicklung & Qualität
+## Im selben Schreibtisch
 
-```bash
-npm run typecheck   # TypeScript strict (beide Configs)
-npm run abi:node && npm test
-npm run smoke       # E2E gegen echten MCP-Client
-npm run build       # Production-Build
-```
-
-Zusätzlich: `npm run ollama:check <modell>` (Live-Test mit Tool-Call), `npm run lit:check "frage"` (Literatur-APIs).
+| App | Rolle | Lizenz |
+|---|---|---|
+| **Research Overview** (diese) | Research, Provenienz, Sign-off, Schreibpaket | MIT |
+| **[Easy Writing](https://github.com/renejes/easy-writing)** | Schreiben in Markdown/MDX, Zitate, Fußnoten, Export | MIT |
+| **[Penwright](https://github.com/renejes/penwright)** | Setzen und Design in Typst, Live-Preview, Print-PDF | [PolyForm Strict](https://github.com/renejes/penwright#license) — App frei nutzen, Source nicht wiederverwenden |
 
 ---
 
@@ -182,10 +213,6 @@ Zusätzlich: `npm run ollama:check <modell>` (Live-Test mit Tool-Call), `npm run
 
 [MIT](LICENSE) — Copyright (c) 2026 René Jesser
 
----
-
-## Hintergrund
-
-Open Source, weil ein Provenienz-Werkzeug, dessen Prüflogik nicht nachlesbar ist, ein Widerspruch in sich wäre. Kein Geschäftsmodell — ein Werkzeug für akademische Recherche und Business-Research gleichermaßen.
+Open Source, weil ein Provenienz-Werkzeug, dessen Prüflogik nicht nachlesbar ist, ein Widerspruch in sich wäre. Kein Geschäftsmodell.
 
 Fragen, Issues und Pull Requests willkommen.

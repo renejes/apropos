@@ -225,6 +225,8 @@ describe('Literatursuche über offene Register', () => {
     const res = await searchLiterature(repo, { project_id: psych, query: 'bindungsstil', limit: 3 }, ACTOR)
     expect(seen.some((u) => u.includes('2016'))).toBe(true)
     expect(res.hint).toMatch(/PSYNDEX/)
+    expect(res.hint).toMatch(/pubpsych\.eu/)
+    expect(res.hint).toMatch(/nicht scrapen/)
     expect(res.backends_used.sort()).toEqual(['crossref', 'europepmc', 'openalex'])
     expect(res.backends_used).not.toContain('arxiv')
   })

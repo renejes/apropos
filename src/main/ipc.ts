@@ -10,8 +10,6 @@ import { writeWritingPack } from './core/export/writing-pack'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage } from './core/services/research'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
-import { OllamaProvider } from './core/providers/ollama'
-import { EngineRunner, type StartEngineInput } from './engine-runner'
 import type { ServerInfo } from '../shared/types'
 import type { AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
@@ -200,26 +198,6 @@ export function registerIpc(deps: IpcDeps): void {
   })
 
   ipcMain.handle('demo:seed', () => seedDemoProject(repo))
-
-  // Eingebaute Engine: Start/Stopp/Status. Ereignisse gehen per 'engine:event' an das Fenster.
-  const runner = new EngineRunner(repo)
-  ipcMain.handle('engine:start', (e, input: StartEngineInput) => runner.start(input, e.sender))
-  ipcMain.handle('engine:stop', () => runner.stop())
-  ipcMain.handle('engine:status', () => runner.status())
-  // Checkpoint: Gibt es einen abgebrochenen oder abgestürzten Lauf zum Fortsetzen?
-  ipcMain.handle('engine:resumable', (_e, projectId: string) => runner.resumable(projectId))
-  ipcMain.handle('engine:runs', (_e, projectId: string) => repo.listEngineRuns(projectId))
-
-  // Modell-Anbieter: Status und Modell-Liste für die Einstellungen.
-  // Bewusst eine Instanz pro Aufruf — der Endpoint kann sich zur Laufzeit ändern.
-  ipcMain.handle('provider:health', () => new OllamaProvider().health())
-  ipcMain.handle('provider:models', async () => {
-    try {
-      return await new OllamaProvider().listModels()
-    } catch {
-      return []
-    }
-  })
 
   const { agent } = deps
   agent.setSink((projectId, event) => {

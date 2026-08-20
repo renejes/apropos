@@ -1,118 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ServerInfo } from '../../../shared/types'
-import type { ModelInfo, ProviderHealth } from '../../../main/core/providers/types'
 import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
 import CursorSettings from '../components/CursorSettings'
 
 /** MCP-Verbindungsinfos + Demo-Seed. */
-/**
- * Ollama-Status für den Modus „Eingebaute Engine".
- * Zeigt bewusst DREI getrennte Bedingungen, weil sie unterschiedliche Abhilfe
- * verlangen: Daemon erreichbar, Cloud freigegeben, Modelle registriert.
- * Ein einzelnes „funktioniert nicht" wäre hier nutzlos.
- */
-function OllamaPanel() {
-  const [health, setHealth] = useState<ProviderHealth | null>(null)
-  const [models, setModels] = useState<ModelInfo[]>([])
-  const [busy, setBusy] = useState(false)
-
-  const load = useCallback(async () => {
-    setBusy(true)
-    try {
-      const [h, m] = await Promise.all([window.api.providerHealth(), window.api.providerModels()])
-      setHealth(h)
-      setModels(m)
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const cloudModels = models.filter((m) => m.cloud)
-  const localModels = models.filter((m) => !m.cloud)
-
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <SectionTitle>Eingebaute Engine (Ollama)</SectionTitle>
-        <Button variant="ghost" icon="refresh" onClick={load} disabled={busy} title="Status neu prüfen" />
-      </div>
-
-      {!health ? (
-        <p className="text-sm text-slate-400">Prüfe …</p>
-      ) : (
-        <>
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {health.reachable ? (
-              <Badge tone="emerald" icon="check_circle">
-                Daemon erreichbar{health.version ? ` · v${health.version}` : ''}
-              </Badge>
-            ) : (
-              <Badge tone="red" icon="cancel">
-                Daemon nicht erreichbar
-              </Badge>
-            )}
-            {/* Cloud-Status nur zeigen, wenn der Daemon läuft — sonst ist die Ursache
-                der Daemon, und „Cloud gesperrt" schickt in die falsche Richtung. */}
-            {health.reachable &&
-              (health.cloud.available ? (
-                health.cloud.signedIn === false ? (
-                  <Badge tone="amber" icon="login">
-                    nicht angemeldet
-                  </Badge>
-                ) : (
-                  <Badge tone="emerald" icon="cloud">
-                    Cloud{health.cloud.plan ? ` · ${health.cloud.plan}` : ''}
-                  </Badge>
-                )
-              ) : (
-                <Badge tone="amber" icon="cloud_off">
-                  Cloud gesperrt
-                </Badge>
-              ))}
-            {models.length > 0 && (
-              <Badge tone="slate" icon="deployed_code">
-                {cloudModels.length} Cloud · {localModels.length} lokal
-              </Badge>
-            )}
-          </div>
-
-          {health.note !== 'ok' && (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">{health.note}</p>
-          )}
-
-          {models.length > 0 && (
-            <ul className="mb-3 space-y-1 text-xs">
-              {models.slice(0, 12).map((m) => (
-                <li key={m.id} className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-slate-50">
-                  <span className="flex items-center gap-1.5 text-slate-700">
-                    <Icon name={m.cloud ? 'cloud' : 'computer'} className="!text-[15px] text-slate-400" />
-                    {m.id}
-                  </span>
-                  <span className="text-slate-400">{m.sizeBytes ? `${(m.sizeBytes / 1e9).toFixed(1)} GB` : 'Cloud'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <p className="text-[11px] leading-relaxed text-slate-400">
-            Der lokale Daemon bedient lokale <em>und</em> Cloud-Modelle über dieselbe API. Cloud-Modelle einmalig registrieren:{' '}
-            <code className="rounded bg-slate-100 px-1">ollama signin</code>, verfügbare Modelle auf{' '}
-            <code className="rounded bg-slate-100 px-1">ollama.com/search?c=cloud</code>, dann{' '}
-            <code className="rounded bg-slate-100 px-1">ollama pull &lt;name&gt;</code>. Ausführlicher Check inklusive
-            Werkzeugaufruf-Test: <code className="rounded bg-slate-100 px-1">npm run ollama:check &lt;modell&gt;</code>. Prüfe den Namen
-            vor dem Pull — Ollama nimmt Cloud-Modelle laufend vom Netz.
-          </p>
-        </>
-      )}
-    </Card>
-  )
-}
-
 export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
   const [info, setInfo] = useState<ServerInfo | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -152,8 +44,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       <div>
         <h1 className="text-lg font-semibold">Einstellungen</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Alltagsweg: Cursor-Konto und Modell hier, Research im Agent-Chat des Projekts. MCP-HTTP und Ollama bleiben für
-          Fremdclients und als Fallback.
+          Alltagsweg: Cursor-Konto und Modell hier, Research im Agent-Chat des Projekts. MCP-HTTP bleibt für Fremdclients
+          (IDE, Goose, Claude Code).
         </p>
       </div>
 
@@ -269,8 +161,6 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
           </p>
         </Card>
       )}
-
-      <OllamaPanel />
 
       <Card className="p-5">
         <SectionTitle>Datenbank</SectionTitle>

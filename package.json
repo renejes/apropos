@@ -1,7 +1,7 @@
 {
   "name": "research-overview-platform",
   "version": "0.1.0",
-  "description": "Transparente KI-Research: Projekt-Plattform mit eingebautem MCP-Server, Provenienz-Erzwingung, Verifikations-Leiter und zitierbarem Export.",
+  "description": "Transparente KI-Research: local-first Desktop-App mit Provenienz-Erzwingung, Cursor-Agent und Schreibpaket für Easy Writing und Penwright.",
   "license": "MIT",
   "main": "out/main/index.js",
   "type": "commonjs",
@@ -16,14 +16,14 @@
     "abi:node": "npm rebuild better-sqlite3",
     "abi:electron": "electron-rebuild -f -w better-sqlite3",
     "mcp:stdio:dev": "tsx src/main/mcp/stdio-entry.ts",
-    "lit:check": "tsx scripts/lit-check.ts",
-    "ollama:check": "tsx scripts/ollama-check.ts"
+    "lit:check": "tsx scripts/lit-check.ts"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.28",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^11.10.0",
     "express": "^4.21.2",
+    "jpeg-js": "^0.4.4",
     "material-symbols": "^0.31.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -35,6 +35,7 @@
     "@tailwindcss/vite": "^4.1.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
+    "@types/jpeg-js": "^0.3.0",
     "@types/node": "^20.17.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

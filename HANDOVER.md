@@ -51,19 +51,19 @@ Ein Test hält das fest: Die Modellbehauptung *„Ich bin fertig, alles ist best
 
 ---
 
-## 3. Zwei Betriebsmodi
+## 3. Alltagsweg und MCP
 
-| | **MCP-Modus** | **Eingebaute Engine** |
+| | **In-App-Agent** | **Fremdclient (MCP-HTTP)** |
 |---|---|---|
-| Wer treibt | Fremdclient (Cursor, Goose, Codex, Claude Code …) | die App selbst |
-| Modell | das des Clients | Ollama (lokal *oder* Cloud) |
-| Status | erprobt | gebaut, gegen Fake-Modell verifiziert |
+| Wer treibt | Cursor-SDK in der App | IDE, Goose, Claude Code, … |
+| Modell | Cursor-Katalog (Abo, inkl. WebSearch) | das des Clients |
+| Status | gebaut | erprobt |
 
-**Beide teilen alles unterhalb der Schleife**: dieselbe DB, dieselbe Service-Schicht, dasselbe Enforcement, dieselbe Verifikations-Leiter. Die Engine bindet den MCP-Server **in-process** ein (`InMemoryTransport`) — eine Werkzeugdefinition, kein zweiter Pflegepfad.
+**Beide teilen alles unterhalb der Schleife**: dieselbe DB, dieselbe Service-Schicht, dasselbe Enforcement, dieselbe Verifikations-Leiter. Der In-App-Agent bindet die Werkzeuge über `customTools` / In-Memory-MCP ein — eine Werkzeugdefinition, kein zweiter Pflegepfad.
 
-Das ist bewusst kein Kompromiss, sondern das Argument: **Die Plattform ist modellunabhängig, weil die Wahrheit nicht vom Modell kommt.**
+Die frühere **Ollama-Engine in der App ist entfernt** (2026-08-20): WebSearch über Ollama war unzuverlässig. `ResearchEngine` + `FakeProvider` bleiben als Testharness für Quota/Checkpoint/Coverage.
 
-**Die Engine ist seit 2026-07-31 gegen Langlauf-Realität gehärtet** (Schritt 4 der Next Steps):
+Die Testharness ist seit 2026-07-31 gegen Langlauf-Realität gehärtet:
 
 - **Quota-Guard vor jedem Spawn.** Ein erschöpftes Kontingent, ein unerreichbarer Dienst oder ein aufgebrauchtes Token-Budget beendet den **Lauf**, nicht nur die Teilfrage. Das Token-Budget gilt für den gesamten Lauf, nicht je Aufruf — und ein Fünftel bleibt der Synthese reserviert, sonst endet ein knapper Lauf mit Quellen, aber ohne Bericht.
 - **Checkpoint/Resume** über die Tabelle `engine_runs`. Steht beim App-Start ein Lauf auf `running`, kann er keinen lebenden Prozess mehr haben — er wird als `interrupted` geheilt und ist fortsetzbar. Beim Fortsetzen bekommt das Modell zuerst die Quellen genannt, die der Vorlauf zwischen `fetch_source` und `add_source` liegen ließ.
@@ -80,12 +80,13 @@ src/main/core/
   repo.ts                  Datenzugriff + append-only event_log + engine_runs (Checkpoint)
   services/research.ts     ► ENFORCEMENT LEBT HIER (nicht im MCP-Handler!)
   services/literature.ts   OpenAlex, Crossref, Europe PMC, arXiv
-  providers/               Anbieter-Abstraktion + Ollama-Adapter
-  engine/                  ToolBridge (in-process MCP), AgentLoop, ResearchEngine, RunBudget
+  providers/               Anbieter-Abstraktion + FakeProvider (Tests)
+  engine/                  Testharness: ToolBridge, ResearchEngine, RunBudget
+  agent/                   Cursor-SDK-Host (Alltagsweg)
   enforce/                 SSRF-Fetcher, Quote-Matching, deterministische Verifikation
 src/main/mcp/server.ts     26 Tools + 4 Prompts (dünne Wrapper um die Services)
 src/main/mcp/http.ts       Streamable HTTP auf 127.0.0.1:8790 + Rebinding-Schutz
-src/renderer/src/          UI (Abdeckung, Lücken, Quellen-Review, Engine-Panel)
+src/renderer/src/          UI (Abdeckung, Lücken, Quellen-Review, Agent-Chat)
 .cursor/                   mcp.json, permissions.json, hooks.json, Rule
 skills/transparent-research/  Claude-Code-Skill + Cursor-Such-Ingest-Hook + optionale Provenienz-Gate-Hooks
 documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, Engine, Clients
@@ -103,9 +104,6 @@ documentation/01–07        Konzept, Status, Next Steps, Feasibility, Markt, En
 |---|---|---|
 | App startet nicht: `Cannot read properties of undefined (reading 'whenReady')` | `ELECTRON_RUN_AS_NODE=1` in der Shell — dieselbe Variable, die der stdio-Server nutzt | `env -u ELECTRON_RUN_AS_NODE npm run dev` |
 | `NODE_MODULE_VERSION`-Fehler | better-sqlite3 ist ein natives Addon; Node- und Electron-ABI unterscheiden sich | `npm run abi:node` für Tests, `npm run abi:electron` für die App |
-| Ollama findet keine Modelle | `OLLAMA_MODELS` (4× in `~/.zshrc`) und `~/.ollama/models` zeigen auf `/Volumes/RjProgLearn/…` — **existiert nicht mehr** | Symlink neu setzen oder `OLLAMA_MODELS` umbiegen. Der Daemon selbst startet einwandfrei (2026-07-31 auf Port 11435 verifiziert) |
-| Cloud-Modelle nicht verfügbar | `"disable_ollama_cloud": true` in `~/.ollama/server.json` | **Die Env-Variable `OLLAMA_NO_CLOUD=false` überschreibt das NICHT** (nachgemessen) — die Datei ändern, Daemon neu starten, `ollama signin` |
-| Modellnamen laufen ins Leere | Ollama nimmt Cloud-Modelle **im Wochenrhythmus** vom Netz (15.07.2026: 16 Stück auf einmal) | Nie fest verdrahten. Liste: `ollama.com/search?c=cloud` |
 
 **Verifikation (immer alle drei):**
 ```bash
@@ -113,7 +111,7 @@ npm run typecheck
 npm run abi:node && npm test
 npm run smoke                       # E2E gegen echten MCP-Client
 ```
-Zusätzlich: `npm run ollama:check <modell>` (Live-Test inkl. echtem Tool-Call), `npm run lit:check "frage"` (Literatursuche gegen echte Register).
+Zusätzlich: `npm run lit:check "frage"` (Literatursuche gegen echte Register).
 
 ---
 
@@ -182,7 +180,7 @@ Typecheck, Tests, E2E-Smoke und Build sind grün. Die App startet und wurde durc
 
 ## 10. Nächste Session — Spike 1 (Fixes 4A / 2 / 3 sind erledigt)
 
-Drei Lücken aus dem Review 2026-08-19 sind **im Code**. Reihenfolge war **4A → 2 → 3**; als Nächstes **Spike 1 in Cursor**. **10.5 (BibTeX / Easy Writing) kommt danach**, nicht in derselben Session. Engine/Ollama ist unabhängig und auf Renés Rechner blockiert (siehe unten).
+Drei Lücken aus dem Review 2026-08-19 sind **im Code**. Reihenfolge war **4A → 2 → 3**; als Nächstes **Spike 1 im Cursor-Agent**. **10.5 (BibTeX / Easy Writing) kommt danach**, nicht in derselben Session. Die In-App-Ollama-Engine ist entfernt.
 
 Leitentscheidung zu **Punkt 3 (René, 2026-08-19):** WebSearch **bleibt erlaubt** (Entdeckung). Was in den Bericht soll, muss trotzdem in die DB. Blocken der Suche ist der falsche Hebel.
 
@@ -203,12 +201,6 @@ Bestehendes Gate (`provenance-gate.cjs`) **nicht** 1:1 kopiert: das **blockt** W
 ### 10.4 Danach: Spike 1 (echtes Modell)
 
 Erst wenn 10.1–10.3 grün sind — **sind sie**. Cursor Agent, App läuft (`npm start`), `start_transparent_research`. Messgröße: **falsche Offsets**, nicht erfundene Zitate.
-
-Ollama/Engine ist **nicht** Voraussetzung für Spike 1. Engine-Blocker (nur für Schritt Engine-Vergleich):
-
-1. `~/.ollama/server.json`: `"disable_ollama_cloud"` → `false` (Env `OLLAMA_NO_CLOUD=false` **genügt nicht**).
-2. `OLLAMA_MODELS` in `~/.zshrc` zeigt auf totes `/Volumes/RjProgLearn/…`.
-3. `ollama signin` (interaktiv).
 
 ```bash
 npm run typecheck

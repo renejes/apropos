@@ -6,19 +6,19 @@ import { ToolBridge, type EnginePhase } from './tool-bridge'
 import { runAgentLoop, type LoopEvent, type LoopLimits, type LoopResult } from './agent-loop'
 
 /**
- * Die Research-Engine: der Modus „Eingebaute Engine".
+ * Testharness-Schleife (früher der Modus „Eingebaute Engine").
  *
- * Der Unterschied zu „Agent mit Websuch-Werkzeug" liegt genau hier, in der
- * Kontrollstruktur — nicht im Modell:
+ * In der App läuft Research über den Cursor-SDK-Agenten. Diese Klasse bleibt,
+ * damit Quota, Checkpoint und Coverage gegen ein Fake-Modell prüfbar sind.
+ *
+ * Der Unterschied zu „Agent mit Websuch-Werkzeug" liegt in der Kontrollstruktur:
  *
  *   Das Modell ARBEITET über die MCP-Werkzeuge.
  *   Die Schleife ENTSCHEIDET über die Service-Schicht.
  *
  * Planung, Rundenzählung, Sättigungsmessung und Abbruch laufen über
  * `planResearch` / `advanceRound` / `computeCoverage` — also über serverseitig
- * berechnete Zahlen, nicht über die Selbsteinschätzung des Modells. Genau daran
- * war jede reine Prompt-Lösung gescheitert: Instruktionsbefolgung sinkt mit der
- * Länge des Laufs, und „bin ich fertig?" ist die erste Regel, die fällt.
+ * berechnete Zahlen, nicht über die Selbsteinschätzung des Modells.
  */
 
 export interface EngineConfig {

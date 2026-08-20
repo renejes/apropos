@@ -210,13 +210,11 @@ MCP sitzt in Claude Code client-seitig und ist orthogonal zum Modell-Endpunkt �
 
 Zwei Fußnoten: Alle drei Modellstufen (Opus/Sonnet/Haiku) zeigen auf dasselbe Ollama-Modell — auch Housekeeping-Aufrufe verbrauchen Kontingent. Und die Claude-**Desktop**-Integration hat Ollama entfernt (*„Claude Desktop is no longer supported by `ollama launch`"*).
 
-## Und für Ollama-Nutzer: der eigene Engine-Modus
+## Ollama-Modelle gegen denselben MCP-Server
 
-Der Modus **Eingebaute Engine** in der App bleibt für Ollama der bessere Weg — aus drei belegbaren Gründen:
+Die **eingebaute Ollama-Engine** in der App ist seit 2026-08-20 entfernt: WebSearch über Ollama ist unzuverlässig, und Research braucht sie ständig. Alltagsweg ist der Cursor-SDK-Agent (inkl. Cursor-WebSearch).
 
-1. **Kein Dritt-Client außer Goose liest die Server-Instructions.** Anderswo hängt der Arbeitsvertrag allein an Werkzeug-Beschreibungen.
-2. **Die provenienzkritischen Randfälle behandelt nur der eigene Code**: leere Antwort bei erschöpftem Kontingent, Fehler mitten im Stream, 404 auf abgeschaltete Modelle. Fremde Clients zeigen eine leere Antwort einfach als Ergebnis.
-3. **Client-Defaults brechen Recherchen mittendrin ab** — und für den Nutzer sieht das nach einem Fehler *dieser* Plattform aus.
+Wer trotzdem ein Ollama-Modell nutzen will, dockt **Goose** (oder Claude Code mit Ollama-Backend) per MCP-HTTP an `127.0.0.1:8790/mcp` an — das ist ein Fremdclient, kein zweiter Engine-Pfad in der App.
 
 ---
 

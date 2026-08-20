@@ -1,15 +1,9 @@
 /**
  * Anbieter-unabhängige Schnittstelle für Modellzugriff.
  *
- * Warum diese Schicht existiert (documentation/06): Die Plattform bekommt einen
- * zweiten Betriebsmodus — eine eingebaute Research-Engine. Der Modellzugang darf
- * dabei eine Konfigurationszeile sein, kein Fundament: Dieser Markt hat 2026
- * mehrfach Anbieter, Preise und Kontingente umgestellt. Wer den Anbieterwechsel
- * nicht als Feature baut, baut ihn später als Notfall.
- *
- * Ollama ist der erste Adapter, weil er als einziger lokale UND Cloud-Modelle über
- * dieselbe API bedient — ein Adapter, drei Betriebsmodi (lokal, Cloud-Abo, und über
- * die Kompatibilitätslayer praktisch jeder andere Anbieter).
+ * Lebt weiter als Testharness: ResearchEngine + FakeProvider prüfen Quota,
+ * Checkpoint und Coverage in-process. Die produktive Schleife läuft über den
+ * Cursor-SDK-Agenten; ein eigener Ollama-Adapter in der App gibt es nicht mehr.
  */
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
@@ -59,7 +53,7 @@ export type ChatChunk =
 export interface TokenUsage {
   promptTokens: number | null
   completionTokens: number | null
-  /** Nanosekunden, wie Ollama sie liefert. */
+  /** Gesamtdauer des Aufrufs, falls der Anbieter sie liefert. */
   totalDurationMs: number | null
 }
 

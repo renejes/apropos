@@ -147,7 +147,7 @@ export function renderBriefMarkdown(input: {
     input.year_from || input.year_to ? `${input.year_from ?? '…'}–${input.year_to ?? '…'}` : '(kein Zeitraum festgelegt)'
   const discipline =
     input.discipline === 'psychology'
-      ? 'Psychologie (OpenAlex / Crossref / Europe PMC; PSYNDEX ist nicht angebunden — deutschsprachige Fachdatenbank bleibt eine Lücke)'
+      ? 'Psychologie (OpenAlex / Crossref / Europe PMC; PSYNDEX hat keine offene API — Einzelnutzer: PubPsych im Browser, https://www.pubpsych.eu)'
       : input.discipline === 'general'
         ? 'allgemein'
         : '(nicht festgelegt)'

@@ -1,3 +1,5 @@
+> **Hinweis 2026-08-20:** Die eingebaute Ollama-Engine in der App ist entfernt. Alltagsweg ist der Cursor-SDK-Agent (WebSearch inklusive). Dieses Dokument bleibt als historische Entscheidungsvorlage zu Abo-Modellen und Anbietern.
+
 # 06 · Eigene Research-Engine — Anbieter, Abo-Modelle und Machbarkeit
 
 > Kann eine eigene Deep-Research-Engine in der App über ein **Festpreis-Abo** statt über Token-Abrechnung betrieben werden? Und wenn ja — deckt dieses Abo auch die **Websuche** ab?

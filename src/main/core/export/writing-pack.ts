@@ -7,7 +7,9 @@ import { ServiceError } from '../services/research'
 import { getVisualVersion } from '../services/visual'
 import { exportBibliography, rewriteCiteMarkers, citeMarker } from '../services/biblio'
 import { graphToSvg } from './graph-svg'
+import { graphToJpeg } from './graph-jpeg'
 import { appDataDir } from '../paths'
+import { buildVisualGraph } from '../services/visual'
 
 export const writingPackSchema = z
   .object({
@@ -175,6 +177,7 @@ export function writeWritingPack(repo: Repo, rawInput: unknown, actor: string): 
         'Markiere Quellen oder Aussagen auf der Karte, oder übergib visual_version_id einer gespeicherten Sicht.'
       )
     }
+    graph = buildVisualGraph(state, 'argument_map', { scope: 'marked', marks: state.marks })
   }
 
   const sourceSet = new Set(sourceIds)
@@ -209,9 +212,8 @@ export function writeWritingPack(repo: Repo, rawInput: unknown, actor: string): 
   if (graph) {
     const svg = graphToSvg(graph)
     write(`karte-${scopeLabel}.svg`, svg)
-    if (input.jpeg_base64) {
-      write(`karte-${scopeLabel}.jpg`, Buffer.from(input.jpeg_base64, 'base64'))
-    }
+    const jpeg = input.jpeg_base64 ? Buffer.from(input.jpeg_base64, 'base64') : graphToJpeg(graph)
+    write(`karte-${scopeLabel}.jpg`, jpeg)
   }
 
   repo.logEvent(input.project_id, actor, 'export.writing_pack', { dir: root, scope: scopeLabel, files })

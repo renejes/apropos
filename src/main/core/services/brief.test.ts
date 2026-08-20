@@ -127,6 +127,7 @@ describe('Research-Brief (Phase E)', () => {
       ACTOR
     )
     expect(brief.markdown).toMatch(/PSYNDEX/)
+    expect(brief.markdown).toMatch(/pubpsych\.eu/)
     expect(brief.markdown).toMatch(/2016–2026/)
     expect(brief.markdown).toMatch(/Mindestzahl empirischer Quellen: 3/)
   })

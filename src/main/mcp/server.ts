@@ -1126,8 +1126,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Schreibpaket aus der Karten-Arbeit exportieren',
       description:
-        'Legt einen Ordner für Easy Writing an: RESEARCH-PLAN.md, references.bib (nur Quellen der Sicht), claims.md, bericht.md, do-not-claim.md, karte-*.svg. ' +
-        'IMMER mit Scope: visual_version_id ODER scope=marked. Kein Rohdump des Projekts. JPEG nur wenn der Renderer Bytes liefert.',
+        'Legt einen Ordner für Easy Writing an: RESEARCH-PLAN.md, references.bib (nur Quellen der Sicht), claims.md, bericht.md, do-not-claim.md, karte-*.svg und karte-*.jpg. ' +
+        'IMMER mit Scope: visual_version_id ODER scope=marked. Kein Rohdump des Projekts. JPEG entsteht serverseitig aus derselben Karte.',
       inputSchema: {
         project_id: z.string(),
         visual_version_id: z.string().optional(),
