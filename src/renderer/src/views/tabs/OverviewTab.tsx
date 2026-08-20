@@ -3,6 +3,7 @@ import type { DeterministicVerifyResult, ProjectState } from '../../../../shared
 import { Button, Card, Icon, SectionTitle } from '../../components/ui'
 import CoveragePanel from '../../components/CoveragePanel'
 import EnginePanel from '../../components/EnginePanel'
+import SayablePanel from '../../components/SayablePanel'
 
 export default function OverviewTab({
   state,
@@ -61,11 +62,17 @@ export default function OverviewTab({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <p className="text-xs leading-relaxed text-slate-500">
+        Der Alltagsweg ist der <strong>Agent-Chat</strong> links (Cursor-Abo). Die eingebaute Ollama-Engine darunter ist der Fallback
+        ohne Cursor-Konto.
+      </p>
       {/* Eingebaute Engine: Lauf starten, Fortschritt sehen, abbrechen */}
       <EnginePanel projectId={state.project.id} onChanged={onReload} />
 
       {/* Recherchetiefe: Teilfragen, Abdeckung, offene Lücken */}
       <CoveragePanel projectId={state.project.id} state={state} refreshKey={coverageKey} onOpenSource={onOpenSource} />
+
+      <SayablePanel state={state} />
 
       {/* Kennzahlen */}
       <div className="grid grid-cols-4 gap-3 lg:grid-cols-8">

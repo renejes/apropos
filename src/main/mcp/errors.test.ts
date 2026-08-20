@@ -5,6 +5,7 @@ import { Repo } from '../core/repo'
 import { ToolBridge } from '../core/engine/tool-bridge'
 import { installSelfCarryingProtocolErrors, translateProtocolError } from './server'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { adoptMinimalBrief } from '../core/services/brief'
 
 /**
  * Fehlerantworten müssen sich SELBST tragen.
@@ -97,6 +98,7 @@ Wer seine Quellen nicht zeigen kann, sollte keine starken Schlüsse ziehen.</p><
       policy_preset: null,
       actor: 'test',
     }).id
+    adoptMinimalBrief(repo, projectId, 'test')
     bridge = new ToolBridge(repo)
     await bridge.connect()
   })

@@ -174,7 +174,10 @@ export interface EngineRunResult {
 const CONTRACT = `Du recherchierst über eine Plattform, die Provenienz ERZWINGT. Halte dich strikt daran:
 
 - Quellen liest du mit fetch_source (nicht raten, nicht aus dem Gedächtnis). Du bekommst
-  document_id und ein Textfenster mit Zeichenpositionen.
+  document_id und ein Textfenster mit Zeichenpositionen. fetch_source und search_literature
+  laufen erst nach einem adoptierten Research-Brief.
+- Erst verstehen, dann den Brief: get_research_brief. Fehlt er, draft_research_brief
+  und adopt_research_brief. fetch_source und search_literature laufen erst danach.
 - Danach SOFORT add_source mit document_id + quote_start + quote_end. Der Server schneidet
   das Zitat selbst aus dem gespeicherten Text — du musst nichts abtippen, und ein falsch
   erinnertes Zitat ist ausgeschlossen. Gib immer die sub_question_id mit an.

@@ -22,14 +22,19 @@ import type { ToolDefinition } from '../providers/types'
  *
  * Grund: Mehrere Anbieter dokumentieren, dass die Trefferquote bei der
  * Werkzeugauswahl mit der Anzahl sinkt (Moonshot warnt vor "dozens or hundreds",
- * Gemini empfiehlt 10–20, Alibaba begrenzt auf 20 pro Request). Der Server hat 21
- * Werkzeuge — dem Modell alle gleichzeitig hinzulegen wäre fahrlässig, zumal in
- * jeder Phase nur ein Teil sinnvoll ist.
+ * Gemini empfiehlt 10–20, Alibaba begrenzt auf 20 pro Request). Deshalb Phasenfilter.
  */
 export type EnginePhase = 'planning' | 'research' | 'synthesis'
 
 const PHASE_TOOLS: Record<EnginePhase, string[]> = {
-  planning: ['get_project_state', 'plan_research', 'get_coverage_gaps'],
+  planning: [
+    'get_project_state',
+    'get_research_brief',
+    'draft_research_brief',
+    'adopt_research_brief',
+    'plan_research',
+    'get_coverage_gaps',
+  ],
   research: [
     'search_literature',
     'fetch_source',
@@ -40,8 +45,20 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'assign_source',
     'flag_uncertainty',
     'get_coverage_gaps',
+    'get_research_brief',
   ],
-  synthesis: ['get_project_state', 'search_sources', 'link_claim_to_source', 'add_report_version', 'flag_uncertainty'],
+  synthesis: [
+    'get_project_state',
+    'search_sources',
+    'link_claim_to_source',
+    'add_report_version',
+    'export_bibliography',
+    'export_writing_pack',
+    'flag_uncertainty',
+    'describe_evidence_map',
+    'prepare_view',
+    'ask_narrative',
+  ],
 }
 
 export interface ToolResult {
@@ -52,13 +69,17 @@ export interface ToolResult {
 export class ToolBridge {
   private client: Client | null = null
 
-  constructor(private readonly repo: Repo) {}
+  constructor(
+    private readonly repo: Repo,
+    private readonly actorLabel = 'engine',
+    private readonly clientName = 'research-engine'
+  ) {}
 
   async connect(): Promise<void> {
     if (this.client) return
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-    const server = buildMcpServer({ repo: this.repo, actorLabel: 'engine' })
-    const client = new Client({ name: 'research-engine', version: '0.1.0' })
+    const server = buildMcpServer({ repo: this.repo, actorLabel: this.actorLabel })
+    const client = new Client({ name: this.clientName, version: '0.1.0' })
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
     this.client = client
   }

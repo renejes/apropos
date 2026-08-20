@@ -8,6 +8,7 @@
 import { openDb } from '../src/main/core/db'
 import { Repo } from '../src/main/core/repo'
 import { searchLiterature } from '../src/main/core/services/literature'
+import { adoptMinimalBrief } from '../src/main/core/services/brief'
 
 const QUERY = process.argv[2] ?? 'retrieval augmented generation citation accuracy'
 
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
     policy_preset: null,
     actor: 'lit-check',
   })
+  adoptMinimalBrief(repo, project.id, 'lit-check')
 
   const res = await searchLiterature(
     repo,

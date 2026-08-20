@@ -13,9 +13,9 @@ export default function ChatTab({ state }: { state: ProjectState }) {
       <div className="mb-4 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-relaxed text-sky-800">
         <Icon name="history_edu" className="icon-sm mt-0.5 shrink-0" />
         <p>
-          <strong>Archiviertes Sitzungsprotokoll — nur Ansicht.</strong> Die Unterhaltung mit deiner KI führst du in deinem KI-Client
-          (z.&nbsp;B. Claude Desktop); die KI protokolliert sie hier per <code className="font-mono">add_chat_log</code> als
-          Provenienz-Beleg. Das Protokoll wandert mit in den Export, damit nachvollziehbar bleibt, wie die Research entstanden ist.
+          <strong>Archiviertes Sitzungsprotokoll — nur Ansicht.</strong> Der Live-Chat mit dem Cursor-Agenten läuft links im
+          Projektfenster. Was die KI hier per <code className="font-mono">add_chat_log</code> mitprotokolliert, ist der
+          Provenienz-Beleg für den Export — kein zweiter Chat.
         </p>
       </div>
 

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { openDb, type DB } from '../db'
 import { Repo } from '../repo'
 import { fetchDocument, recordSource } from './research'
+import { adoptMinimalBrief } from './brief'
 import { buildMinimalPdf } from '../enforce/minimal-pdf'
 
 const QUOTE = 'Verifiable provenance is the foundation of trustworthy AI research.'
@@ -43,6 +44,7 @@ describe('fetch_source + add_source auf PDF (Offset unfälschbar)', () => {
       policy_preset: null,
       actor: ACTOR,
     })
+    adoptMinimalBrief(repo, project.id, ACTOR)
     const doc = await fetchDocument(repo, { project_id: project.id, url: pdfUrl, purpose: 'arXiv-typischen Fließtext belegen' }, ACTOR)
     expect(doc.document_id).toBeTruthy()
     const start = doc.window.text.indexOf(QUOTE)

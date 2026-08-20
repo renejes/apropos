@@ -1,7 +1,14 @@
 import { z } from 'zod'
+import { createHash } from 'crypto'
+import { existsSync, readFileSync, statSync } from 'fs'
+import { extname } from 'path'
 import type { Repo } from '../repo'
 import { verifySourceDeterministic } from '../enforce/verify'
 import { fetchSourceText } from '../enforce/fetchers'
+import { extractPdfText, isPdfMagic, MAX_PDF_BYTES } from '../enforce/pdf'
+import { htmlToText } from '../enforce/textmatch'
+import { listInboxFiles, localInboxUrl, projectWorkspace, registeredWorkspace, resolveInboxFile } from '../agent/workspace'
+import { enrichSourceBiblio } from './biblio'
 import type {
   ClaimSourceLink,
   CoverageGap,
@@ -84,6 +91,8 @@ export const sourceInputSchema = z
     quote_start: z.number().int().min(0).optional().nullable(),
     quote_end: z.number().int().min(1).optional().nullable(),
     accessed_at: z.string().optional(),
+    doi: z.string().optional().nullable(),
+    source_kind: z.enum(['empirical', 'review', 'textbook', 'grey', 'web']).optional().nullable(),
   })
   .superRefine((v, ctx) => {
     const hasDoc = !!v.document_id
@@ -140,6 +149,8 @@ export const reportInputSchema = z.object({
   change_summary: z.string().optional().nullable(),
   acknowledge_gaps: z.boolean().optional(),
   gap_acknowledgement: z.string().optional().nullable(),
+  visual_version_id: z.string().optional().nullable(),
+  mark_scope: z.boolean().optional(),
 })
 
 export const subQuestionSchema = z.object({
@@ -164,6 +175,20 @@ function assertProject(repo: Repo, projectId: string): void {
       'project_not_found',
       `Projekt ${projectId} existiert nicht.`,
       'Rufe list_projects auf und verwende eine der dort genannten project_id. Erfinde keine ID. Gibt es noch kein Projekt, lege es mit create_project an.'
+    )
+  }
+}
+
+/**
+ * Suche und Abruf erst nach adoptiertem Brief — sonst Deep Research ohne Blickwinkel.
+ * Kein Env-Bypass: der Test muss rot werden, wenn diese Prüfung entfernt wird.
+ */
+export function requireAdoptedBrief(repo: Repo, projectId: string): void {
+  if (!repo.getAdoptedBrief(projectId)) {
+    throw new ServiceError(
+      'brief_required',
+      'Es gibt noch keinen adoptierten Research-Brief. Ohne Blickwinkel und Stopp-Regel darf nicht gesucht oder gelesen werden.',
+      'Rufe zuerst draft_research_brief auf, lass den Menschen den Plan bestätigen, dann adopt_research_brief.'
     )
   }
 }
@@ -208,6 +233,7 @@ export interface FetchDocumentResult {
 export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string): Promise<FetchDocumentResult> {
   const input = parseOrThrow(fetchInputSchema, rawInput, 'fetch_invalid')
   assertProject(repo, input.project_id)
+  requireAdoptedBrief(repo, input.project_id)
 
   // Bereits abgerufen? Dann kein zweiter Netzabruf — Fenster aus dem Gespeicherten liefern.
   const existing = repo
@@ -268,7 +294,7 @@ function windowOf(
   const free = MAX_OPEN_DOCUMENTS - openCount
   const budget =
     free <= 0
-      ? ' ACHTUNG: Dein Abruf-Kontingent ist damit aufgebraucht — der nächste fetch_source wird ABGELEHNT, ' +
+      ? ' ACHTUNG: Dein Abruf-Kontingent ist damit aufgebraucht — der nächste Abruf (fetch_source oder ingest_local_file) wird ABGELEHNT, ' +
         'bis du die offenen Quellen mit add_source oder exclude_source dokumentiert hast.'
       : ` Noch ${free} Abruf(e) frei, bevor du dokumentieren musst.`
   return {
@@ -286,9 +312,146 @@ function windowOf(
       '(ABSOLUTE Zeichenpositionen in diesem Dokument, gezählt ab 0 — das Fenster beginnt bei ' +
       `${start}, addiere diesen Wert also auf jede Position innerhalb des Fensters). ` +
       'Der Server schneidet das Zitat selbst heraus; tippe es NICHT ab. ' +
-      (end < doc.char_len ? `Reicht der Text nicht, lies mit fetch_source(offset=${end}) weiter.` : '') +
+      (end < doc.char_len ? `Reicht der Text nicht, lies mit demselben Werkzeug und offset=${end} weiter.` : '') +
       budget,
   }
+}
+
+// ---------------------------------------------------------------- Lokale Inbox (In-App-Agent)
+
+const ALLOWED_INBOX_EXT = new Set(['.pdf', '.txt', '.md', '.markdown', '.html', '.htm', '.csv'])
+
+export const ingestLocalSchema = z.object({
+  project_id: z.string().min(1),
+  filename: z.string().min(1),
+  purpose: z.string().min(10),
+  offset: z.number().int().min(0).optional(),
+  limit: z.number().int().min(500).max(WINDOW_MAX).optional(),
+})
+
+export const inboxListSchema = z.object({
+  project_id: z.string().min(1),
+})
+
+export interface InboxFileInfo {
+  filename: string
+  bytes: number
+}
+
+function workspaceFor(projectId: string): string {
+  return registeredWorkspace(projectId) ?? projectWorkspace(projectId)
+}
+
+export function listProjectInbox(repo: Repo, rawInput: unknown): { files: InboxFileInfo[]; next_action: string } {
+  const input = parseOrThrow(inboxListSchema, rawInput, 'inbox_invalid')
+  assertProject(repo, input.project_id)
+  const ws = workspaceFor(input.project_id)
+  const files = listInboxFiles(input.project_id).map((filename) => {
+    let bytes = 0
+    try {
+      bytes = statSync(resolveInboxFile(ws, filename)).size
+    } catch {
+      bytes = 0
+    }
+    return { filename, bytes }
+  })
+  return {
+    files,
+    next_action:
+      files.length === 0
+        ? 'Keine Dateien in der Inbox. Der Mensch hängt sie in der App an (Büroklammer im Chat). Danach list_inbox erneut aufrufen.'
+        : 'Lies eine Datei mit ingest_local_file (filename + purpose), danach SOFORT add_source mit document_id + quote_start + quote_end.',
+  }
+}
+
+/**
+ * Liest eine Inbox-Datei (kein Netz, kein file://-Fetcher) und legt sie wie fetch_source
+ * als Dokument an. Dieselbe Pending-Grenze gilt — sonst umgeht die Inbox das Gate.
+ */
+export async function ingestLocalFile(repo: Repo, rawInput: unknown, actor: string): Promise<FetchDocumentResult> {
+  const input = parseOrThrow(ingestLocalSchema, rawInput, 'ingest_invalid')
+  assertProject(repo, input.project_id)
+  requireAdoptedBrief(repo, input.project_id)
+
+  const ext = extname(input.filename).toLowerCase()
+  if (!ALLOWED_INBOX_EXT.has(ext)) {
+    throw new ServiceError(
+      'ingest_type',
+      `Dateityp "${ext || '(ohne Endung)'}" ist nicht erlaubt.`,
+      'Nur pdf, txt, md, html oder csv. Hänge die Datei in der App erneut mit passender Endung an.'
+    )
+  }
+
+  const ws = workspaceFor(input.project_id)
+  let absPath: string
+  try {
+    absPath = resolveInboxFile(ws, input.filename)
+  } catch {
+    throw new ServiceError(
+      'inbox_path',
+      `Datei "${input.filename}" liegt nicht in der Inbox (oder der Name ist ungültig).`,
+      'Rufe list_inbox auf und verwende GENAU einen der dort genannten Dateinamen — ohne Pfad, ohne ..'
+    )
+  }
+  if (!existsSync(absPath)) {
+    throw new ServiceError(
+      'inbox_missing',
+      `Datei "${input.filename}" wurde in der Inbox nicht gefunden.`,
+      'Rufe list_inbox auf. Existiert die Datei nicht, muss der Mensch sie in der App anhängen.'
+    )
+  }
+
+  const url = localInboxUrl(input.filename)
+  const existing = repo.listDocuments(input.project_id).find((d) => d.url === url && d.status !== 'excluded')
+  if (existing) {
+    return windowOf(repo.getDocument(existing.id)!, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true)
+  }
+
+  const open = repo.listOpenDocuments(input.project_id)
+  if (open.length >= MAX_OPEN_DOCUMENTS) {
+    throw new ServiceError(
+      'open_documents_limit',
+      `${open.length} abgerufene Quelle(n) sind noch nicht dokumentiert:\n` + open.map((d) => `- ${d.url}`).join('\n'),
+      'Dokumentiere JEDE dieser URLs, bevor du erneut liest: add_source (document_id + Offsets) oder exclude_source. Erst danach lässt ingest_local_file / fetch_source dich weiterlesen.'
+    )
+  }
+
+  const bytes = readFileSync(absPath)
+  if (bytes.length > MAX_PDF_BYTES) {
+    throw new ServiceError(
+      'ingest_too_large',
+      `Datei ist ${bytes.length} Bytes groß (Maximum ${MAX_PDF_BYTES}).`,
+      'Bitte eine kleinere Datei anhängen oder die Quelle über fetch_source aus dem Netz lesen.'
+    )
+  }
+
+  let text = ''
+  if (isPdfMagic(bytes) || ext === '.pdf') {
+    const extracted = await extractPdfText(new Uint8Array(bytes))
+    text = extracted.text
+  } else if (ext === '.html' || ext === '.htm') {
+    text = htmlToText(bytes.toString('utf-8'))
+  } else {
+    text = bytes.toString('utf-8')
+  }
+  if (!text.trim()) {
+    throw new ServiceError(
+      'ingest_empty',
+      `Aus "${input.filename}" konnte kein Text gelesen werden (leere Datei oder PDF ohne Textschicht).`,
+      'Scans ohne Textschicht können so nicht belegt werden. Erfasse die Quelle mit add_source OHNE document_id und mit wörtlichem verbatim_quote — sie geht in die menschliche Prüfung. Oder schließe sie mit exclude_source aus.'
+    )
+  }
+
+  const doc = repo.addDocument({
+    project_id: input.project_id,
+    url,
+    title: input.filename,
+    text,
+    content_hash: createHash('sha256').update(bytes).digest('hex'),
+    purpose: input.purpose,
+    actor,
+  })
+  return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
 }
 
 // ---------------------------------------------------------------- Quellen
@@ -428,8 +591,16 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
     document_id: input.document_id ?? null,
     quote_start: input.quote_start ?? null,
     quote_end: input.quote_end ?? null,
+    source_kind: input.source_kind ?? null,
     actor,
   })
+
+  let stored = source
+  try {
+    stored = await enrichSourceBiblio(repo, source, input.doi)
+  } catch {
+    stored = source
+  }
 
   let check: { urlResolved: boolean | null; quoteVerified: boolean | null; quoteMatchScore: number | null; verdict: string; note: string }
 
@@ -471,7 +642,7 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
   const unchecked = !doc && check.quoteVerified === null
 
   return {
-    source: repo.getSource(source.id)!,
+    source: repo.getSource(stored.id)!,
     stored: true,
     status: doc
       ? 'OK — Zitat serverseitig aus dem gespeicherten Dokument geschnitten, exakt per Konstruktion.'
@@ -661,14 +832,27 @@ export function linkClaim(repo: Repo, rawInput: unknown, actor: string): { claim
 
 export function planResearch(
   repo: Repo,
-  input: { project_id: string; sub_questions: unknown[] },
+  input: { project_id: string; sub_questions?: unknown[] },
   actor: string
 ): { sub_questions: SubQuestion[]; round: ResearchRound } {
   assertProject(repo, input.project_id)
-  if (!Array.isArray(input.sub_questions) || input.sub_questions.length === 0) {
-    throw new ServiceError('plan_empty', 'Mindestens eine Teilfrage angeben.', 'Zerlege die Forschungsfrage in 3–8 unabhängig recherchierbare Teilfragen.')
+  requireAdoptedBrief(repo, input.project_id)
+  const brief = repo.getAdoptedBrief(input.project_id)
+  let raw = input.sub_questions
+  if (!Array.isArray(raw) || raw.length === 0) {
+    raw = (brief?.sub_questions ?? []).map((question) => ({
+      question,
+      rationale: 'Aus dem adoptierten Research-Brief.',
+    }))
   }
-  const parsed = input.sub_questions.map((q) => parseOrThrow(subQuestionSchema, q, 'subquestion_invalid'))
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new ServiceError(
+      'plan_empty',
+      'Mindestens eine Teilfrage angeben.',
+      'Zerlege die Forschungsfrage in 3–8 unabhängig recherchierbare Teilfragen — oder übernimm sie aus dem Brief, indem du sub_questions weglässt.'
+    )
+  }
+  const parsed = raw.map((q) => parseOrThrow(subQuestionSchema, q, 'subquestion_invalid'))
 
   // Duplikate sowohl gegen die DB als auch INNERHALB des Aufrufs abfangen.
   const seen = new Set(repo.listSubQuestions(input.project_id).map((s) => s.question.trim().toLowerCase()))
@@ -844,6 +1028,39 @@ export function computeCoverage(repo: Repo, projectId: string): CoverageReport {
       detail: 'Ohne aktive Teilfragen lässt sich Abdeckung nicht messen.',
       next_action: 'plan_research aufrufen und die Forschungsfrage in 3–8 Teilfragen zerlegen.',
     })
+  }
+
+  const brief = repo.getAdoptedBrief(projectId)
+  if (brief?.min_empirical != null && brief.min_empirical > 0) {
+    const empirical = activeSources.filter(
+      (s) => s.source_kind === 'empirical' && (s.quote_verified === 1 || signed(s))
+    )
+    if (empirical.length < brief.min_empirical) {
+      add({
+        kind: 'empirical_shortfall',
+        entity_id: projectId,
+        label: `Zu wenige empirische Quellen (${empirical.length}/${brief.min_empirical})`,
+        detail: `Der Brief verlangt mindestens ${brief.min_empirical} belegte empirische Paper; aktuell ${empirical.length}.`,
+        next_action:
+          'Suche gezielt empirische Studien (source_kind=empirical) im Brief-Zeitraum und erfasse sie mit fetch_source + add_source.',
+      })
+    }
+  }
+  if (brief && (brief.year_from != null || brief.year_to != null)) {
+    const from = brief.year_from ?? 1500
+    const to = brief.year_to ?? 2100
+    const inRange = activeSources.filter(
+      (s) => s.year != null && s.year >= from && s.year <= to && (s.quote_verified === 1 || signed(s))
+    )
+    if (inRange.length === 0) {
+      add({
+        kind: 'year_range_shortfall',
+        entity_id: projectId,
+        label: `Keine belegte Quelle im Zeitraum ${from}–${to}`,
+        detail: 'year_from/year_to aus dem Brief steuern die Suche — ohne Treffer in diesem Fenster ist die Coverage unvollständig.',
+        next_action: `Rufe search_literature mit year_from=${from} und year_to=${to} auf und belege passende Treffer.`,
+      })
+    }
   }
 
   // Selbsturteile sichtbar machen: eine Kante, die dieselbe Session beurteilt hat, ist
@@ -1040,6 +1257,8 @@ function writeReportChecked(
     content_markdown: input.content_markdown,
     parent_version_id: input.parent_version_id ?? null,
     change_summary: summary,
+    visual_version_id: input.visual_version_id ?? null,
+    mark_scope: input.mark_scope ?? false,
     actor,
   })
 

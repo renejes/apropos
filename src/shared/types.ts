@@ -5,6 +5,11 @@
 
 export type ProjectMode = 'academic' | 'business'
 export type ReviewStatus = 'pending' | 'ai_checked' | 'human_signed' | 'rejected'
+export type BriefStatus = 'draft' | 'adopted'
+export type BriefDeliverable = 'blog' | 'academic' | 'both'
+export type BriefDiscipline = 'psychology' | 'general'
+export type SourceKind = 'empirical' | 'review' | 'textbook' | 'grey' | 'web'
+export type BibEntryType = 'article' | 'book' | 'inproceedings' | 'misc'
 export type SubQuestionStatus = 'open' | 'covered' | 'dropped'
 export type SupportType = 'supports' | 'contrasts' | 'mentions'
 export type VerificationStatus = 'pending' | 'supported' | 'partial' | 'unsupported' | 'source_unreachable'
@@ -45,8 +50,49 @@ export interface Source {
   document_id: string | null
   quote_start: number | null
   quote_end: number | null
+  /** Bibliografische Identität (Schema v8) — Citekey ist stabil, nicht [S#]. */
+  doi: string | null
+  authors_json: string | null
+  year: number | null
+  venue: string | null
+  entry_type: BibEntryType | null
+  citekey: string | null
+  /** Semantik der Quelle (Schema v10) — steuert Coverage, nicht Wahrheit. */
+  source_kind: SourceKind | null
   created_at: string
   created_by: string
+}
+
+export interface ResearchFrame {
+  key: string
+  label: string
+  chosen: boolean
+}
+
+/** Intake-Artefakt: Blickwinkel und Stopp-Regel, bevor gesucht wird. */
+export interface ResearchBrief {
+  id: string
+  project_id: string
+  status: BriefStatus
+  deliverable: BriefDeliverable
+  audience: string
+  goal: string
+  frames: ResearchFrame[]
+  chosen_frame_key: string
+  inclusion: string
+  exclusion: string
+  sub_questions: string[]
+  stop_rule: string
+  taboos: string
+  markdown: string
+  year_from: number | null
+  year_to: number | null
+  min_empirical: number | null
+  discipline: BriefDiscipline | null
+  created_at: string
+  created_by: string
+  adopted_at: string | null
+  adopted_by: string | null
 }
 
 export type DocumentStatus = 'open' | 'used' | 'excluded'
@@ -116,6 +162,10 @@ export interface ReportVersion {
   content_markdown: string
   snapshot_hash: string
   change_summary: string | null
+  /** Schreibpaket: Bericht an eine gespeicherte Karten-Version gebunden. */
+  visual_version_id: string | null
+  /** Schreibpaket: Bericht an das Mark-Set gebunden (scope=marked). */
+  mark_scope: 0 | 1
   created_at: string
   created_by: string
 }
@@ -221,6 +271,83 @@ export interface ResearchRound {
 }
 
 /**
+ * Versionierte Evidenzkarte (Schema v6). Knoten ohne entity_id sind verboten.
+ */
+export type VisualLayoutKind = 'argument_map' | 'theme_clusters'
+export type VisualNodeKind = 'source' | 'claim' | 'sub_question'
+export type VisualRelation = 'supports' | 'contrasts' | 'mentions' | 'part_of' | 'needs_research'
+export type VisualScope = 'all' | 'marked'
+export type MarkEntityType = 'source' | 'claim'
+export type NarrativeVerdict = 'durable' | 'mixed' | 'needs_research'
+
+/** Immutable Aufbereitung der Evidenzkarte (Schema v6). */
+export interface VisualVersion {
+  id: string
+  project_id: string
+  parent_version_id: string | null
+  prompt: string
+  layout_kind: VisualLayoutKind
+  scope: VisualScope
+  interpretative: 0 | 1
+  snapshot_hash: string
+  created_at: string
+  created_by: string
+}
+
+export interface VisualNode {
+  id: string
+  version_id: string
+  kind: VisualNodeKind
+  entity_id: string
+  label: string
+  cluster_key: string | null
+  pos_x: number
+  pos_y: number
+}
+
+export interface VisualEdge {
+  id: string
+  version_id: string
+  from_node: string
+  to_node: string
+  relation: VisualRelation
+}
+
+/** Projektsweites Arbeitsset — hängt an der Entität, nicht an einer Karten-Version. */
+export interface Mark {
+  id: string
+  project_id: string
+  entity_type: MarkEntityType
+  entity_id: string
+  created_at: string
+  created_by: string
+}
+
+/** Layout + Knoten für Live-Sicht und gespeicherte Versionen. */
+export interface VisualGraph {
+  layout_kind: VisualLayoutKind
+  width: number
+  height: number
+  interpretative: boolean
+  clusters: Array<{ key: string; label: string; unverified: boolean }>
+  nodes: Array<{
+    id: string
+    kind: VisualNodeKind
+    entity_id: string
+    label: string
+    cluster_key: string | null
+    pos_x: number
+    pos_y: number
+  }>
+  edges: Array<{
+    id: string
+    from_node: string
+    to_node: string
+    relation: VisualRelation
+  }>
+}
+
+/**
  * Zustand eines Laufs der eingebauten Engine — der Checkpoint.
  *
  * 'interrupted' entsteht nicht während des Laufs, sondern beim nächsten App-Start:
@@ -264,6 +391,10 @@ export type CoverageGapKind =
   | 'link_refuted'
   /** Belegkante noch nicht geprüft — informativ, blockiert NICHT (Verify-Session kommt nach dem Bericht). */
   | 'link_unverified'
+  /** Brief verlangt n empirische Quellen; zu wenige sind belegt. */
+  | 'empirical_shortfall'
+  /** Belegte Quellen liegen außerhalb des Brief-Zeitraums bzw. fehlen darin. */
+  | 'year_range_shortfall'
 
 /** Eine konkrete, serverseitig berechnete Lücke — kein Modell-Urteil. */
 export interface CoverageGap {
@@ -338,6 +469,9 @@ export interface ProjectState {
   excludedSources: ExcludedSource[]
   subQuestions: SubQuestion[]
   rounds: ResearchRound[]
+  marks: Mark[]
+  visualVersions: VisualVersion[]
+  researchBrief: ResearchBrief | null
 }
 
 export interface ProjectSummary extends Project {

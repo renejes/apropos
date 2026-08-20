@@ -1,6 +1,18 @@
 import { homedir } from 'os'
 import { join } from 'path'
 
+/** Gemeinsames User-Data-Verzeichnis der App (DB, Agent-Workspaces, Settings). */
+export function appDataDir(): string {
+  if (process.env.ROP_DATA_DIR) return process.env.ROP_DATA_DIR
+  const base =
+    process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support')
+      : process.platform === 'win32'
+        ? (process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'))
+        : (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
+  return join(base, 'research-overview-platform')
+}
+
 /**
  * Standard-DB-Pfad — identisch für Electron-App und stdio-MCP-Server,
  * damit beide Prozesse (via WAL) auf derselben Source-of-Truth arbeiten.
@@ -8,13 +20,16 @@ import { join } from 'path'
  */
 export function defaultDbPath(): string {
   if (process.env.RESEARCH_DB_PATH) return process.env.RESEARCH_DB_PATH
-  const base =
-    process.platform === 'darwin'
-      ? join(homedir(), 'Library', 'Application Support')
-      : process.platform === 'win32'
-        ? (process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'))
-        : (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
-  return join(base, 'research-overview-platform', 'research.db')
+  return join(appDataDir(), 'research.db')
+}
+
+export function defaultAgentRoot(): string {
+  if (process.env.ROP_AGENT_ROOT) return process.env.ROP_AGENT_ROOT
+  return join(appDataDir(), 'agent-workspaces')
+}
+
+export function agentSettingsPath(): string {
+  return join(appDataDir(), 'agent-settings.json')
 }
 
 export const DEFAULT_MCP_PORT = 8790

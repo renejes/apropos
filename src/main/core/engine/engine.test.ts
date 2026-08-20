@@ -8,6 +8,7 @@ import { runAgentLoop } from './agent-loop'
 import { FakeProvider, type FakeTurn } from './fake-provider'
 import { ResearchEngine, type EngineEvent } from './research-engine'
 import { computeCoverage } from '../services/research'
+import { adoptMinimalBrief } from '../services/brief'
 
 /**
  * Tests der Agenten-Schleife mit skriptbarem Modell und echtem MCP-Server
@@ -59,6 +60,7 @@ describe('Agenten-Schleife & Engine', () => {
       policy_preset: null,
       actor: 'test',
     }).id
+    adoptMinimalBrief(repo, projectId, 'test')
     bridge = new ToolBridge(repo)
     await bridge.connect()
   })
@@ -69,7 +71,12 @@ describe('Agenten-Schleife & Engine', () => {
     const tools = await bridge.listAll()
     expect(tools.length).toBeGreaterThanOrEqual(21)
     expect(tools.map((t) => t.name)).toContain('add_source')
+    expect(tools.map((t) => t.name)).toContain('draft_research_brief')
+    expect(tools.map((t) => t.name)).toContain('adopt_research_brief')
     expect(tools.find((t) => t.name === 'add_source')?.parameters).toHaveProperty('properties')
+    const addSourceParams = tools.find((t) => t.name === 'add_source')?.parameters as { properties?: Record<string, unknown> }
+    expect(addSourceParams.properties).toHaveProperty('source_kind')
+    expect(addSourceParams.properties).toHaveProperty('quote_locator')
   })
 
   it('gibt je Phase nur die passenden Werkzeuge heraus — unter der 15er-Grenze', async () => {

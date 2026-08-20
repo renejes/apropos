@@ -19,6 +19,8 @@ const GAP_LABEL: Record<CoverageGapKind, string> = {
   claim_missing: 'Keine Aussagen',
   link_refuted: 'Belegkante widerlegt',
   link_unverified: 'Belegkante ungeprüft',
+  empirical_shortfall: 'Zu wenige empirische Quellen',
+  year_range_shortfall: 'Zeitraum des Briefs nicht bedient',
 }
 
 const GAP_ICON: Record<CoverageGapKind, string> = {
@@ -32,6 +34,8 @@ const GAP_ICON: Record<CoverageGapKind, string> = {
   claim_missing: 'fact_check',
   link_refuted: 'gavel',
   link_unverified: 'schedule',
+  empirical_shortfall: 'science',
+  year_range_shortfall: 'date_range',
 }
 
 /** UUIDs aus der KI-Handlungsanweisung entfernen — der Mensch klickt, statt IDs zu tippen. */

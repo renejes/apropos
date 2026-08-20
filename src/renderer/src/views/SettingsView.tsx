@@ -3,6 +3,7 @@ import type { ServerInfo } from '../../../shared/types'
 import type { ModelInfo, ProviderHealth } from '../../../main/core/providers/types'
 import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
+import CursorSettings from '../components/CursorSettings'
 
 /** MCP-Verbindungsinfos + Demo-Seed. */
 /**
@@ -146,14 +147,17 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
   const cursorConfig = cursorMcpJson(info.httpUrl)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-8">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-3xl space-y-6 p-8">
       <div>
-        <h1 className="text-lg font-semibold">MCP & Einstellungen</h1>
+        <h1 className="text-lg font-semibold">Einstellungen</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Primärer Weg: Cursor (Agent-Modus, nicht Chat). Start: <code className="font-mono text-xs">npm start</code>. Andere Clients
-          docken über denselben lokalen Endpoint an. Alles, was sie eintragen, landet mit voller Provenienz in der lokalen Datenbank.
+          Alltagsweg: Cursor-Konto und Modell hier, Research im Agent-Chat des Projekts. MCP-HTTP und Ollama bleiben für
+          Fremdclients und als Fallback.
         </p>
       </div>
+
+      <CursorSettings />
 
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between">
@@ -304,6 +308,7 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
           Belege deterministisch (URL + wörtliches Zitat), eine geblindete Verify-Session kann semantisch prüfen, und die endgültige
           Freigabe bleibt immer bei dir.
         </p>
+      </div>
       </div>
     </div>
   )

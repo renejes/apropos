@@ -96,7 +96,7 @@ export default function App() {
             }`}
           >
             <Icon name="settings" className="icon-sm" />
-            MCP & Einstellungen
+            Einstellungen
             {mcpRunning != null && (
               <span
                 className={`ml-auto h-2 w-2 rounded-full ${mcpRunning ? 'bg-emerald-500' : 'bg-red-500'}`}
@@ -108,7 +108,7 @@ export default function App() {
       </aside>
 
       {/* Main */}
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-hidden">
         {view === 'settings' ? (
           <SettingsView onSeeded={refresh} />
         ) : selectedId ? (
@@ -117,7 +117,7 @@ export default function App() {
           <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
             <Icon name="science" className="icon-lg" />
             <p className="max-w-md text-center text-sm">
-              Wähle links ein Projekt oder verbinde deine KI mit dem MCP-Server (siehe Einstellungen), damit sie eine Research anlegt.
+              Wähle links ein Projekt. Die Research führst du im Agent-Chat — ohne zweite IDE.
             </p>
           </div>
         )}

@@ -1,4 +1,5 @@
 import type { ProjectState, ReportVersion, Source } from '../../../shared/types'
+import { citeMarker, rewriteCiteMarkers } from '../services/biblio'
 
 /**
  * Zitierbarer Markdown-Export (documentation/01, "Markdown-Export").
@@ -62,7 +63,7 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
       '> ⚠️ _Der folgende Berichtstext ist KI-generierter Inhalt und wird unverändert wiedergegeben. Verbindlich geprüfte Angaben stehen ausschließlich im Quellenverzeichnis unten._'
     )
     lines.push('')
-    lines.push(v.content_markdown.trim())
+    lines.push(rewriteCiteMarkers(v.content_markdown.trim(), state.sources))
     lines.push('')
   }
 
@@ -82,8 +83,10 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
       lines.push(`- **${inline(claim.claim_text, 500)}**${claim.report_section ? ` _(Abschnitt: ${inline(claim.report_section, 80)})_` : ''}`)
       for (const link of links) {
         const idx = sourceIndex.get(link.source_id)
+        const src = state.sources.find((s) => s.id === link.source_id)
+        const marker = src ? citeMarker(src, idx, true) : `[S${idx ?? '?'}]`
         lines.push(
-          `  - [S${idx ?? '? — Quelle nicht in diesem Projekt!'}] ${link.support_type} · Verifikation: **${link.verification_status}**${link.confidence ? ` (Konfidenz: ${link.confidence})` : ''}`
+          `  - ${marker} ${link.support_type} · Verifikation: **${link.verification_status}**${link.confidence ? ` (Konfidenz: ${link.confidence})` : ''}`
         )
         lines.push(`    Beleg: "${inline(link.quote_span, 600)}"`)
       }
@@ -209,9 +212,10 @@ function renderSource(s: Source, idx: number, state: ProjectState): string[] {
     .find((r) => r.entity_type === 'source' && r.entity_id === s.id && r.reviewer_type === 'human')
   const aiReviews = state.reviews.filter((r) => r.entity_type === 'source' && r.entity_id === s.id && r.reviewer_type === 'ai_judge')
 
-  lines.push(`### [S${idx}] ${inline(s.title, 200)}`)
+  lines.push(`### ${citeMarker(s, idx)} ${inline(s.title, 200)}`)
   lines.push('')
   lines.push(`- **URL:** <${safeUrl(s.url)}> (Zugriff: ${s.accessed_at}, Methode: ${inline(s.retrieval_method, 120)})`)
+  if (s.citekey) lines.push(`- **Citekey:** \`[@${inline(s.citekey, 80)}]\`${s.doi ? ` · DOI: ${inline(s.doi, 80)}` : ''}`)
   lines.push(`- **Warum diese Quelle:** ${inline(s.reason)}`)
   lines.push(`- **Extraktion:** ${inline(s.extraction)}`)
   lines.push(`- **Beitrag:** ${inline(s.contribution)}`)

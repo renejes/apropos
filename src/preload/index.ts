@@ -9,13 +9,26 @@ import type {
   EngineRun,
   EventLogEntry,
   FetchedDocument,
+  Mark,
+  MarkEntityType,
   Project,
   ProjectState,
   ProjectSummary,
   ReportVersion,
   ServerInfo,
   Source,
+  VisualGraph,
+  VisualLayoutKind,
+  VisualVersion,
 } from '../shared/types'
+import type {
+  AgentAuthStatus,
+  AgentChatEvent,
+  AgentModelInfo,
+  AgentRunState,
+  AgentSendResult,
+  AgentSettings,
+} from '../shared/agent'
 
 /** Typisierte, schmale API-Fläche für den Renderer. */
 const api = {
@@ -30,6 +43,25 @@ const api = {
     ipcRenderer.invoke('sources:sign', sourceId, verdict, note),
 
   getCoverage: (projectId: string): Promise<CoverageReport> => ipcRenderer.invoke('coverage:get', projectId),
+  describeMap: (
+    projectId: string,
+    layoutKind?: VisualLayoutKind
+  ): Promise<{ layout_kind: VisualLayoutKind; live: true; graph: VisualGraph; marks: Mark[]; versions: VisualVersion[] }> =>
+    ipcRenderer.invoke('visual:describe', projectId, layoutKind),
+  prepareView: (input: {
+    project_id: string
+    question: string
+    layout_kind: VisualLayoutKind
+    scope?: 'all' | 'marked'
+    parent_version_id?: string | null
+  }): Promise<{ version: VisualVersion; graph: VisualGraph }> => ipcRenderer.invoke('visual:prepare', input),
+  getVisualVersion: (projectId: string, versionId: string): Promise<{ version: VisualVersion; graph: VisualGraph }> =>
+    ipcRenderer.invoke('visual:get', projectId, versionId),
+  toggleMark: (
+    projectId: string,
+    entityType: MarkEntityType,
+    entityId: string
+  ): Promise<{ marked: boolean; mark: Mark | null }> => ipcRenderer.invoke('marks:toggle', projectId, entityType, entityId),
   assignSource: (sourceId: string, subQuestionId: string | null): Promise<Source> =>
     ipcRenderer.invoke('sources:assign', sourceId, subQuestionId),
   listDocuments: (projectId: string): Promise<Array<Omit<FetchedDocument, 'text'>>> => ipcRenderer.invoke('documents:list', projectId),
@@ -54,6 +86,15 @@ const api = {
     ipcRenderer.invoke('export:markdown', projectId, versionId),
   copyMarkdown: (projectId: string, versionId: string | null): Promise<{ copied: boolean }> =>
     ipcRenderer.invoke('export:copy', projectId, versionId),
+  exportBibliography: (projectId: string): Promise<{ saved: boolean; filePath?: string }> =>
+    ipcRenderer.invoke('export:bibliography', projectId),
+  exportWritingPack: (input: {
+    project_id: string
+    visual_version_id?: string
+    scope?: 'marked'
+    jpeg_base64?: string
+  }): Promise<{ dir: string; files: string[]; source_ids: string[]; claim_ids: string[]; scope: string }> =>
+    ipcRenderer.invoke('export:writingPack', input),
 
   startEngine: (input: StartEngineInput): Promise<EngineRunResult> => ipcRenderer.invoke('engine:start', input),
   stopEngine: (): Promise<boolean> => ipcRenderer.invoke('engine:stop'),
@@ -71,6 +112,31 @@ const api = {
 
   serverInfo: (): Promise<ServerInfo> => ipcRenderer.invoke('server:info'),
   seedDemo: (): Promise<string> => ipcRenderer.invoke('demo:seed'),
+
+  agentAuthStatus: (): Promise<AgentAuthStatus> => ipcRenderer.invoke('agent:authStatus'),
+  agentBrowserLogin: (): Promise<AgentAuthStatus> => ipcRenderer.invoke('agent:browserLogin'),
+  agentCancelLogin: (): Promise<boolean> => ipcRenderer.invoke('agent:cancelLogin'),
+  agentLogout: (): Promise<AgentAuthStatus> => ipcRenderer.invoke('agent:logout'),
+  agentListModels: (): Promise<AgentModelInfo[]> => ipcRenderer.invoke('agent:listModels'),
+  agentGetSettings: (): Promise<AgentSettings> => ipcRenderer.invoke('agent:getSettings'),
+  agentSetSettings: (settings: AgentSettings): Promise<AgentSettings> => ipcRenderer.invoke('agent:setSettings', settings),
+  agentSend: (projectId: string, text: string, attached: string[]): Promise<AgentSendResult> =>
+    ipcRenderer.invoke('agent:send', projectId, text, attached),
+  agentCancel: (projectId: string): Promise<boolean> => ipcRenderer.invoke('agent:cancel', projectId),
+  agentAttach: (projectId: string): Promise<string[]> => ipcRenderer.invoke('agent:attach', projectId),
+  agentHistory: (projectId: string): Promise<AgentChatEvent[]> => ipcRenderer.invoke('agent:history', projectId),
+  agentRunState: (projectId: string): Promise<AgentRunState> => ipcRenderer.invoke('agent:runState', projectId),
+  onAgentEvent: (cb: (payload: { projectId: string; event: AgentChatEvent }) => void): (() => void) => {
+    const listener = (_e: unknown, payload: { projectId: string; event: AgentChatEvent }) => cb(payload)
+    ipcRenderer.on('agent:event', listener)
+    return () => ipcRenderer.removeListener('agent:event', listener)
+  },
+  onAgentLoginUrl: (cb: (url: string) => void): (() => void) => {
+    const listener = (_e: unknown, url: string) => cb(url)
+    ipcRenderer.on('agent:loginUrl', listener)
+    return () => ipcRenderer.removeListener('agent:loginUrl', listener)
+  },
+  openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('open:external', url),
 }
 
 export type RendererApi = typeof api

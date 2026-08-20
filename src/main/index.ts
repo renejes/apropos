@@ -5,6 +5,7 @@ import { Repo } from './core/repo'
 import { defaultDbPath, DEFAULT_MCP_PORT } from './core/paths'
 import { startMcpHttpServer, type RunningHttpServer } from './mcp/http'
 import { registerIpc } from './ipc'
+import { CursorAgentHost } from './core/agent/host'
 
 /**
  * Electron Main: hostet DB, Repo und den eingebauten MCP-HTTP-Server
@@ -13,6 +14,7 @@ import { registerIpc } from './ipc'
 
 let mcpServer: RunningHttpServer | null = null
 let dbHandle: ReturnType<typeof openDb> | null = null
+let agentHost: CursorAgentHost | null = null
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -49,6 +51,8 @@ app.whenReady().then(async () => {
   const db = openDb(dbPath)
   dbHandle = db
   const repo = new Repo(db)
+  const host = new CursorAgentHost(repo)
+  agentHost = host
 
   // Phantomläufe heilen: Ein Engine-Lauf existiert nur im Prozess, der ihn treibt.
   // Steht beim Start noch einer auf 'running', ist dieser Prozess gestorben — der
@@ -65,7 +69,7 @@ app.whenReady().then(async () => {
     console.error('[research-overview] MCP server failed to start:', err)
   }
 
-  registerIpc({ repo, dbPath, mcp: () => mcpServer })
+  registerIpc({ repo, dbPath, mcp: () => mcpServer, agent: host })
 
   createWindow()
   app.on('activate', () => {
@@ -85,6 +89,11 @@ app.on('will-quit', (event) => {
   event.preventDefault()
   cleanedUp = true
   void (async () => {
+    try {
+      await agentHost?.disposeAll()
+    } catch {
+      /* egal */
+    }
     try {
       await mcpServer?.close()
     } catch {

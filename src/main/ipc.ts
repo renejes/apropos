@@ -1,15 +1,20 @@
-import { app, ipcMain, dialog, clipboard, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, clipboard, BrowserWindow, shell } from 'electron'
 import { existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Repo } from './core/repo'
 import type { RunningHttpServer } from './mcp/http'
 import { reVerifyProject } from './core/enforce/verify'
 import { exportProjectMarkdown } from './core/export/markdown'
+import { exportBibliography } from './core/services/biblio'
+import { writeWritingPack } from './core/export/writing-pack'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage } from './core/services/research'
+import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
 import { OllamaProvider } from './core/providers/ollama'
 import { EngineRunner, type StartEngineInput } from './engine-runner'
 import type { ServerInfo } from '../shared/types'
+import type { AgentSettings } from '../shared/agent'
+import type { CursorAgentHost } from './core/agent/host'
 
 /**
  * IPC-Brücke Renderer ↔ Main. Menschlicher Sign-off läuft AUSSCHLIESSLICH
@@ -19,6 +24,7 @@ interface IpcDeps {
   repo: Repo
   dbPath: string
   mcp: () => RunningHttpServer | null
+  agent: CursorAgentHost
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -40,6 +46,29 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Recherchetiefe: serverseitig berechnete Abdeckung — dieselbe Rechnung wie für die KI.
   ipcMain.handle('coverage:get', (_e, projectId: string) => computeCoverage(repo, projectId))
+
+  ipcMain.handle('visual:describe', (_e, projectId: string, layoutKind?: 'theme_clusters' | 'argument_map') =>
+    describeEvidenceMap(repo, { project_id: projectId, layout_kind: layoutKind })
+  )
+  ipcMain.handle(
+    'visual:prepare',
+    (
+      _e,
+      input: {
+        project_id: string
+        question: string
+        layout_kind: 'theme_clusters' | 'argument_map'
+        scope?: 'all' | 'marked'
+        parent_version_id?: string | null
+      }
+    ) => prepareView(repo, input, HUMAN)
+  )
+  ipcMain.handle('visual:get', (_e, projectId: string, versionId: string) =>
+    getVisualVersion(repo, { project_id: projectId, version_id: versionId })
+  )
+  ipcMain.handle('marks:toggle', (_e, projectId: string, entityType: 'source' | 'claim', entityId: string) =>
+    toggleMark(repo, { project_id: projectId, entity_type: entityType, entity_id: entityId }, HUMAN)
+  )
 
   ipcMain.handle('sources:assign', (_e, sourceId: string, subQuestionId: string | null) =>
     repo.assignSourceToSubQuestion(sourceId, subQuestionId, HUMAN)
@@ -121,6 +150,34 @@ export function registerIpc(deps: IpcDeps): void {
     return { copied: true }
   })
 
+  ipcMain.handle('export:bibliography', async (e, projectId: string) => {
+    const state = repo.getProjectState(projectId)
+    const bibtex = exportBibliography(repo, projectId)
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+      title: 'Für Easy Writing exportieren',
+      defaultPath: `${state.project.title.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 60)}-references.bib`,
+      filters: [{ name: 'BibTeX', extensions: ['bib'] }],
+    })
+    if (canceled || !filePath) return { saved: false }
+    writeFileSync(filePath, bibtex, 'utf-8')
+    repo.logEvent(projectId, 'human:ui', 'export.bibliography', { file: filePath })
+    return { saved: true, filePath }
+  })
+
+  ipcMain.handle(
+    'export:writingPack',
+    (
+      _e,
+      input: {
+        project_id: string
+        visual_version_id?: string
+        scope?: 'marked'
+        jpeg_base64?: string
+      }
+    ) => writeWritingPack(repo, input, HUMAN)
+  )
+
   ipcMain.handle('server:info', (): ServerInfo => {
     const mcp = deps.mcp()
     return {
@@ -163,4 +220,75 @@ export function registerIpc(deps: IpcDeps): void {
       return []
     }
   })
+
+  const { agent } = deps
+  agent.setSink((projectId, event) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue
+      try {
+        win.webContents.send('agent:event', { projectId, event })
+      } catch {
+        /* Fenster weg */
+      }
+    }
+  })
+
+  ipcMain.handle('agent:authStatus', () => agent.authStatus())
+  ipcMain.handle('agent:browserLogin', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const sendUrl = (url: string) => {
+      if (!win || win.isDestroyed()) return
+      try {
+        win.webContents.send('agent:loginUrl', url)
+      } catch {
+        /* Fenster weg */
+      }
+    }
+    return agent.browserLogin(async (url) => {
+      if (!isCursorHttpsUrl(url)) throw new Error('Login-URL stammt nicht von cursor.com')
+      await shell.openExternal(url)
+    }, sendUrl)
+  })
+  ipcMain.handle('agent:cancelLogin', () => {
+    agent.cancelBrowserLogin()
+    return true
+  })
+  ipcMain.handle('agent:logout', () => agent.logout())
+  ipcMain.handle('agent:listModels', () => agent.listModels())
+  ipcMain.handle('agent:getSettings', () => agent.getSettings())
+  ipcMain.handle('agent:setSettings', (_e, next: AgentSettings) => agent.setSettings(next))
+  ipcMain.handle('agent:send', (_e, projectId: string, text: string, attached: string[]) => agent.send(projectId, text, attached ?? []))
+  ipcMain.handle('agent:cancel', (_e, projectId: string) => agent.cancel(projectId))
+  ipcMain.handle('agent:history', (_e, projectId: string) => agent.history(projectId))
+  ipcMain.handle('agent:runState', (_e, projectId: string) => agent.runState(projectId))
+  ipcMain.handle('agent:attach', async (e, projectId: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options = {
+      title: 'Dateien für den Research-Agenten',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Dokumente', extensions: ['pdf', 'txt', 'md', 'markdown', 'html', 'htm', 'csv'] },
+        { name: 'Alle Dateien', extensions: ['*'] },
+      ],
+    }
+    const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (canceled || filePaths.length === 0) return [] as string[]
+    return agent.importFiles(projectId, filePaths)
+  })
+
+  ipcMain.handle('open:external', (_e, url: string) => {
+    if (!isCursorHttpsUrl(url)) return false
+    return shell.openExternal(url)
+  })
+}
+
+function isCursorHttpsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return false
+    const host = parsed.hostname
+    return host === 'cursor.com' || host.endsWith('.cursor.com')
+  } catch {
+    return false
+  }
 }

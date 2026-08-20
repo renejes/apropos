@@ -211,6 +211,13 @@ function SourceDetail({ source: s, state, onClose, onReload }: { source: Source;
         <Field label="Warum diese Quelle (KI-Angabe, zu verifizieren)">{s.reason}</Field>
         <Field label="Extraktion">{s.extraction}</Field>
         <Field label="Beitrag zum Ergebnis">{s.contribution}</Field>
+        {(s.source_kind || s.year || s.citekey) && (
+          <Field label="Bibliografie">
+            {[s.source_kind && `Typ: ${s.source_kind}`, s.year && `Jahr: ${s.year}`, s.citekey && `Citekey: ${s.citekey}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </Field>
+        )}
         <Field label="Teilfrage">
           <select
             value={s.sub_question_id ?? ''}

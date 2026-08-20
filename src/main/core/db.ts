@@ -11,7 +11,7 @@ import { dirname } from 'path'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 5 // v5: engine_runs (Checkpoint/Resume für abgebrochene Langläufe)
+export const SCHEMA_VERSION = 10 // v7 briefs · v8 biblio · v9 report-scope · v10 source_kind / brief-coverage
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -248,6 +248,84 @@ CREATE TABLE IF NOT EXISTS engine_runs (
 CREATE INDEX IF NOT EXISTS idx_engine_runs_project ON engine_runs(project_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_engine_runs_status ON engine_runs(status);
 
+-- v6: Versionierte Evidenzkarte. Knoten ohne entity_id sind verboten —
+-- die Karte zeigt nur Quellen, Aussagen und Teilfragen, die in der DB existieren.
+-- Layout ist Interpretation; die Entitäten bleiben Behauptungen mit Status.
+CREATE TABLE IF NOT EXISTS visual_versions (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  parent_version_id TEXT REFERENCES visual_versions(id),
+  prompt       TEXT NOT NULL,
+  layout_kind  TEXT NOT NULL CHECK (layout_kind IN ('argument_map','theme_clusters')),
+  scope        TEXT NOT NULL DEFAULT 'all' CHECK (scope IN ('all','marked')),
+  interpretative INTEGER NOT NULL DEFAULT 0 CHECK (interpretative IN (0,1)),
+  snapshot_hash TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_visual_versions_project ON visual_versions(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS visual_nodes (
+  id           TEXT PRIMARY KEY,
+  version_id   TEXT NOT NULL REFERENCES visual_versions(id) ON DELETE CASCADE,
+  kind         TEXT NOT NULL CHECK (kind IN ('source','claim','sub_question')),
+  entity_id    TEXT NOT NULL,
+  label        TEXT NOT NULL,
+  cluster_key  TEXT,
+  pos_x        REAL NOT NULL,
+  pos_y        REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_visual_nodes_version ON visual_nodes(version_id);
+CREATE INDEX IF NOT EXISTS idx_visual_nodes_entity ON visual_nodes(kind, entity_id);
+
+CREATE TABLE IF NOT EXISTS visual_edges (
+  id           TEXT PRIMARY KEY,
+  version_id   TEXT NOT NULL REFERENCES visual_versions(id) ON DELETE CASCADE,
+  from_node    TEXT NOT NULL REFERENCES visual_nodes(id) ON DELETE CASCADE,
+  to_node      TEXT NOT NULL REFERENCES visual_nodes(id) ON DELETE CASCADE,
+  relation     TEXT NOT NULL CHECK (relation IN ('supports','contrasts','mentions','part_of','needs_research'))
+);
+CREATE INDEX IF NOT EXISTS idx_visual_edges_version ON visual_edges(version_id);
+
+-- Markierungen sind projektsweit (stabile source_id / claim_id), nicht versionsgebunden.
+CREATE TABLE IF NOT EXISTS marks (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  entity_type  TEXT NOT NULL CHECK (entity_type IN ('source','claim')),
+  entity_id    TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'unknown',
+  UNIQUE (project_id, entity_type, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_marks_project ON marks(project_id);
+
+-- v7: Research-Brief — Blickwinkel und Stopp-Regel, bevor gesucht wird.
+CREATE TABLE IF NOT EXISTS research_briefs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('draft','adopted')),
+  deliverable TEXT NOT NULL CHECK (deliverable IN ('blog','academic','both')),
+  audience TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  frames_json TEXT NOT NULL,
+  chosen_frame_key TEXT NOT NULL,
+  inclusion TEXT NOT NULL,
+  exclusion TEXT NOT NULL,
+  sub_questions_json TEXT NOT NULL,
+  stop_rule TEXT NOT NULL,
+  taboos TEXT NOT NULL,
+  markdown TEXT NOT NULL,
+  year_from INTEGER,
+  year_to INTEGER,
+  min_empirical INTEGER,
+  discipline TEXT CHECK (discipline IS NULL OR discipline IN ('psychology','general')),
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'unknown',
+  adopted_at TEXT,
+  adopted_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_briefs_project ON research_briefs(project_id, created_at);
+
 -- Append-only Audit-Trail (Event Sourcing light): nichts wird gelöscht,
 -- Korrekturen sind neue Events.
 CREATE TABLE IF NOT EXISTS event_log (
@@ -324,6 +402,18 @@ function migrate(db: DB): void {
       addColumnIfMissing(db, 'sources', 'document_id', 'TEXT REFERENCES documents(id)')
       addColumnIfMissing(db, 'sources', 'quote_start', 'INTEGER')
       addColumnIfMissing(db, 'sources', 'quote_end', 'INTEGER')
+      // v8: bibliografische Identität — Citekey ist stabil, nicht aus [S#] abgeleitet.
+      addColumnIfMissing(db, 'sources', 'doi', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'authors_json', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'year', 'INTEGER')
+      addColumnIfMissing(db, 'sources', 'venue', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'entry_type', "TEXT CHECK (entry_type IS NULL OR entry_type IN ('article','book','inproceedings','misc'))")
+      addColumnIfMissing(db, 'sources', 'citekey', 'TEXT')
+      // v9: Bericht an Karten-Arbeit binden.
+      addColumnIfMissing(db, 'report_versions', 'visual_version_id', 'TEXT REFERENCES visual_versions(id)')
+      addColumnIfMissing(db, 'report_versions', 'mark_scope', 'INTEGER NOT NULL DEFAULT 0 CHECK (mark_scope IN (0,1))')
+      // v10: Quellentyp für Coverage-Regeln des Briefs.
+      addColumnIfMissing(db, 'sources', 'source_kind', "TEXT CHECK (source_kind IS NULL OR source_kind IN ('empirical','review','textbook','grey','web'))")
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

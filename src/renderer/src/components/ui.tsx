@@ -19,6 +19,7 @@ export function Button({
   icon,
   disabled,
   title,
+  type = 'button',
 }: {
   children?: React.ReactNode
   onClick?: () => void
@@ -26,6 +27,7 @@ export function Button({
   icon?: string
   disabled?: boolean
   title?: string
+  type?: 'button' | 'submit'
 }) {
   const styles: Record<string, string> = {
     default: 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50',
@@ -36,6 +38,7 @@ export function Button({
   const isIconOnly = !children && !!icon
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       title={title}

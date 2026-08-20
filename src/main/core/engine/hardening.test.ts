@@ -5,6 +5,7 @@ import { Repo } from '../repo'
 import { ProviderError } from '../providers/types'
 import { FakeProvider, type FakeTurn } from './fake-provider'
 import { ResearchEngine, type EngineEvent } from './research-engine'
+import { adoptMinimalBrief } from '../services/brief'
 
 /**
  * Auto-Mode-Härtung: Was passiert, wenn ein Langlauf NICHT glatt durchläuft?
@@ -62,6 +63,7 @@ describe('Auto-Mode-Härtung', () => {
       policy_preset: null,
       actor: 'test',
     }).id
+    adoptMinimalBrief(repo, projectId, 'test')
   })
 
   /** Teilfragen vorab anlegen, damit die Planungs-Spawn-Runde die Skripte nicht verschiebt. */

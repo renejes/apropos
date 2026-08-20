@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Repo } from '../repo'
-import { ServiceError } from './research'
+import { ServiceError, requireAdoptedBrief } from './research'
 
 /**
  * Wissenschaftliche Literatursuche über offene, kostenlose APIs.
@@ -351,17 +351,23 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       'Rufe list_projects auf und verwende eine der dort genannten project_id. Erfinde keine ID.'
     )
   }
-  if (input.year_from && input.year_to && input.year_from > input.year_to) {
+  requireAdoptedBrief(repo, input.project_id)
+  const brief = repo.getAdoptedBrief(input.project_id)
+  const yearFrom = input.year_from ?? brief?.year_from ?? undefined
+  const yearTo = input.year_to ?? brief?.year_to ?? undefined
+  if (yearFrom && yearTo && yearFrom > yearTo) {
     throw new ServiceError(
       'year_range_invalid',
-      `year_from (${input.year_from}) liegt hinter year_to (${input.year_to}).`,
+      `year_from (${yearFrom}) liegt hinter year_to (${yearTo}).`,
       'Vertausche die beiden Werte: year_from muss das frühere Jahr sein.'
     )
   }
 
-  const backends: LiteratureBackend[] = input.backends?.length ? [...new Set(input.backends)] : ['openalex', 'crossref', 'europepmc']
+  // Psychologie: dieselben offenen Register; arXiv nur wenn der Aufruf es explizit setzt. PSYNDEX fehlt.
+  const openRegisters: LiteratureBackend[] = ['openalex', 'crossref', 'europepmc']
+  const backends: LiteratureBackend[] = input.backends?.length ? [...new Set(input.backends)] : [...openRegisters]
   const limit = input.limit ?? 10
-  const opts = { yearFrom: input.year_from, yearTo: input.year_to, oaOnly: input.open_access_only }
+  const opts = { yearFrom, yearTo, oaOnly: input.open_access_only }
 
   const settled = await Promise.allSettled(
     backends.map((b) => {
@@ -374,6 +380,10 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
           return searchEuropePmc(input.query, limit, opts)
         case 'arxiv':
           return searchArxiv(input.query, limit)
+        default: {
+          const _exhaustive: never = b
+          return Promise.reject(new Error(`Unbekanntes Register: ${_exhaustive}`))
+        }
       }
     })
   )
@@ -442,6 +452,9 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       'Nächster Schritt: oa_url (HTML oder PDF) mit fetch_source abrufen und die Quelle per document_id + Offsets belegen. ' +
       'url ist die Landing-Page/DOI — nicht automatisch die PDF. ' +
       'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — dann exclude_source mit Grund "Paywall" ' +
-      'oder eine frei zugängliche Fassung suchen.',
+      'oder eine frei zugängliche Fassung suchen.' +
+      (brief?.discipline === 'psychology'
+        ? ' Disziplin Psychologie: OpenAlex/Crossref/Europe PMC (PubMed teilweise). PSYNDEX ist nicht angebunden — deutschsprachige Fachliteratur bleibt eine ehrliche Lücke im Brief.'
+        : ''),
   }
 }

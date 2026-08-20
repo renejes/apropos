@@ -3,6 +3,7 @@ import { openDb, type DB } from '../db'
 import { Repo } from '../repo'
 import { searchLiterature } from './literature'
 import { ServiceError } from './research'
+import { adoptMinimalBrief, adoptResearchBrief, MINIMAL_BRIEF_INPUT } from './brief'
 
 /**
  * Tests der Literatursuche mit gestubbtem fetch — die Zusammenführung über Register
@@ -19,6 +20,7 @@ describe('Literatursuche über offene Register', () => {
     db = openDb(':memory:')
     repo = new Repo(db)
     projectId = repo.createProject({ title: 'T', research_question: 'x', mode: 'academic', policy_preset: null, actor: ACTOR }).id
+    adoptMinimalBrief(repo, projectId, ACTOR)
   })
   afterEach(() => vi.unstubAllGlobals())
 
@@ -46,12 +48,18 @@ describe('Literatursuche über offene Register', () => {
   })
 
   /** fetch nach Ziel-Host beantworten. */
-  const stubFetch = (h: { openalex?: unknown; crossref?: unknown; europepmc?: unknown; arxivXml?: string; fail?: string[] }) => {
+  const stubFetch = (h: {
+    openalex?: unknown
+    crossref?: unknown
+    europepmc?: unknown
+    arxivXml?: string
+    fail?: string[]
+    seen?: string[]
+  }) => {
     vi.stubGlobal('fetch', async (url: string) => {
       const u = String(url)
-      const fail = (host: string) => h.fail?.some((f) => u.includes(f)) && host
+      h.seen?.push(u)
       if (h.fail?.some((f) => u.includes(f))) throw new Error('Netzwerkfehler (simuliert)')
-      void fail
       const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) })
       if (u.includes('api.openalex.org')) return json(h.openalex ?? { results: [] })
       if (u.includes('api.crossref.org')) return json(h.crossref ?? { message: { items: [] } })
@@ -189,5 +197,35 @@ describe('Literatursuche über offene Register', () => {
   it('lehnt unbekannte Projekte ab', async () => {
     stubFetch({})
     await expect(searchLiterature(repo, { project_id: 'gibtsnicht', query: 'test' }, ACTOR)).rejects.toThrow(/existiert nicht/)
+  })
+
+  it('lehnt die Suche ohne adoptierten Brief ab', async () => {
+    stubFetch({})
+    const bare = repo.createProject({ title: 'Nackt', research_question: 'x', mode: 'academic', policy_preset: null, actor: ACTOR }).id
+    await expect(searchLiterature(repo, { project_id: bare, query: 'transformer attention' }, ACTOR)).rejects.toMatchObject({
+      code: 'brief_required',
+    })
+  })
+
+  it('übernimmt den Zeitraum aus dem Brief und nennt die PSYNDEX-Lücke bei Psychologie', async () => {
+    const seen: string[] = []
+    stubFetch({ seen })
+    const psych = repo.createProject({ title: 'Psych', research_question: 'x', mode: 'academic', policy_preset: null, actor: ACTOR }).id
+    adoptResearchBrief(
+      repo,
+      {
+        project_id: psych,
+        ...MINIMAL_BRIEF_INPUT,
+        discipline: 'psychology',
+        year_from: 2016,
+        year_to: 2020,
+      },
+      ACTOR
+    )
+    const res = await searchLiterature(repo, { project_id: psych, query: 'bindungsstil', limit: 3 }, ACTOR)
+    expect(seen.some((u) => u.includes('2016'))).toBe(true)
+    expect(res.hint).toMatch(/PSYNDEX/)
+    expect(res.backends_used.sort()).toEqual(['crossref', 'europepmc', 'openalex'])
+    expect(res.backends_used).not.toContain('arxiv')
   })
 })

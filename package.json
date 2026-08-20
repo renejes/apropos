@@ -20,6 +20,7 @@
     "ollama:check": "tsx scripts/ollama-check.ts"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.28",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^11.10.0",
     "express": "^4.21.2",

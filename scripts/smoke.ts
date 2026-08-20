@@ -85,10 +85,15 @@ async function main(): Promise<void> {
     const client = await makeClient(mcp.url, 'smoke-researcher')
 
     const tools = await client.listTools()
-    check('26 Tools registriert', tools.tools.length >= 26, tools.tools.map((t) => t.name))
+    check('26 Tools registriert', tools.tools.length >= 29, tools.tools.map((t) => t.name))
     check(
       'Tiefen-Tools vorhanden (plan_research, get_coverage_gaps, next_round, assign_source)',
       ['plan_research', 'get_coverage_gaps', 'next_round', 'assign_source'].every((n) => tools.tools.some((t) => t.name === n)),
+      tools.tools.map((t) => t.name)
+    )
+    check(
+      'Visual-Tools vorhanden (prepare_view, ask_narrative, toggle_mark)',
+      ['describe_evidence_map', 'prepare_view', 'ask_narrative', 'toggle_mark'].every((n) => tools.tools.some((t) => t.name === n)),
       tools.tools.map((t) => t.name)
     )
 
@@ -111,6 +116,40 @@ async function main(): Promise<void> {
       })
     )
     check('create_project liefert project_id', typeof proj?.project_id === 'string')
+
+    const tooEarly = parseResult(
+      await client.callTool({
+        name: 'fetch_source',
+        arguments: { project_id: proj.project_id, url: paperUrl, purpose: 'Darf ohne Brief nicht lesen.' },
+      })
+    )
+    check('fetch_source ohne Brief wird mit brief_required abgelehnt', tooEarly?.code === 'brief_required', tooEarly)
+
+    const brief = parseResult(
+      await client.callTool({
+        name: 'adopt_research_brief',
+        arguments: {
+          project_id: proj.project_id,
+          deliverable: 'academic',
+          audience: 'Smoke-Test Seminarleitung',
+          goal: 'Nach dem Lesen ist klar, dass der Provenienz-Flow trägt und was nicht behauptet werden darf.',
+          frames: [
+            { key: 'method', label: 'Methodenvergleich der Belege', chosen: true },
+            { key: 'history', label: 'Historische Einordnung der These', chosen: false },
+          ],
+          inclusion: 'Peer-reviewed und frei zugängliche Fixture-Quellen.',
+          exclusion: 'Unbelegte Meinungsstücke und Paywall ohne Volltext.',
+          sub_questions: [
+            'Was macht KI-Research-Provenienz vertrauenswürdig?',
+            'Welche Grenzen hat ein Offset-Zitat gegenüber abgetipptem Text?',
+            'Was darf ohne Sign-off nicht in den Bericht?',
+          ],
+          stop_rule: 'Stopp, wenn der Flow belegt ist — nicht wenn das Internet erschöpft ist.',
+          taboos: 'Keine erfundenen Zitate, keine Heilversprechen.',
+        },
+      })
+    )
+    check('adopt_research_brief macht den Brief bindend', brief?.status === 'adopted', brief)
 
     // Recherchetiefe: Ohne Teilfragen ist Abdeckung nicht messbar — und der Bericht wird abgelehnt.
     const plan = parseResult(

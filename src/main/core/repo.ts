@@ -30,6 +30,22 @@ import type {
   DocumentStatus,
   EngineRun,
   EngineRunStatus,
+  Mark,
+  MarkEntityType,
+  VisualEdge,
+  VisualLayoutKind,
+  VisualNode,
+  VisualNodeKind,
+  VisualRelation,
+  VisualScope,
+  VisualVersion,
+  ResearchBrief,
+  ResearchFrame,
+  BriefDeliverable,
+  BriefDiscipline,
+  BriefStatus,
+  SourceKind,
+  BibEntryType,
 } from '../../shared/types'
 
 /**
@@ -133,6 +149,13 @@ export class Repo {
     document_id?: string | null
     quote_start?: number | null
     quote_end?: number | null
+    doi?: string | null
+    authors_json?: string | null
+    year?: number | null
+    venue?: string | null
+    entry_type?: BibEntryType | null
+    citekey?: string | null
+    source_kind?: SourceKind | null
     actor: string
   }): Source {
     const id = randomUUID()
@@ -141,8 +164,9 @@ export class Repo {
         `INSERT INTO sources (id, project_id, url, title, retrieval_method, accessed_at,
            reason, extraction, contribution, verbatim_quote, quote_locator,
            confidence, sub_question_id, document_id, quote_start, quote_end,
+           doi, authors_json, year, venue, entry_type, citekey, source_kind,
            review_status, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
       .run(
         id,
@@ -161,6 +185,13 @@ export class Repo {
         input.document_id ?? null,
         input.quote_start ?? null,
         input.quote_end ?? null,
+        input.doi ?? null,
+        input.authors_json ?? null,
+        input.year ?? null,
+        input.venue ?? null,
+        input.entry_type ?? null,
+        input.citekey ?? null,
+        input.source_kind ?? null,
         nowIso(),
         input.actor
       )
@@ -340,6 +371,8 @@ export class Repo {
     content_markdown: string
     parent_version_id?: string | null
     change_summary?: string | null
+    visual_version_id?: string | null
+    mark_scope?: boolean
     actor: string
   }): ReportVersion {
     const id = randomUUID()
@@ -350,10 +383,22 @@ export class Repo {
       .slice(0, 16)
     this.db
       .prepare(
-        `INSERT INTO report_versions (id, project_id, parent_version_id, content_markdown, snapshot_hash, change_summary, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO report_versions (id, project_id, parent_version_id, content_markdown, snapshot_hash, change_summary,
+           visual_version_id, mark_scope, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.project_id, input.parent_version_id ?? null, input.content_markdown, hash, input.change_summary ?? null, ts, input.actor)
+      .run(
+        id,
+        input.project_id,
+        input.parent_version_id ?? null,
+        input.content_markdown,
+        hash,
+        input.change_summary ?? null,
+        input.visual_version_id ?? null,
+        input.mark_scope ? 1 : 0,
+        ts,
+        input.actor
+      )
     this.touchProject(input.project_id)
     this.logEvent(input.project_id, input.actor, 'report.version_added', { version_id: id, snapshot_hash: hash })
     return this.db.prepare(`SELECT * FROM report_versions WHERE id = ?`).get(id) as ReportVersion
@@ -932,6 +977,265 @@ export class Repo {
       .all(projectId) as Claim[]
   }
 
+  // ---------- Evidenzkarte (v6) ----------
+  insertVisualVersion(input: {
+    project_id: string
+    parent_version_id: string | null
+    prompt: string
+    layout_kind: VisualLayoutKind
+    scope: VisualScope
+    interpretative: boolean
+    snapshot_hash: string
+    nodes: Array<{
+      kind: VisualNodeKind
+      entity_id: string
+      label: string
+      cluster_key: string | null
+      pos_x: number
+      pos_y: number
+    }>
+    edges: Array<{ from_index: number; to_index: number; relation: VisualRelation }>
+    actor: string
+  }): { version: VisualVersion; nodes: VisualNode[]; edges: VisualEdge[] } {
+    return this.tx(() => {
+      const versionId = randomUUID()
+      const ts = nowIso()
+      this.db
+        .prepare(
+          `INSERT INTO visual_versions (id, project_id, parent_version_id, prompt, layout_kind, scope, interpretative, snapshot_hash, created_at, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          versionId,
+          input.project_id,
+          input.parent_version_id,
+          input.prompt,
+          input.layout_kind,
+          input.scope,
+          input.interpretative ? 1 : 0,
+          input.snapshot_hash,
+          ts,
+          input.actor
+        )
+      const nodeIds: string[] = []
+      const insertNode = this.db.prepare(
+        `INSERT INTO visual_nodes (id, version_id, kind, entity_id, label, cluster_key, pos_x, pos_y)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      for (const n of input.nodes) {
+        const id = randomUUID()
+        nodeIds.push(id)
+        insertNode.run(id, versionId, n.kind, n.entity_id, n.label, n.cluster_key, n.pos_x, n.pos_y)
+      }
+      const insertEdge = this.db.prepare(
+        `INSERT INTO visual_edges (id, version_id, from_node, to_node, relation) VALUES (?, ?, ?, ?, ?)`
+      )
+      for (const e of input.edges) {
+        const from = nodeIds[e.from_index]
+        const to = nodeIds[e.to_index]
+        if (!from || !to) throw new Error('visual_edge index out of range')
+        insertEdge.run(randomUUID(), versionId, from, to, e.relation)
+      }
+      this.touchProject(input.project_id)
+      this.logEvent(input.project_id, input.actor, 'visual.prepared', {
+        version_id: versionId,
+        layout_kind: input.layout_kind,
+        node_count: input.nodes.length,
+      })
+      return this.getVisualVersion(versionId)!
+    })
+  }
+
+  listVisualVersions(projectId: string): VisualVersion[] {
+    return this.db
+      .prepare(`SELECT * FROM visual_versions WHERE project_id = ? ORDER BY created_at DESC`)
+      .all(projectId) as VisualVersion[]
+  }
+
+  getVisualVersion(id: string): { version: VisualVersion; nodes: VisualNode[]; edges: VisualEdge[] } | undefined {
+    const version = this.db.prepare(`SELECT * FROM visual_versions WHERE id = ?`).get(id) as VisualVersion | undefined
+    if (!version) return undefined
+    const nodes = this.db
+      .prepare(`SELECT * FROM visual_nodes WHERE version_id = ? ORDER BY kind, entity_id`)
+      .all(id) as VisualNode[]
+    const edges = this.db.prepare(`SELECT * FROM visual_edges WHERE version_id = ?`).all(id) as VisualEdge[]
+    return { version, nodes, edges }
+  }
+
+  listMarks(projectId: string): Mark[] {
+    return this.db
+      .prepare(`SELECT * FROM marks WHERE project_id = ? ORDER BY created_at ASC`)
+      .all(projectId) as Mark[]
+  }
+
+  getMark(projectId: string, entityType: MarkEntityType, entityId: string): Mark | undefined {
+    return this.db
+      .prepare(`SELECT * FROM marks WHERE project_id = ? AND entity_type = ? AND entity_id = ?`)
+      .get(projectId, entityType, entityId) as Mark | undefined
+  }
+
+  addMark(input: { project_id: string; entity_type: MarkEntityType; entity_id: string; actor: string }): Mark {
+    const existing = this.getMark(input.project_id, input.entity_type, input.entity_id)
+    if (existing) return existing
+    const id = randomUUID()
+    this.db
+      .prepare(`INSERT INTO marks (id, project_id, entity_type, entity_id, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(id, input.project_id, input.entity_type, input.entity_id, nowIso(), input.actor)
+    this.logEvent(input.project_id, input.actor, 'mark.added', { entity_type: input.entity_type, entity_id: input.entity_id })
+    return this.getMark(input.project_id, input.entity_type, input.entity_id)!
+  }
+
+  removeMark(projectId: string, entityType: MarkEntityType, entityId: string, actor: string): boolean {
+    const res = this.db
+      .prepare(`DELETE FROM marks WHERE project_id = ? AND entity_type = ? AND entity_id = ?`)
+      .run(projectId, entityType, entityId)
+    if (res.changes > 0)     this.logEvent(projectId, actor, 'mark.removed', { entity_type: entityType, entity_id: entityId })
+    return res.changes > 0
+  }
+
+  // ---------- Research-Brief (v7) ----------
+  addResearchBrief(input: {
+    project_id: string
+    status: BriefStatus
+    deliverable: BriefDeliverable
+    audience: string
+    goal: string
+    frames: ResearchFrame[]
+    chosen_frame_key: string
+    inclusion: string
+    exclusion: string
+    sub_questions: string[]
+    stop_rule: string
+    taboos: string
+    markdown: string
+    year_from?: number | null
+    year_to?: number | null
+    min_empirical?: number | null
+    discipline?: BriefDiscipline | null
+    actor: string
+  }): ResearchBrief {
+    const id = randomUUID()
+    const ts = nowIso()
+    const adopted = input.status === 'adopted'
+    this.db
+      .prepare(
+        `INSERT INTO research_briefs (
+           id, project_id, status, deliverable, audience, goal, frames_json, chosen_frame_key,
+           inclusion, exclusion, sub_questions_json, stop_rule, taboos, markdown,
+           year_from, year_to, min_empirical, discipline,
+           created_at, created_by, adopted_at, adopted_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        input.project_id,
+        input.status,
+        input.deliverable,
+        input.audience,
+        input.goal,
+        JSON.stringify(input.frames),
+        input.chosen_frame_key,
+        input.inclusion,
+        input.exclusion,
+        JSON.stringify(input.sub_questions),
+        input.stop_rule,
+        input.taboos,
+        input.markdown,
+        input.year_from ?? null,
+        input.year_to ?? null,
+        input.min_empirical ?? null,
+        input.discipline ?? null,
+        ts,
+        input.actor,
+        adopted ? ts : null,
+        adopted ? input.actor : null
+      )
+    this.touchProject(input.project_id)
+    this.logEvent(input.project_id, input.actor, adopted ? 'brief.adopted' : 'brief.drafted', { brief_id: id })
+    return this.getResearchBrief(id)!
+  }
+
+  getResearchBrief(id: string): ResearchBrief | undefined {
+    const row = this.db.prepare(`SELECT * FROM research_briefs WHERE id = ?`).get(id) as BriefRow | undefined
+    return row ? mapBrief(row) : undefined
+  }
+
+  getAdoptedBrief(projectId: string): ResearchBrief | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM research_briefs WHERE project_id = ? AND status = 'adopted'
+         ORDER BY adopted_at DESC, created_at DESC LIMIT 1`
+      )
+      .get(projectId) as BriefRow | undefined
+    return row ? mapBrief(row) : undefined
+  }
+
+  getLatestBrief(projectId: string): ResearchBrief | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM research_briefs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`)
+      .get(projectId) as BriefRow | undefined
+    return row ? mapBrief(row) : undefined
+  }
+
+  markBriefAdopted(id: string, actor: string): ResearchBrief {
+    const ts = nowIso()
+    const existing = this.getResearchBrief(id)
+    if (!existing) throw new Error(`brief ${id} not found`)
+    this.db
+      .prepare(`UPDATE research_briefs SET status = 'adopted', adopted_at = ?, adopted_by = ? WHERE id = ?`)
+      .run(ts, actor, id)
+    this.touchProject(existing.project_id)
+    this.logEvent(existing.project_id, actor, 'brief.adopted', { brief_id: id })
+    return this.getResearchBrief(id)!
+  }
+
+  listCitekeys(projectId: string): string[] {
+    return (
+      this.db.prepare(`SELECT citekey FROM sources WHERE project_id = ? AND citekey IS NOT NULL`).all(projectId) as Array<{
+        citekey: string
+      }>
+    ).map((r) => r.citekey)
+  }
+
+  setSourceBiblio(
+    sourceId: string,
+    patch: {
+      doi?: string | null
+      authors_json?: string | null
+      year?: number | null
+      venue?: string | null
+      entry_type?: BibEntryType | null
+      citekey?: string | null
+      source_kind?: SourceKind | null
+    }
+  ): Source {
+    const src = this.getSource(sourceId)
+    if (!src) throw new Error(`source ${sourceId} not found`)
+    this.db
+      .prepare(
+        `UPDATE sources SET
+           doi = COALESCE(?, doi),
+           authors_json = COALESCE(?, authors_json),
+           year = COALESCE(?, year),
+           venue = COALESCE(?, venue),
+           entry_type = COALESCE(?, entry_type),
+           citekey = COALESCE(?, citekey),
+           source_kind = COALESCE(?, source_kind)
+         WHERE id = ?`
+      )
+      .run(
+        patch.doi ?? null,
+        patch.authors_json ?? null,
+        patch.year ?? null,
+        patch.venue ?? null,
+        patch.entry_type ?? null,
+        patch.citekey ?? null,
+        patch.source_kind ?? null,
+        sourceId
+      )
+    return this.getSource(sourceId)!
+  }
+
   // ---------- Aggregat ----------
   getProjectState(projectId: string): ProjectState {
     const project = this.getProject(projectId)
@@ -950,6 +1254,9 @@ export class Repo {
       excludedSources: this.listExcludedSources(projectId),
       subQuestions: this.listSubQuestions(projectId),
       rounds: this.listRounds(projectId),
+      marks: this.listMarks(projectId),
+      visualVersions: this.listVisualVersions(projectId),
+      researchBrief: this.getAdoptedBrief(projectId) ?? this.getLatestBrief(projectId) ?? null,
     }
   }
 
@@ -971,4 +1278,68 @@ function ftsQuery(raw: string): string {
     .filter(Boolean)
     .map((t) => `"${t.replace(/"/g, '""')}"*`)
     .join(' ')
+}
+
+interface BriefRow {
+  id: string
+  project_id: string
+  status: BriefStatus
+  deliverable: BriefDeliverable
+  audience: string
+  goal: string
+  frames_json: string
+  chosen_frame_key: string
+  inclusion: string
+  exclusion: string
+  sub_questions_json: string
+  stop_rule: string
+  taboos: string
+  markdown: string
+  year_from: number | null
+  year_to: number | null
+  min_empirical: number | null
+  discipline: BriefDiscipline | null
+  created_at: string
+  created_by: string
+  adopted_at: string | null
+  adopted_by: string | null
+}
+
+function mapBrief(row: BriefRow): ResearchBrief {
+  let frames: ResearchFrame[] = []
+  let subQuestions: string[] = []
+  try {
+    frames = JSON.parse(row.frames_json) as ResearchFrame[]
+  } catch {
+    frames = []
+  }
+  try {
+    subQuestions = JSON.parse(row.sub_questions_json) as string[]
+  } catch {
+    subQuestions = []
+  }
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    status: row.status,
+    deliverable: row.deliverable,
+    audience: row.audience,
+    goal: row.goal,
+    frames,
+    chosen_frame_key: row.chosen_frame_key,
+    inclusion: row.inclusion,
+    exclusion: row.exclusion,
+    sub_questions: subQuestions,
+    stop_rule: row.stop_rule,
+    taboos: row.taboos,
+    markdown: row.markdown,
+    year_from: row.year_from,
+    year_to: row.year_to,
+    min_empirical: row.min_empirical,
+    discipline: row.discipline,
+    created_at: row.created_at,
+    created_by: row.created_by,
+    adopted_at: row.adopted_at,
+    adopted_by: row.adopted_by,
+  }
 }

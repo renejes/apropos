@@ -17,6 +17,8 @@ import {
   recordSearch,
   recordSource,
 } from './research'
+import type { SourceKind } from '../../../shared/types'
+import { adoptMinimalBrief, adoptResearchBrief, MINIMAL_BRIEF_INPUT } from './brief'
 
 /**
  * Tests der Tiefensteuerung. Bewusst OHNE Netz: recordSource wird nur auf dem
@@ -34,11 +36,17 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     repo = new Repo(db)
   })
 
-  const makeProject = () =>
-    repo.createProject({ title: 'Testprojekt', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+  const makeProject = () => {
+    const p = repo.createProject({ title: 'Testprojekt', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    adoptMinimalBrief(repo, p.id, ACTOR)
+    return p
+  }
 
   /** Quelle anlegen und optional als "Zitat verifiziert" markieren. */
-  const addSource = (projectId: string, opts: { sq?: string | null; verified?: boolean | null; url?: string } = {}) => {
+  const addSource = (
+    projectId: string,
+    opts: { sq?: string | null; verified?: boolean | null; url?: string; source_kind?: SourceKind; year?: number } = {}
+  ) => {
     const src = repo.addSource({
       project_id: projectId,
       url: opts.url ?? `https://example.org/${Math.random().toString(36).slice(2)}`,
@@ -50,6 +58,8 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
       contribution: 'Stützt These 2 des Berichts.',
       verbatim_quote: 'Ein wörtliches Zitat mit ausreichender Länge.',
       sub_question_id: opts.sq ?? null,
+      source_kind: opts.source_kind,
+      year: opts.year,
       actor: ACTOR,
     })
     if (opts.verified !== undefined) {
@@ -135,6 +145,9 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     const run = migRepo.startEngineRun({ project_id: 'p1', model: 'test-modell', resumed_from: null })
     migRepo.endEngineRun(run.id, 'aborted', 'Testabbruch')
     expect(migRepo.getResumableRun('p1')?.id).toBe(run.id)
+    const tables = (migrated.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as Array<{ name: string }>).map((t) => t.name)
+    expect(tables).toContain('visual_versions')
+    expect(tables).toContain('marks')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()
@@ -172,9 +185,17 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(repo.listSubQuestions(p.id)).toHaveLength(3)
   })
 
-  it('lehnt eine leere Planung ab', () => {
+  it('übernimmt Teilfragen aus dem Brief, wenn die Planung leer ist', () => {
     const p = makeProject()
-    expect(() => planResearch(repo, { project_id: p.id, sub_questions: [] }, ACTOR)).toThrow(ServiceError)
+    const res = planResearch(repo, { project_id: p.id, sub_questions: [] }, ACTOR)
+    expect(res.sub_questions.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('lehnt die Planung ohne adoptierten Brief ab', () => {
+    const p = repo.createProject({ title: 'Ohne Brief', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    expect(() =>
+      planResearch(repo, { project_id: p.id, sub_questions: [{ question: 'Eine Teilfrage zum Sachverhalt?' }] }, ACTOR)
+    ).toThrow(/adoptierten Research-Brief/)
   })
 
   // ---------------------------------------------------------------- Abdeckung
@@ -234,6 +255,63 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     const cov = computeCoverage(repo, p.id)
     expect(cov.blocking_gaps).toHaveLength(0)
     expect(cov.ready_for_report).toBe(true)
+  })
+
+  it('meldet zu wenige empirische Quellen aus dem Brief', () => {
+    const p = repo.createProject({ title: 'Empirie', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    adoptResearchBrief(repo, { project_id: p.id, ...MINIMAL_BRIEF_INPUT, min_empirical: 2, year_from: 2016, year_to: 2026 }, ACTOR)
+    const { sub_questions } = plan(p.id, 1)
+    const s1 = repo.addSource({
+      project_id: p.id,
+      url: 'https://example.org/emp',
+      title: 'Empirische Studie',
+      retrieval_method: 'test',
+      accessed_at: new Date().toISOString(),
+      reason: 'Weil sie das Kernargument der Studie dokumentiert.',
+      extraction: 'Die Studie zeigt X unter Bedingung Y mit Effektstärke Z.',
+      contribution: 'Stützt These 2 des Berichts.',
+      verbatim_quote: 'Ein wörtliches Zitat mit ausreichender Länge.',
+      sub_question_id: sub_questions[0].id,
+      source_kind: 'empirical',
+      year: 2020,
+      actor: ACTOR,
+    })
+    repo.setSourceChecks(s1.id, { urlResolved: true, quoteVerified: true, quoteMatchScore: 1 }, ACTOR)
+    addClaimFor(p.id, s1.id)
+    const cov = computeCoverage(repo, p.id)
+    expect(cov.gaps.some((g) => g.kind === 'empirical_shortfall')).toBe(true)
+    expect(cov.ready_for_report).toBe(false)
+  })
+
+  it('meldet den Brief-Zeitraum, wenn keine belegte Quelle darin liegt', () => {
+    const p = repo.createProject({ title: 'Jahre', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    adoptResearchBrief(repo, { project_id: p.id, ...MINIMAL_BRIEF_INPUT, year_from: 2016, year_to: 2026 }, ACTOR)
+    const { sub_questions } = plan(p.id, 1)
+    const s1 = addSource(p.id, { sq: sub_questions[0].id, verified: true })
+    addClaimFor(p.id, s1.id)
+    const cov = computeCoverage(repo, p.id)
+    expect(cov.gaps.some((g) => g.kind === 'year_range_shortfall')).toBe(true)
+  })
+
+  it('schließt den Brief-Zeitraum, wenn eine belegte Quelle darin liegt', () => {
+    const p = repo.createProject({ title: 'Jahre-ok', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    adoptResearchBrief(repo, { project_id: p.id, ...MINIMAL_BRIEF_INPUT, year_from: 2016, year_to: 2026 }, ACTOR)
+    const { sub_questions } = plan(p.id, 1)
+    const s1 = addSource(p.id, { sq: sub_questions[0].id, verified: true, year: 2020 })
+    addClaimFor(p.id, s1.id)
+    const cov = computeCoverage(repo, p.id)
+    expect(cov.gaps.some((g) => g.kind === 'year_range_shortfall')).toBe(false)
+  })
+
+  it('schließt empirical_shortfall, sobald genug belegte empirische Quellen da sind', () => {
+    const p = repo.createProject({ title: 'Empirie-ok', research_question: 'Trägt X?', mode: 'academic', policy_preset: null, actor: ACTOR })
+    adoptResearchBrief(repo, { project_id: p.id, ...MINIMAL_BRIEF_INPUT, min_empirical: 2 }, ACTOR)
+    const { sub_questions } = plan(p.id, 1)
+    const s1 = addSource(p.id, { sq: sub_questions[0].id, verified: true, source_kind: 'empirical', year: 2020 })
+    addSource(p.id, { sq: sub_questions[0].id, verified: true, source_kind: 'empirical', year: 2021 })
+    addClaimFor(p.id, s1.id)
+    const cov = computeCoverage(repo, p.id)
+    expect(cov.gaps.some((g) => g.kind === 'empirical_shortfall')).toBe(false)
   })
 
   it('ignoriert abgelehnte Quellen in der Abdeckung', () => {
