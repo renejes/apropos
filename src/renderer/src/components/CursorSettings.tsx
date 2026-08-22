@@ -193,6 +193,7 @@ export default function CursorSettings() {
           </Badge>
           {auth.name && <span className="text-sm text-slate-700">{auth.name}</span>}
           {auth.email && <span className="text-xs text-slate-400">{auth.email}</span>}
+          {auth.expired && <Badge tone="amber">Anmeldung abgelaufen</Badge>}
           {auth.keyName && <Badge tone="slate">{auth.keyName}</Badge>}
           {sourceLabel(auth.keySource) && <Badge tone="slate">{sourceLabel(auth.keySource)}</Badge>}
           {auth.keySource !== 'env' && (

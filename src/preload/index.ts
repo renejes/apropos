@@ -20,9 +20,13 @@ import type {
 import type {
   AgentAuthStatus,
   AgentChatEvent,
+  AgentEventPayload,
+  AgentMentionable,
   AgentModelInfo,
   AgentRunState,
+  AgentSendInput,
   AgentSendResult,
+  AgentSessionResult,
   AgentSettings,
 } from '../shared/agent'
 
@@ -102,14 +106,23 @@ const api = {
   agentListModels: (): Promise<AgentModelInfo[]> => ipcRenderer.invoke('agent:listModels'),
   agentGetSettings: (): Promise<AgentSettings> => ipcRenderer.invoke('agent:getSettings'),
   agentSetSettings: (settings: AgentSettings): Promise<AgentSettings> => ipcRenderer.invoke('agent:setSettings', settings),
-  agentSend: (projectId: string, text: string, attached: string[]): Promise<AgentSendResult> =>
-    ipcRenderer.invoke('agent:send', projectId, text, attached),
+  agentSend: (projectId: string, input: AgentSendInput): Promise<AgentSendResult> =>
+    ipcRenderer.invoke('agent:send', projectId, input),
   agentCancel: (projectId: string): Promise<boolean> => ipcRenderer.invoke('agent:cancel', projectId),
   agentAttach: (projectId: string): Promise<string[]> => ipcRenderer.invoke('agent:attach', projectId),
   agentHistory: (projectId: string): Promise<AgentChatEvent[]> => ipcRenderer.invoke('agent:history', projectId),
   agentRunState: (projectId: string): Promise<AgentRunState> => ipcRenderer.invoke('agent:runState', projectId),
-  onAgentEvent: (cb: (payload: { projectId: string; event: AgentChatEvent }) => void): (() => void) => {
-    const listener = (_e: unknown, payload: { projectId: string; event: AgentChatEvent }) => cb(payload)
+  agentSessions: (projectId: string): Promise<AgentSessionResult> => ipcRenderer.invoke('agent:sessions', projectId),
+  agentNewSession: (projectId: string): Promise<AgentSessionResult> => ipcRenderer.invoke('agent:newSession', projectId),
+  agentSwitchSession: (projectId: string, sessionId: string): Promise<AgentSessionResult> =>
+    ipcRenderer.invoke('agent:switchSession', projectId, sessionId),
+  agentCloseTab: (projectId: string, sessionId: string): Promise<AgentSessionResult> =>
+    ipcRenderer.invoke('agent:closeTab', projectId, sessionId),
+  agentDeleteSession: (projectId: string, sessionId: string): Promise<AgentSessionResult> =>
+    ipcRenderer.invoke('agent:deleteSession', projectId, sessionId),
+  agentMentionables: (projectId: string): Promise<AgentMentionable[]> => ipcRenderer.invoke('agent:mentionables', projectId),
+  onAgentEvent: (cb: (payload: AgentEventPayload) => void): (() => void) => {
+    const listener = (_e: unknown, payload: AgentEventPayload) => cb(payload)
     ipcRenderer.on('agent:event', listener)
     return () => ipcRenderer.removeListener('agent:event', listener)
   },

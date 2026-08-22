@@ -34,8 +34,14 @@ export function mapSdkMessage(event: SDKMessage): AgentChatEvent[] {
       return [{ type: 'request', text: 'Der Agent wartet auf eine Freigabe — in den Einstellungen Auto-Review prüfen oder in der Nachricht fortfahren.' }]
     case 'task':
       return event.text ? [{ type: 'status', text: event.text }] : []
-    case 'usage':
-      return []
+    case 'usage': {
+      const u = event.usage
+      const inputTokens = u.inputTokens
+      const outputTokens = u.outputTokens
+      const totalTokens = u.totalTokens
+      if (inputTokens == null && outputTokens == null && totalTokens == null) return []
+      return [{ type: 'usage', inputTokens, outputTokens, totalTokens }]
+    }
     default: {
       const _never: never = event
       void _never

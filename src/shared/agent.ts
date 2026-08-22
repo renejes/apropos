@@ -12,6 +12,8 @@ export interface AgentAuthStatus {
   /** Browser-Login, oder `CURSOR_API_KEY` in der Umgebung (kein Paste-Feld). */
   keySource: 'env' | 'browser' | null
   expiresAtMs: number | null
+  /** true, wenn `expiresAtMs` in der Vergangenheit liegt. */
+  expired: boolean
 }
 
 export interface AgentModelParamOption {
@@ -38,6 +40,21 @@ export interface AgentSettings {
   paramValues: Record<string, string>
 }
 
+export type AgentMode = 'agent' | 'plan'
+
+export type AgentMentionKind = 'source' | 'inbox' | 'question'
+
+/** Kontext-Chip, der mit dem nächsten Turn mitgeht. */
+export interface AgentMention {
+  kind: AgentMentionKind
+  id: string
+  label: string
+}
+
+export interface AgentMentionable extends AgentMention {
+  hint?: string
+}
+
 export type AgentChatEvent =
   | { type: 'user'; text: string }
   | { type: 'assistant'; text: string }
@@ -45,16 +62,51 @@ export type AgentChatEvent =
   | { type: 'tool'; callId: string; name: string; status: 'running' | 'completed' | 'error' }
   | { type: 'status'; text: string }
   | { type: 'request'; text: string }
+  | { type: 'usage'; inputTokens?: number; outputTokens?: number; totalTokens?: number }
   | { type: 'run_end'; status: 'finished' | 'error' | 'cancelled'; error?: string }
 
 export interface AgentRunState {
   projectId: string
   running: boolean
   agentId: string | null
+  sessionId: string | null
+}
+
+export interface AgentSendInput {
+  text: string
+  attached?: string[]
+  mode?: AgentMode
+  mentions?: AgentMention[]
 }
 
 export interface AgentSendResult {
   ok: boolean
   error?: string
   agentId?: string
+}
+
+export interface AgentSessionMeta {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AgentSessionsSnapshot {
+  activeId: string | null
+  open: AgentSessionMeta[]
+  all: AgentSessionMeta[]
+}
+
+export interface AgentSessionResult {
+  ok: boolean
+  error?: string
+  sessions: AgentSessionsSnapshot
+  history: AgentChatEvent[]
+}
+
+export interface AgentEventPayload {
+  projectId: string
+  sessionId: string | null
+  event: AgentChatEvent
 }

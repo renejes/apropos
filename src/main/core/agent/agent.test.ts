@@ -9,7 +9,7 @@ import { ServiceError, ingestLocalFile, listProjectInbox, linkClaim, planResearc
 import { adoptMinimalBrief } from '../services/brief'
 import { describeEvidenceMap } from '../services/visual'
 import { mapSdkMessage } from './events'
-import { sessionPreamble } from './instructions'
+import { sessionPreamble, followUpPrefix, mentionContext } from './instructions'
 import { defaultAgentSettings, loadAgentSettings, normalizeParamValues, saveAgentSettings } from './settings'
 import { localInboxUrl, projectWorkspace, resolveInboxFile } from './workspace'
 
@@ -215,6 +215,28 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
     expect(text).toContain('describe_evidence_map')
     expect(text).toContain('draft_research_brief')
     expect(text).not.toMatch(/sofort search_literature/i)
+  })
+
+  it('hängt @-Kontext an Folge-Turns', () => {
+    const mentions = mentionContext([
+      { kind: 'source', id: 'src-1', label: 'smith2024' },
+      { kind: 'inbox', id: 'paper.pdf', label: 'paper.pdf' },
+      { kind: 'question', id: 'sq-1', label: 'Wirkt X auf Y?' },
+    ])
+    expect(mentions).toContain('source_id: src-1')
+    expect(mentions).toContain('paper.pdf')
+    expect(mentions).toContain('sq-1')
+    expect(followUpPrefix('proj-1', ['note.txt'], [{ kind: 'source', id: 'src-1', label: 'smith2024' }])).toContain('@-Erwähnungen')
+  })
+
+  it('mappt Usage-Events auf Token-Zahlen', () => {
+    const out = mapSdkMessage({
+      type: 'usage',
+      agent_id: 'a',
+      run_id: 'r',
+      usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    })
+    expect(out).toEqual([{ type: 'usage', inputTokens: 10, outputTokens: 4, totalTokens: 14 }])
   })
 })
 

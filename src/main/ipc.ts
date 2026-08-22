@@ -11,7 +11,7 @@ import { seedDemoProject } from './core/seed'
 import { computeCoverage } from './core/services/research'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
 import type { ServerInfo } from '../shared/types'
-import type { AgentSettings } from '../shared/agent'
+import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
 
 /**
@@ -200,11 +200,11 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('demo:seed', () => seedDemoProject(repo))
 
   const { agent } = deps
-  agent.setSink((projectId, event) => {
+  agent.setSink((projectId, event, sessionId) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue
       try {
-        win.webContents.send('agent:event', { projectId, event })
+        win.webContents.send('agent:event', { projectId, sessionId, event })
       } catch {
         /* Fenster weg */
       }
@@ -235,10 +235,18 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('agent:listModels', () => agent.listModels())
   ipcMain.handle('agent:getSettings', () => agent.getSettings())
   ipcMain.handle('agent:setSettings', (_e, next: AgentSettings) => agent.setSettings(next))
-  ipcMain.handle('agent:send', (_e, projectId: string, text: string, attached: string[]) => agent.send(projectId, text, attached ?? []))
+  ipcMain.handle('agent:send', (_e, projectId: string, input: AgentSendInput) =>
+    agent.send(projectId, { ...input, attached: input.attached ?? [], mentions: input.mentions ?? [] })
+  )
   ipcMain.handle('agent:cancel', (_e, projectId: string) => agent.cancel(projectId))
   ipcMain.handle('agent:history', (_e, projectId: string) => agent.history(projectId))
   ipcMain.handle('agent:runState', (_e, projectId: string) => agent.runState(projectId))
+  ipcMain.handle('agent:sessions', (_e, projectId: string) => agent.sessions(projectId))
+  ipcMain.handle('agent:newSession', (_e, projectId: string) => agent.newSession(projectId))
+  ipcMain.handle('agent:switchSession', (_e, projectId: string, sessionId: string) => agent.switchSession(projectId, sessionId))
+  ipcMain.handle('agent:closeTab', (_e, projectId: string, sessionId: string) => agent.closeTab(projectId, sessionId))
+  ipcMain.handle('agent:deleteSession', (_e, projectId: string, sessionId: string) => agent.deleteSession(projectId, sessionId))
+  ipcMain.handle('agent:mentionables', (_e, projectId: string) => agent.mentionables(projectId))
   ipcMain.handle('agent:attach', async (e, projectId: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const options = {

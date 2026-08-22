@@ -6,7 +6,7 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 02 — Projekt-Status |
-| **Stand** | 2026-08-20 · v3.0 |
+| **Stand** | 2026-08-22 · v3.1 |
 | **Phase** | Gebaut und gegen Fixtures verifiziert · echter Modell-Lauf ausstehend |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
@@ -28,7 +28,7 @@ Zwei Lieferformen, ein Korpus: Blogs (Frame) und wissenschaftliche Arbeiten (Zit
 | | |
 |---|---|
 | Schema | **v10** (Brief, Biblio, Report-Scope, `source_kind`) |
-| Tests | **200** (Vitest) |
+| Tests | **218** (Vitest) |
 | MCP-SDK | `@modelcontextprotocol/sdk` **1.30** |
 | Agent | `@cursor/sdk` **1.0.28**, Runtime `local` |
 | Lizenz | MIT |
@@ -40,7 +40,7 @@ Typecheck und Unit-Tests sind grün. Smoke (`npm run smoke`) prüft den MCP-HTTP
 ## Alltagsweg
 
 1. App starten (`npm start`). In den Einstellungen bei Cursor anmelden (Systembrowser). Modell wählen — benanntes Modell, nicht Auto.
-2. Projekt anlegen. Im **Agent-Chat** den Brief erarbeiten (`draft_research_brief`). Du bestätigst; `adopt_research_brief` macht ihn verbindlich.
+2. Projekt anlegen. Im **Agent-Chat** den Brief erarbeiten (`draft_research_brief`). Du bestätigst; `adopt_research_brief` macht ihn verbindlich. Mehrere Chats pro Projekt (neuer Chat, Verlauf, Tabs); mit `@` hängst du Quellen, Inbox-Dateien oder Teilfragen an.
 3. Erst danach Suche: `search_literature` und Cursor-WebSearch dürfen entdecken. Was in den Bericht soll, geht über `fetch_source` in die DB, dann `add_source` mit Offsets.
 4. Rechts prüfst du: Übersicht (Lücken, „Was darfst du sagen“), Quellen (Excerpt + Sign-off), Aussagen, Karte, Berichte.
 5. Karte aufbereiten (`prepare_view`, Marks). Schreibpaket exportieren → Ordner in Easy Writing öffnen.
@@ -99,9 +99,10 @@ WebSearch **darf entdecken**. Snippets sind keine Quelle. Berichtstext nur aus `
 
 ```
 Electron
-  Renderer    Chat (SDK-Stream) │ Tabs: Übersicht, Quellen, Aussagen,
-              Einstellungen     │ Karte, Berichte, Protokoll, Audit
+  Renderer    Chat (SDK-Stream, Sessions) │ Tabs: Übersicht, Quellen, Aussagen,
+              Einstellungen               │ Karte, Berichte, Protokoll, Audit
   Main        CursorAgentHost ── customTools ── ToolBridge (In-Memory-MCP)
+              mehrere Agenten / Projekt (chats.json + Transcripts)
               HTTP-MCP 127.0.0.1:8790
               services/research.ts  →  SQLite WAL + FTS5
 ```
@@ -116,7 +117,7 @@ Inferenz läuft in der **Cursor-Cloud** (Abo). Source of Truth ist lokal. Local-
 
 | Ort | Funktion |
 |---|---|
-| Agent-Chat | Research-Lauf: Stream, Tool-Chips, Abbrechen, PDF-Anhang in die Inbox |
+| Agent-Chat | Research-Lauf: Stream, Denken, Tool-Chips, Stopp; mehrere Sessions (Verlauf, Tabs); Composer mit Agent/Plan und Modell; `@`-Mentions und Datei-Chips; PDF-Anhang in die Inbox; Token-Usage |
 | Übersicht | Abdeckung, Lücken, Verifikation, **Was darfst du sagen** (grün/gelb/rot) |
 | Quellen | Excerpt im Original, Sign-off / Ablehnen |
 | Aussagen | Claims und Belegkanten |
@@ -140,7 +141,7 @@ Schreibweg: Ordner in [Easy Writing](https://github.com/renejes/easy-writing) ö
 
 ## Was belegt ist — und was nicht
 
-**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart. 200 Tests.
+**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart, Chat-Session-Index und Stream-Merge. 218 Tests.
 
 **Nicht belegt:** Ob ein echtes Cursor-Modell den Arbeitsvertrag hält — Brief zuerst, Offsets auf die richtige Stelle, Extraktion trägt die Aussage. Die Maschine ist gegen Fixtures und ein Fake-Modell verifiziert, nie gegen eine echte Recherche.
 

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { basename, extname, join } from 'path'
 import {
   Agent,
@@ -15,11 +15,27 @@ import type { Repo } from '../repo'
 import type {
   AgentAuthStatus,
   AgentChatEvent,
+  AgentMentionable,
+  AgentMode,
   AgentModelInfo,
   AgentRunState,
+  AgentSendInput,
   AgentSendResult,
+  AgentSessionResult,
+  AgentSessionsSnapshot,
   AgentSettings,
 } from '../../../shared/agent'
+import {
+  UNTITLED_CHAT,
+  activateSession,
+  addSession,
+  closeOpenTab,
+  removeSession,
+  snapshotSessions,
+  titleFromUserText,
+  touchSession,
+  type AgentSessionIndex,
+} from '../../../shared/agentSessions'
 import { mapSdkMessage } from './events'
 import { followUpPrefix, sessionPreamble } from './instructions'
 import {
@@ -31,14 +47,21 @@ import {
   rememberedAgentId,
   saveAgentSettings,
 } from './settings'
-import { projectWorkspace } from './workspace'
+import { listInboxFiles, projectWorkspace } from './workspace'
+import {
+  deleteTranscript,
+  loadOrMigrateIndex,
+  loadTranscript,
+  saveIndexFile,
+  saveTranscript,
+} from './transcripts'
 
-export type AgentEventSink = (projectId: string, event: AgentChatEvent) => void
+export type AgentEventSink = (projectId: string, event: AgentChatEvent, sessionId: string | null) => void
 
-const HISTORY_MAX = 800
 const ALLOWED_ATTACH_EXT = new Set(['.pdf', '.txt', '.md', '.markdown', '.html', '.htm', '.csv'])
+const BUSY_SWITCH = 'Der Agent arbeitet noch. Warte oder brich den Lauf ab, bevor du den Chat wechselst.'
 
-interface ProjectSession {
+interface BoundAgent {
   agent: SDKAgent
   store: JsonlLocalAgentStore
   cwd: string
@@ -46,6 +69,7 @@ interface ProjectSession {
   run: Run | null
   fresh: boolean
   history: AgentChatEvent[]
+  sessionId: string
 }
 
 function errText(err: unknown): string {
@@ -84,32 +108,17 @@ function uniqueInboxName(dir: string, original: string): string {
   return `${stem}-${i}${ext}`
 }
 
-function historyFile(cwd: string): string {
-  return join(cwd, 'ui-transcript.json')
-}
-
-function loadHistory(cwd: string): AgentChatEvent[] {
-  const path = historyFile(cwd)
-  if (!existsSync(path)) return []
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown
-    return Array.isArray(raw) ? (raw as AgentChatEvent[]) : []
-  } catch {
-    return []
-  }
-}
-
-function saveHistory(cwd: string, history: AgentChatEvent[]): void {
-  const trimmed = history.length > HISTORY_MAX ? history.slice(history.length - HISTORY_MAX) : history
-  writeFileSync(historyFile(cwd), JSON.stringify(trimmed), 'utf-8')
+function asMode(value: AgentMode | undefined): AgentMode {
+  return value === 'plan' ? 'plan' : 'agent'
 }
 
 /**
- * In-App-Host für den Cursor-Agenten. Ein Agent pro Projekt, Werkzeuge = MCP via ToolBridge.
+ * In-App-Host für den Cursor-Agenten. Mehrere Chats pro Projekt, Werkzeuge = MCP via ToolBridge.
  */
 export class CursorAgentHost {
   private readonly bridge: ToolBridge
-  private readonly sessions = new Map<string, ProjectSession>()
+  private readonly bound = new Map<string, BoundAgent>()
+  private readonly indexes = new Map<string, AgentSessionIndex>()
   private customTools: Record<string, SDKCustomTool> | null = null
   private sink: AgentEventSink | null = null
   private modelsCache: SDKModel[] | null = null
@@ -134,6 +143,7 @@ export class CursorAgentHost {
       error,
       keySource: source,
       expiresAtMs: null,
+      expired: false,
     }
   }
 
@@ -152,36 +162,78 @@ export class CursorAgentHost {
   }
 
   private emit(projectId: string, event: AgentChatEvent): void {
-    const session = this.sessions.get(projectId)
-    if (session) {
+    const session = this.bound.get(projectId)
+    if (session && event.type !== 'usage') {
       session.history.push(event)
       if (event.type === 'user' || event.type === 'assistant' || event.type === 'run_end' || (event.type === 'tool' && event.status !== 'running')) {
-        saveHistory(session.cwd, session.history)
+        saveTranscript(session.cwd, session.sessionId, session.history)
       }
     }
-    this.sink?.(projectId, event)
+    this.sink?.(projectId, event, session?.sessionId ?? null)
+  }
+
+  private persistBound(projectId: string): void {
+    const session = this.bound.get(projectId)
+    if (!session) return
+    saveTranscript(session.cwd, session.sessionId, session.history)
+  }
+
+  private indexFor(projectId: string): { cwd: string; index: AgentSessionIndex } {
+    const cwd = projectWorkspace(projectId)
+    let index = this.indexes.get(projectId)
+    if (!index) {
+      index = loadOrMigrateIndex(cwd, rememberedAgentId(projectId))
+      this.indexes.set(projectId, index)
+    }
+    return { cwd, index }
+  }
+
+  private writeIndex(projectId: string, cwd: string, index: AgentSessionIndex): void {
+    this.indexes.set(projectId, index)
+    saveIndexFile(cwd, index)
+    if (index.activeId) rememberAgentId(projectId, index.activeId)
+  }
+
+  private sessionSnapshot(projectId: string): AgentSessionsSnapshot {
+    return snapshotSessions(this.indexFor(projectId).index)
+  }
+
+  private result(projectId: string, extra?: { ok?: boolean; error?: string }): AgentSessionResult {
+    return {
+      ok: extra?.ok ?? true,
+      error: extra?.error,
+      sessions: this.sessionSnapshot(projectId),
+      history: this.history(projectId),
+    }
   }
 
   async disposeAll(): Promise<void> {
     this.cancelBrowserLogin()
-    for (const [id, session] of this.sessions) {
+    for (const id of [...this.bound.keys()]) {
+      await this.unbind(id)
+    }
+    await this.bridge.close()
+  }
+
+  private async unbind(projectId: string): Promise<void> {
+    const session = this.bound.get(projectId)
+    if (!session) return
+    this.persistBound(projectId)
+    try {
+      if (session.run?.supports('cancel')) await session.run.cancel()
+    } catch {
+      /* egal */
+    }
+    try {
+      await session.agent[Symbol.asyncDispose]()
+    } catch {
       try {
-        if (session.run?.supports('cancel')) await session.run.cancel()
+        session.agent.close()
       } catch {
         /* egal */
       }
-      try {
-        await session.agent[Symbol.asyncDispose]()
-      } catch {
-        try {
-          session.agent.close()
-        } catch {
-          /* egal */
-        }
-      }
-      this.sessions.delete(id)
     }
-    await this.bridge.close()
+    this.bound.delete(projectId)
   }
 
   async authStatus(): Promise<AgentAuthStatus> {
@@ -199,6 +251,7 @@ export class CursorAgentHost {
           error: null,
           keySource: source,
           expiresAtMs: null,
+          expired: false,
         }
       }
       const stored = await Cursor.auth.status()
@@ -207,6 +260,7 @@ export class CursorAgentHost {
       }
       const me = await Cursor.me()
       const name = [me.userFirstName, me.userLastName].filter(Boolean).join(' ') || null
+      const expiresAtMs = stored.apiKeyExpiresAtMs ?? null
       return {
         signedIn: true,
         email: me.userEmail ?? stored.email ?? null,
@@ -214,7 +268,8 @@ export class CursorAgentHost {
         keyName: me.apiKeyName,
         error: null,
         keySource: 'browser',
-        expiresAtMs: stored.apiKeyExpiresAtMs ?? null,
+        expiresAtMs,
+        expired: typeof expiresAtMs === 'number' && expiresAtMs < Date.now(),
       }
     } catch (err) {
       return this.unsigned(errText(err), source)
@@ -285,18 +340,49 @@ export class CursorAgentHost {
   }
 
   history(projectId: string): AgentChatEvent[] {
-    const session = this.sessions.get(projectId)
+    const session = this.bound.get(projectId)
     if (session) return session.history
-    const cwd = projectWorkspace(projectId)
-    return loadHistory(cwd)
+    const { cwd, index } = this.indexFor(projectId)
+    if (index.activeId) return loadTranscript(cwd, index.activeId)
+    return []
   }
 
   runState(projectId: string): AgentRunState {
-    const session = this.sessions.get(projectId)
+    const session = this.bound.get(projectId)
+    const { index } = this.indexFor(projectId)
     return {
       projectId,
       running: session?.running ?? false,
-      agentId: session?.agent.agentId ?? rememberedAgentId(projectId),
+      agentId: session?.agent.agentId ?? index.activeId ?? rememberedAgentId(projectId),
+      sessionId: session?.sessionId ?? index.activeId,
+    }
+  }
+
+  sessions(projectId: string): AgentSessionResult {
+    return this.result(projectId)
+  }
+
+  mentionables(projectId: string): AgentMentionable[] {
+    try {
+      const state = this.repo.getProjectState(projectId)
+      const out: AgentMentionable[] = []
+      for (const filename of listInboxFiles(projectId).slice(0, 40)) {
+        out.push({ kind: 'inbox', id: filename, label: filename, hint: 'Inbox' })
+      }
+      for (const source of state.sources.slice(0, 40)) {
+        out.push({
+          kind: 'source',
+          id: source.id,
+          label: source.citekey || source.title,
+          hint: source.citekey ? source.title : source.url,
+        })
+      }
+      for (const question of state.subQuestions.slice(0, 20)) {
+        out.push({ kind: 'question', id: question.id, label: question.question, hint: 'Teilfrage' })
+      }
+      return out
+    } catch {
+      return []
     }
   }
 
@@ -321,7 +407,7 @@ export class CursorAgentHost {
   }
 
   async cancel(projectId: string): Promise<boolean> {
-    const session = this.sessions.get(projectId)
+    const session = this.bound.get(projectId)
     if (!session?.run) return false
     if (session.run.supports('cancel')) {
       await session.run.cancel()
@@ -330,9 +416,85 @@ export class CursorAgentHost {
     return false
   }
 
-  async send(projectId: string, text: string, attached: string[]): Promise<AgentSendResult> {
-    const trimmed = text.trim()
-    if (!trimmed && attached.length === 0) return { ok: false, error: 'Leere Nachricht.' }
+  async newSession(projectId: string): Promise<AgentSessionResult> {
+    if (!this.repo.getProject(projectId)) return this.result(projectId, { ok: false, error: `Projekt ${projectId} existiert nicht.` })
+    const current = this.bound.get(projectId)
+    if (current?.running) return this.result(projectId, { ok: false, error: BUSY_SWITCH })
+    if (current && current.history.length === 0) return this.result(projectId)
+    try {
+      this.persistBound(projectId)
+      await this.bind(projectId, { forceCreate: true })
+      return this.result(projectId)
+    } catch (err) {
+      return this.result(projectId, { ok: false, error: errText(err) })
+    }
+  }
+
+  async switchSession(projectId: string, sessionId: string): Promise<AgentSessionResult> {
+    const want = sessionId.trim()
+    if (!want) return this.result(projectId, { ok: false, error: 'Fehlende Chat-ID.' })
+    const current = this.bound.get(projectId)
+    if (current?.running) return this.result(projectId, { ok: false, error: BUSY_SWITCH })
+    const { cwd, index } = this.indexFor(projectId)
+    if (!index.chats.some((c) => c.id === want)) {
+      return this.result(projectId, { ok: false, error: 'Chat nicht gefunden.' })
+    }
+    if (current?.sessionId === want) {
+      this.writeIndex(projectId, cwd, activateSession(index, want))
+      return this.result(projectId)
+    }
+    try {
+      this.persistBound(projectId)
+      await this.bind(projectId, { resumeId: want })
+      return this.result(projectId)
+    } catch (err) {
+      return this.result(projectId, { ok: false, error: errText(err) })
+    }
+  }
+
+  async closeTab(projectId: string, sessionId: string): Promise<AgentSessionResult> {
+    const { cwd, index } = this.indexFor(projectId)
+    const current = this.bound.get(projectId)
+    if (current?.running && current.sessionId === sessionId) {
+      return this.result(projectId, { ok: false, error: BUSY_SWITCH })
+    }
+    if (index.openIds.length <= 1 && index.activeId === sessionId) return this.result(projectId)
+    this.persistBound(projectId)
+    const wasActive = index.activeId === sessionId
+    const next = closeOpenTab(index, sessionId)
+    this.writeIndex(projectId, cwd, next)
+    if (!wasActive) return this.result(projectId)
+    if (!next.activeId) return this.newSession(projectId)
+    return this.switchSession(projectId, next.activeId)
+  }
+
+  async deleteSession(projectId: string, sessionId: string): Promise<AgentSessionResult> {
+    const { cwd, index } = this.indexFor(projectId)
+    const current = this.bound.get(projectId)
+    if (current?.running && current.sessionId === sessionId) {
+      return this.result(projectId, { ok: false, error: BUSY_SWITCH })
+    }
+    this.persistBound(projectId)
+    const wasActive = index.activeId === sessionId
+    try {
+      deleteTranscript(cwd, sessionId)
+    } catch {
+      /* egal */
+    }
+    if (current?.sessionId === sessionId) await this.unbind(projectId)
+    const next = removeSession(index, sessionId)
+    this.writeIndex(projectId, cwd, next)
+    if (next.chats.length === 0) return this.newSession(projectId)
+    if (wasActive && next.activeId) return this.switchSession(projectId, next.activeId)
+    return this.result(projectId)
+  }
+
+  async send(projectId: string, input: AgentSendInput): Promise<AgentSendResult> {
+    const attached = input.attached ?? []
+    const mentions = input.mentions ?? []
+    const mode = asMode(input.mode)
+    const trimmed = input.text.trim()
+    if (!trimmed && attached.length === 0 && mentions.length === 0) return { ok: false, error: 'Leere Nachricht.' }
     if (!(await this.hasAuth())) {
       return { ok: false, error: 'Nicht angemeldet. Unter Einstellungen „Mit Cursor anmelden“ wählen.' }
     }
@@ -341,13 +503,16 @@ export class CursorAgentHost {
     if (!project) return { ok: false, error: `Projekt ${projectId} existiert nicht.` }
 
     try {
-      const session = await this.ensureSession(projectId)
+      const session = await this.bind(projectId)
       if (session.running) return { ok: false, error: 'Der Agent arbeitet noch. Warte oder brich den Lauf ab.' }
-      this.emit(projectId, { type: 'user', text: trimmed || `(${attached.length} Datei(en) angehängt)` })
+
+      const visible = trimmed || (attached.length ? `(${attached.length} Datei(en) angehängt)` : mentions.map((m) => `@${m.label}`).join(' '))
+      this.emit(projectId, { type: 'user', text: visible })
+      this.touchActiveTitle(projectId, trimmed || attached[0] || mentions[0]?.label || '')
       session.running = true
       const body = session.fresh
-        ? `${sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })}\n\n${followUpPrefix(projectId, attached)}${trimmed}`
-        : `${followUpPrefix(projectId, attached)}${trimmed}`
+        ? `${sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
+        : `${followUpPrefix(projectId, attached, mentions)}${trimmed}`
       session.fresh = false
 
       const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))
@@ -356,10 +521,10 @@ export class CursorAgentHost {
 
       let run: Run
       try {
-        run = await session.agent.send(body, { model })
+        run = await session.agent.send(body, { model, mode })
       } catch (err) {
         if (err instanceof AgentBusyError) {
-          run = await session.agent.send(body, { model, local: { force: true } })
+          run = await session.agent.send(body, { model, mode, local: { force: true } })
         } else {
           throw err
         }
@@ -390,13 +555,89 @@ export class CursorAgentHost {
       this.emit(projectId, { type: 'run_end', status: 'error', error: errText(err) })
       return { ok: false, error: errText(err) }
     } finally {
-      const session = this.sessions.get(projectId)
+      const session = this.bound.get(projectId)
       if (session) {
         session.running = false
         session.run = null
-        saveHistory(session.cwd, session.history)
+        saveTranscript(session.cwd, session.sessionId, session.history)
       }
     }
+  }
+
+  private touchActiveTitle(projectId: string, text: string): void {
+    const { cwd, index } = this.indexFor(projectId)
+    if (!index.activeId) return
+    const existing = index.chats.find((c) => c.id === index.activeId)
+    const untitled = !existing?.title || existing.title === UNTITLED_CHAT
+    const next = touchSession(index, index.activeId, {
+      title: untitled ? titleFromUserText(text, UNTITLED_CHAT) : existing.title,
+      updatedAt: Date.now(),
+    })
+    this.writeIndex(projectId, cwd, next)
+  }
+
+  private async bind(projectId: string, opts?: { resumeId?: string; forceCreate?: boolean }): Promise<BoundAgent> {
+    const { cwd, index } = this.indexFor(projectId)
+    const open = this.bound.get(projectId)
+    const resumeId = opts?.forceCreate ? undefined : (opts?.resumeId ?? index.activeId ?? undefined)
+    if (open && !opts?.forceCreate && (!resumeId || open.sessionId === resumeId)) return open
+
+    const spawned = await this.spawnAgent(projectId, cwd, opts?.forceCreate ? null : resumeId ?? null)
+    if (open) await this.unbind(projectId)
+
+    const sessionId = spawned.agent.agentId
+    const history = spawned.fresh ? [] : loadTranscript(cwd, sessionId)
+    const session: BoundAgent = {
+      agent: spawned.agent,
+      store: spawned.store,
+      cwd,
+      running: false,
+      run: null,
+      fresh: spawned.fresh,
+      history,
+      sessionId,
+    }
+    this.bound.set(projectId, session)
+
+    const known = index.chats.some((c) => c.id === sessionId)
+    const next = known
+      ? activateSession(index, sessionId)
+      : addSession(index, { id: sessionId, title: UNTITLED_CHAT, createdAt: Date.now(), updatedAt: Date.now() })
+    this.writeIndex(projectId, cwd, next)
+    return session
+  }
+
+  private async spawnAgent(
+    projectId: string,
+    cwd: string,
+    resumeId: string | null
+  ): Promise<{ agent: SDKAgent; store: JsonlLocalAgentStore; fresh: boolean }> {
+    const storeDir = join(cwd, '.sdk-store')
+    mkdirSync(storeDir, { recursive: true })
+    const store = new JsonlLocalAgentStore(storeDir)
+    const customTools = await this.ensureBridge()
+    const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))
+    this.modelsCache = models.length ? models : this.modelsCache
+    const model = selectionFrom(this.getSettings(), models)
+    const local = {
+      cwd,
+      store,
+      customTools,
+      settingSources: [],
+      autoReview: true,
+    }
+    const base = { ...this.authOpts(), model, local, mode: 'agent' as const }
+
+    if (resumeId) {
+      try {
+        const agent = await Agent.resume(resumeId, base)
+        return { agent, store, fresh: false }
+      } catch (err) {
+        if (!(err instanceof AgentNotFoundError)) throw err
+      }
+    }
+    const agent = await Agent.create({ ...base, name: `research:${projectId.slice(0, 8)}` })
+    return { agent, store, fresh: true }
   }
 
   private async ensureBridge(): Promise<Record<string, SDKCustomTool>> {
@@ -417,55 +658,5 @@ export class CursorAgentHost {
     }
     this.customTools = tools
     return tools
-  }
-
-  private async ensureSession(projectId: string): Promise<ProjectSession> {
-    const open = this.sessions.get(projectId)
-    if (open) return open
-
-    const cwd = projectWorkspace(projectId)
-    const storeDir = join(cwd, '.sdk-store')
-    mkdirSync(storeDir, { recursive: true })
-    const store = new JsonlLocalAgentStore(storeDir)
-    const customTools = await this.ensureBridge()
-    const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))
-    this.modelsCache = models.length ? models : this.modelsCache
-    const model = selectionFrom(this.getSettings(), models)
-    const local = {
-      cwd,
-      store,
-      customTools,
-      settingSources: [],
-      autoReview: true,
-    }
-    const base = { ...this.authOpts(), model, local, mode: 'agent' as const }
-
-    let agent: SDKAgent
-    let fresh = true
-    const remembered = rememberedAgentId(projectId)
-    if (remembered) {
-      try {
-        agent = await Agent.resume(remembered, base)
-        fresh = false
-      } catch (err) {
-        if (!(err instanceof AgentNotFoundError)) throw err
-        agent = await Agent.create({ ...base, name: `research:${projectId.slice(0, 8)}` })
-        fresh = true
-      }
-    } else {
-      agent = await Agent.create({ ...base, name: `research:${projectId.slice(0, 8)}` })
-    }
-    rememberAgentId(projectId, agent.agentId)
-    const session: ProjectSession = {
-      agent,
-      store,
-      cwd,
-      running: false,
-      run: null,
-      fresh,
-      history: loadHistory(cwd),
-    }
-    this.sessions.set(projectId, session)
-    return session
   }
 }

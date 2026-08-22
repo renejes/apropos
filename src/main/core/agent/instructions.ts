@@ -1,3 +1,5 @@
+import type { AgentMention } from '../../../shared/agent'
+
 export function sessionPreamble(input: {
   projectId: string
   title: string
@@ -24,10 +26,29 @@ Arbeitsvertrag:
 Beginne mit get_research_brief. Ist keiner adoptiert, frage nach — suche nicht.`
 }
 
-export function followUpPrefix(projectId: string, extraFiles: string[]): string {
+export function mentionContext(mentions: AgentMention[]): string {
+  if (mentions.length === 0) return ''
+  const lines = mentions.map((m) => {
+    switch (m.kind) {
+      case 'source':
+        return `- Quelle ${m.label} (source_id: ${m.id})`
+      case 'inbox':
+        return `- Inbox-Datei "${m.id}" — bei Bedarf ingest_local_file`
+      case 'question':
+        return `- Teilfrage ${m.id}: ${m.label}`
+      default: {
+        const _never: never = m.kind
+        return _never
+      }
+    }
+  })
+  return `\nKontext (@-Erwähnungen):\n${lines.join('\n')}`
+}
+
+export function followUpPrefix(projectId: string, extraFiles: string[], mentions: AgentMention[] = []): string {
   const files =
     extraFiles.length > 0
       ? `\nNeu angehängt (inbox/): ${extraFiles.map((f) => `"${f}"`).join(', ')} — bei Bedarf ingest_local_file.`
       : ''
-  return `[Projekt ${projectId}]${files}\n\n`
+  return `[Projekt ${projectId}]${files}${mentionContext(mentions)}\n\n`
 }
