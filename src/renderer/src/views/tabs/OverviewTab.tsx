@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { DeterministicVerifyResult, ProjectState } from '../../../../shared/types'
-import { Button, Card, Icon, SectionTitle } from '../../components/ui'
+import { Button, Card, SectionTitle } from '../../components/ui'
 import CoveragePanel from '../../components/CoveragePanel'
 import SayablePanel from '../../components/SayablePanel'
 
@@ -48,41 +48,37 @@ export default function OverviewTab({
   }
 
   const src = state.sources
-  const stats = [
-    { icon: 'menu_book', label: 'Korpus', value: state.documents.filter((d) => d.status !== 'excluded').length, tone: 'text-slate-700' },
-    { icon: 'link', label: 'Quellen', value: src.length, tone: 'text-slate-700' },
-    { icon: 'schedule', label: 'offen', value: src.filter((s) => s.review_status === 'pending').length, tone: 'text-amber-600' },
-    { icon: 'neurology', label: 'KI-geprüft', value: src.filter((s) => s.review_status === 'ai_checked').length, tone: 'text-sky-600' },
-    { icon: 'verified', label: 'freigegeben', value: src.filter((s) => s.review_status === 'human_signed').length, tone: 'text-emerald-600' },
-    { icon: 'cancel', label: 'Beleg fehlt', value: src.filter((s) => s.quote_verified === 0).length, tone: 'text-red-600' },
-    { icon: 'fact_check', label: 'Aussagen', value: state.claims.length, tone: 'text-slate-700' },
-    { icon: 'description', label: 'Versionen', value: state.reportVersions.length, tone: 'text-slate-700' },
-    { icon: 'flag', label: 'Unsicherheiten', value: state.uncertaintyFlags.length, tone: 'text-violet-600' },
+  const stats: Array<{ label: string; value: number; tone?: string }> = [
+    { label: 'Korpus', value: state.documents.filter((d) => d.status !== 'excluded').length },
+    { label: 'Quellen', value: src.length },
+    { label: 'offen', value: src.filter((s) => s.review_status === 'pending').length, tone: 'text-warn' },
+    { label: 'KI-geprüft', value: src.filter((s) => s.review_status === 'ai_checked').length, tone: 'text-info' },
+    { label: 'freigegeben', value: src.filter((s) => s.review_status === 'human_signed').length, tone: 'text-ok' },
+    { label: 'Beleg fehlt', value: src.filter((s) => s.quote_verified === 0).length, tone: 'text-bad' },
+    { label: 'Aussagen', value: state.claims.length },
+    { label: 'Versionen', value: state.reportVersions.length },
+    { label: 'Unsicherheiten', value: state.uncertaintyFlags.length, tone: state.uncertaintyFlags.length > 0 ? 'text-warn' : undefined },
   ]
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <p className="text-xs leading-relaxed text-slate-500">
+    <div className="mx-auto max-w-5xl space-y-8">
+      <p className="text-xs leading-relaxed text-muted">
         Der Alltagsweg ist der <strong>Agent-Chat</strong> links (Cursor-Abo). Sign-off und Lückenprüfung bleiben hier.
       </p>
 
-      {/* Recherchetiefe: Teilfragen, Abdeckung, offene Lücken */}
       <CoveragePanel projectId={state.project.id} state={state} refreshKey={coverageKey} onOpenSource={onOpenSource} />
 
       <SayablePanel state={state} />
 
-      {/* Kennzahlen */}
-      <div className="grid grid-cols-3 gap-3 lg:grid-cols-9">
+      <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-hairline py-3">
         {stats.map((s) => (
-          <Card key={s.label} className="px-3 py-3 text-center">
-            <Icon name={s.icon} className={`${s.tone}`} />
-            <div className={`mt-1 text-xl font-semibold ${s.tone}`}>{s.value}</div>
-            <div className="text-[11px] text-slate-400">{s.label}</div>
-          </Card>
+          <div key={s.label} className="flex items-baseline gap-1.5">
+            <span className={`font-mono text-sm tabular-nums ${s.tone ?? 'text-fg'}`}>{s.value}</span>
+            <span className="text-xs text-muted">{s.label}</span>
+          </div>
         ))}
       </div>
 
-      {/* Verifikations-Leiter */}
       <Card className="p-5">
         <SectionTitle>Verifikations-Leiter</SectionTitle>
         <div className="space-y-3">
@@ -91,7 +87,7 @@ export default function OverviewTab({
             title="Deterministische Prüfung (ohne KI)"
             desc="URL/DOI-Auflösung + wörtlicher Beleg-Abgleich gegen den frisch gefetchten Quelltext."
             action={
-              <Button variant="primary" icon="rule" onClick={runVerify} disabled={verifying}>
+              <Button variant="primary" onClick={runVerify} disabled={verifying}>
                 {verifying ? (progress ? `Prüfe ${progress.done}/${progress.total} …` : 'Prüfe …') : 'Jetzt prüfen'}
               </Button>
             }
@@ -112,32 +108,32 @@ export default function OverviewTab({
           />
         </div>
 
-        {busyMsg && <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{busyMsg}</div>}
+        {busyMsg && <div className="mt-3 border border-warn bg-warn-bg p-3 text-sm text-warn">{busyMsg}</div>}
 
         {lastRun && (
-          <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm">
-            <span className="font-medium">Letzter Lauf:</span> {lastRun.length} geprüft ·{' '}
-            <span className="text-emerald-700">{lastRun.filter((r) => r.verdict === 'supported').length} belegt</span> ·{' '}
-            <span className="text-red-700">{lastRun.filter((r) => r.verdict === 'unsupported').length} nicht belegt</span> ·{' '}
-            <span className="text-amber-700">{lastRun.filter((r) => r.verdict === 'source_unreachable').length} unerreichbar</span> ·{' '}
-            <span className="text-slate-500">{lastRun.filter((r) => r.verdict === 'flagged').length} nicht prüfbar</span>
+          <div className="mt-4 border border-hairline p-3 text-sm">
+            <span>Letzter Lauf:</span> {lastRun.length} geprüft ·{' '}
+            <span className="text-ok">{lastRun.filter((r) => r.verdict === 'supported').length} belegt</span> ·{' '}
+            <span className="text-bad">{lastRun.filter((r) => r.verdict === 'unsupported').length} nicht belegt</span> ·{' '}
+            <span className="text-warn">{lastRun.filter((r) => r.verdict === 'source_unreachable').length} unerreichbar</span> ·{' '}
+            <span className="text-muted">{lastRun.filter((r) => r.verdict === 'flagged').length} nicht prüfbar</span>
           </div>
         )}
       </Card>
 
-      {/* Suchdokumentation (PRISMA-S) */}
       {(state.searchLog.length > 0 || state.excludedSources.length > 0) && (
         <Card className="p-5">
           <SectionTitle>Suchdokumentation</SectionTitle>
           {state.searchLog.length > 0 && (
             <div className="mb-3">
-              <div className="mb-1 text-xs font-medium text-slate-500">Durchgeführte Suchen ({state.searchLog.length})</div>
+              <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
+                Durchgeführte Suchen ({state.searchLog.length})
+              </div>
               <ul className="space-y-1">
                 {state.searchLog.map((s) => (
                   <li key={s.id} className="flex items-baseline gap-2 text-sm">
-                    <Icon name="search" className="!text-[14px] shrink-0 text-slate-400" />
-                    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">{s.query}</code>
-                    <span className="text-xs text-slate-400">
+                    <code className="font-mono text-xs">{s.query}</code>
+                    <span className="text-xs text-muted">
                       {s.engine && `${s.engine} · `}
                       {s.results_found != null && `${s.results_found} Treffer`}
                     </span>
@@ -148,15 +144,14 @@ export default function OverviewTab({
           )}
           {state.excludedSources.length > 0 && (
             <div>
-              <div className="mb-1 text-xs font-medium text-slate-500">Begründet ausgeschlossen ({state.excludedSources.length})</div>
+              <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
+                Begründet ausgeschlossen ({state.excludedSources.length})
+              </div>
               <ul className="space-y-1.5">
                 {state.excludedSources.map((e) => (
                   <li key={e.id} className="text-sm">
-                    <div className="flex items-baseline gap-2">
-                      <Icon name="do_not_disturb_on" className="!text-[14px] shrink-0 text-red-300" />
-                      <span className="truncate text-slate-600">{e.title ?? e.url}</span>
-                    </div>
-                    <div className="ml-6 text-xs text-slate-400">{e.reason}</div>
+                    <div className="truncate">{e.title ?? e.url}</div>
+                    <div className="text-xs text-muted">{e.reason}</div>
                   </li>
                 ))}
               </ul>
@@ -165,18 +160,14 @@ export default function OverviewTab({
         </Card>
       )}
 
-      {/* Unsicherheits-Flags */}
       {state.uncertaintyFlags.length > 0 && (
         <Card className="p-5">
           <SectionTitle>Von der KI gemeldete Unsicherheiten</SectionTitle>
           <ul className="space-y-2">
             {state.uncertaintyFlags.map((f) => (
-              <li key={f.id} className="flex items-start gap-2 text-sm">
-                <Icon name="flag" className="icon-sm mt-0.5 text-violet-500" />
-                <div>
-                  <span className="text-slate-700">{f.uncertainty_reason}</span>
-                  <span className="ml-2 text-xs text-slate-400">(Konfidenz: {f.confidence_level})</span>
-                </div>
+              <li key={f.id} className="text-sm">
+                <span>{f.uncertainty_reason}</span>
+                <span className="ml-2 font-mono text-xs text-muted">(Konfidenz: {f.confidence_level})</span>
               </li>
             ))}
           </ul>
@@ -186,15 +177,15 @@ export default function OverviewTab({
   )
 }
 
-function LadderStep({ n, title, desc, action }: { n: number; title: string; desc: string; action?: React.ReactNode }) {
+function LadderStep({ n, title, desc, action }: { n: number; title: string; desc: string; action?: ReactNode }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--color-accent-600) text-xs font-bold text-white">
+    <div className="flex items-start gap-3 border border-hairline p-3">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-line bg-fg font-mono text-xs text-bg">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{title}</div>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{desc}</p>
+        <div className="text-sm">{title}</div>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted">{desc}</p>
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>

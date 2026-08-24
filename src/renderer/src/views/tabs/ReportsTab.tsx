@@ -54,7 +54,7 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
       <div className="mx-auto flex h-full max-w-4xl flex-col">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Icon name="edit_note" className="text-(--color-accent-700)" />
+            <Icon name="edit_note" className="text-fg" />
             <span className="text-sm font-medium">
               {parentId ? `Überarbeitung von Version ${versions.find((v) => v.id === parentId)?.snapshot_hash ?? ''}` : 'Neuer Bericht'}
             </span>
@@ -72,16 +72,16 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
           placeholder="Was hast du geändert? (Änderungs-Zusammenfassung für die Versionshistorie)"
-          className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-(--color-accent-600) focus:outline-none"
+          className="field mb-2 w-full text-sm"
         />
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
-          className="min-h-0 flex-1 resize-none rounded-xl border border-slate-300 bg-white p-4 font-mono text-[13px] leading-relaxed focus:border-(--color-accent-600) focus:outline-none"
+          className="field min-h-0 flex-1 resize-none p-4 font-mono text-[13px] leading-relaxed"
           placeholder="# Bericht in Markdown … Quellen-Marker wie [S1] verweisen auf das Quellenverzeichnis."
         />
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-muted">
           <Icon name="lock" className="!text-[13px] mr-1" />
           Deine Bearbeitung überschreibt nichts: Sie wird als neue, unveränderliche Version mit dir als Autor (human:ui) und eigenem
           Snapshot-Hash im Audit-Trail abgelegt.
@@ -111,15 +111,15 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
     <div className="flex h-full gap-4">
       <div className="w-72 shrink-0 space-y-2 overflow-y-auto">
         {versions.map((v, i) => (
-          <Card key={v.id} className={`cursor-pointer p-3 ${selectedId === v.id ? 'ring-2 ring-(--color-accent-600)' : 'hover:shadow'}`}>
+          <Card key={v.id} className={`cursor-pointer p-3 ${selectedId === v.id ? '!border-line' : ''}`}>
             <button className="w-full text-left" onClick={() => setSelectedId(v.id)}>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-semibold text-(--color-accent-700)">{v.snapshot_hash}</span>
+                <span className="font-mono text-xs font-semibold text-fg">{v.snapshot_hash}</span>
                 {i === 0 && <Badge tone="emerald">aktuell</Badge>}
               </div>
-              <div className="mt-1 text-xs text-slate-500">{fmtDate(v.created_at)}</div>
-              {v.change_summary && <div className="mt-1 line-clamp-2 text-xs text-slate-400">{v.change_summary}</div>}
-              <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+              <div className="mt-1 text-xs text-muted">{fmtDate(v.created_at)}</div>
+              {v.change_summary && <div className="mt-1 line-clamp-2 text-xs text-muted">{v.change_summary}</div>}
+              <div className="mt-1 flex items-center gap-1 text-[11px] text-muted">
                 <Icon name={v.created_by.startsWith('human') ? 'person' : 'smart_toy'} className="!text-[13px]" />
                 {v.created_by}
               </div>
@@ -130,9 +130,9 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
 
       {selected && (
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-6 py-3">
-            <div className="text-xs text-slate-400">
-              Snapshot <span className="font-mono font-semibold text-slate-600">{selected.snapshot_hash}</span> ·{' '}
+          <div className="flex items-center justify-between gap-2 border-b border-hairline px-6 py-3">
+            <div className="text-xs text-muted">
+              Snapshot <span className="font-mono font-semibold text-muted">{selected.snapshot_hash}</span> ·{' '}
               {fmtDate(selected.created_at)}
               {selected.parent_version_id === null && (
                 <span className="ml-2">
@@ -146,7 +146,7 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             {/* Bewusst als Plaintext gerendert (kein HTML-Rendering von KI-Inhalt) */}
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-700">{selected.content_markdown}</pre>
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-fg">{selected.content_markdown}</pre>
           </div>
         </Card>
       )}

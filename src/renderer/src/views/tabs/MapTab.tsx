@@ -216,7 +216,7 @@ export default function MapTab({
         </div>
       </div>
 
-      <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-500">
+      <p className="flex items-start gap-2 text-xs leading-relaxed text-muted">
         <Icon name="info" className="!text-[14px] mt-0.5 shrink-0" />
         Punkte sind Quellen und Aussagen — keine freien Zettel. Stern = Arbeitsset (projektsweit). Vergleich färbt nach entity_id:
         nur links amber, nur rechts sky, in beiden grün.
@@ -224,7 +224,7 @@ export default function MapTab({
 
       {mode === 'compare' ? (
         versions.length < 2 ? (
-          <p className="text-sm text-slate-500">Zwei gespeicherte Versionen nötig. Erst Live-Karte als Version speichern oder prepare_view im Chat.</p>
+          <p className="text-sm text-muted">Zwei gespeicherte Versionen nötig. Erst Live-Karte als Version speichern oder prepare_view im Chat.</p>
         ) : (
           <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
             <Pane title={labelOf(versions, leftId)} graph={leftGraph} marked={marked} selected={selected} diffOf={diffOf} onSelect={onSelect} onToggleMark={onToggleMark} />
@@ -242,14 +242,14 @@ export default function MapTab({
           />
         </div>
       ) : (
-        <p className="text-sm text-slate-400">{mode === 'version' ? 'Version wählen.' : 'Karte wird gebaut …'}</p>
+        <p className="text-sm text-muted">{mode === 'version' ? 'Version wählen.' : 'Karte wird gebaut …'}</p>
       )}
 
       {detail && (
         <Card className="p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{detail.kind}</p>
-          <p className="mt-1 text-sm leading-snug text-slate-800">{detail.title}</p>
-          {detail.body && <p className="mt-1 text-xs leading-relaxed text-slate-500">{detail.body}</p>}
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{detail.kind}</p>
+          <p className="mt-1 text-sm leading-snug text-fg">{detail.title}</p>
+          {detail.body && <p className="mt-1 text-xs leading-relaxed text-muted">{detail.body}</p>}
           {selected?.kind === 'source' && (
             <div className="mt-2">
               <Button icon="link" onClick={() => onOpenSource(selected.id)}>
@@ -259,7 +259,7 @@ export default function MapTab({
           )}
         </Card>
       )}
-      {msg && <p className="text-xs text-emerald-700">{msg}</p>}
+      {msg && <p className="text-xs text-ok">{msg}</p>}
     </div>
   )
 }
@@ -283,7 +283,7 @@ function Pane({
 }) {
   return (
     <div className="min-h-[22rem]">
-      <p className="mb-1 truncate text-xs font-medium text-slate-500">{title}</p>
+      <p className="mb-1 truncate text-xs font-medium text-muted">{title}</p>
       {graph ? (
         <MapCanvas
           graph={graph}
@@ -294,7 +294,7 @@ function Pane({
           onToggleMark={onToggleMark}
         />
       ) : (
-        <p className="text-xs text-slate-400">Version wählen</p>
+        <p className="text-xs text-muted">Version wählen</p>
       )}
     </div>
   )
@@ -315,7 +315,7 @@ function VersionSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="max-w-[16rem] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+      className="field max-w-[16rem] text-xs"
     >
       <option value="">{placeholder}</option>
       {versions.map((v) => (
@@ -337,13 +337,13 @@ function Segment<T extends string>({
   options: Array<{ id: T; label: string }>
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+    <div className="inline-flex border border-hairline bg-bg p-0.5">
       {options.map((o) => (
         <button
           key={o.id}
           type="button"
           onClick={() => onChange(o.id)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium ${value === o.id ? 'bg-(--color-accent-50) text-(--color-accent-800)' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`px-2.5 py-1 text-xs ${value === o.id ? 'bg-fg text-bg' : 'text-muted hover:bg-fg hover:text-bg'}`}
         >
           {o.label}
         </button>

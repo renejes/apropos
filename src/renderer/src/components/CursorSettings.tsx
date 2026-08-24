@@ -84,12 +84,12 @@ export function ModelPicker({
 
   return (
     <div className={compact ? 'flex flex-wrap items-center gap-2' : 'space-y-3'}>
-      <label className={compact ? 'flex items-center gap-1.5 text-xs text-slate-600' : 'block text-sm'}>
-        {!compact && <span className="mb-1 block text-xs font-medium text-slate-500">Modell</span>}
+      <label className={compact ? 'flex items-center gap-1.5 text-xs text-muted' : 'block text-sm'}>
+        {!compact && <span className="mb-1 block text-xs font-medium text-muted">Modell</span>}
         <select
           value={modelId}
           onChange={(e) => setModel(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+          className="field text-sm"
         >
           {models.length === 0 && <option value={settings.modelId}>{settings.modelId}</option>}
           {models.map((m) => (
@@ -100,13 +100,13 @@ export function ModelPicker({
         </select>
       </label>
       {params.map((p) => (
-        <label key={p.id} className={compact ? 'flex items-center gap-1.5 text-xs text-slate-600' : 'block text-sm'}>
-          {!compact && <span className="mb-1 block text-xs font-medium text-slate-500">{p.displayName}</span>}
-          {compact && <span className="text-slate-400">{p.displayName}</span>}
+        <label key={p.id} className={compact ? 'flex items-center gap-1.5 text-xs text-muted' : 'block text-sm'}>
+          {!compact && <span className="mb-1 block text-xs font-medium text-muted">{p.displayName}</span>}
+          {compact && <span className="text-muted">{p.displayName}</span>}
           <select
             value={settings.paramValues[p.id] ?? p.values[0]?.value ?? ''}
             onChange={(e) => setParam(p.id, e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            className="field text-sm"
           >
             {p.values.map((v) => (
               <option key={v.value} value={v.value}>
@@ -171,12 +171,12 @@ export default function CursorSettings() {
         <SectionTitle>Cursor-Konto (In-App-Agent)</SectionTitle>
         <Button variant="ghost" icon="refresh" onClick={() => void reload()} disabled={busy || loggingIn} title="Status neu prüfen" />
       </div>
-      <p className="mb-3 text-sm leading-relaxed text-slate-500">
+      <p className="mb-3 text-sm leading-relaxed text-muted">
         Der Research-Chat nutzt dein Cursor-Abo über das SDK — dieselbe Abrechnung wie in der IDE. Anmeldung über den Browser
         (SDK mintet intern einen Key, 90 Tage). Verbrauch mit Tag „SDK“ unter{' '}
         <button
           type="button"
-          className="text-(--color-accent-700) underline"
+          className="text-fg underline"
           onClick={() => void window.api.openExternal('https://cursor.com/dashboard/usage')}
         >
           Usage
@@ -185,14 +185,14 @@ export default function CursorSettings() {
       </p>
 
       {!auth ? (
-        <p className="text-sm text-slate-400">Prüfe …</p>
+        <p className="text-sm text-muted">Prüfe …</p>
       ) : auth.signedIn ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone="emerald" icon="check_circle">
             angemeldet
           </Badge>
-          {auth.name && <span className="text-sm text-slate-700">{auth.name}</span>}
-          {auth.email && <span className="text-xs text-slate-400">{auth.email}</span>}
+          {auth.name && <span className="text-sm text-fg">{auth.name}</span>}
+          {auth.email && <span className="text-xs text-muted">{auth.email}</span>}
           {auth.expired && <Badge tone="amber">Anmeldung abgelaufen</Badge>}
           {auth.keyName && <Badge tone="slate">{auth.keyName}</Badge>}
           {sourceLabel(auth.keySource) && <Badge tone="slate">{sourceLabel(auth.keySource)}</Badge>}
@@ -207,14 +207,14 @@ export default function CursorSettings() {
           <Badge tone="amber" icon="login">
             nicht angemeldet
           </Badge>
-          {auth.error && <p className="text-xs text-amber-800">{auth.error}</p>}
+          {auth.error && <p className="text-xs text-warn">{auth.error}</p>}
           {loggingIn ? (
             <div className="space-y-2">
-              <p className="text-sm text-slate-600">Browser geöffnet — Anmeldung auf cursor.com abschließen.</p>
+              <p className="text-sm text-muted">Browser geöffnet — Anmeldung auf cursor.com abschließen.</p>
               {loginUrl && (
                 <button
                   type="button"
-                  className="block max-w-full truncate text-left text-xs text-(--color-accent-700) underline"
+                  className="block max-w-full truncate text-left text-xs text-fg underline"
                   onClick={() => void window.api.openExternal(loginUrl)}
                 >
                   {loginUrl}
@@ -237,11 +237,11 @@ export default function CursorSettings() {
           <SectionTitle>Modell und Modus</SectionTitle>
           <ModelPicker models={models} settings={settings} onChange={(next) => void saveSettings(next)} />
           {models.length === 0 && auth?.signedIn && (
-            <p className="mt-2 text-xs text-slate-400">Modellliste leer — Anmeldung prüfen oder neu laden.</p>
+            <p className="mt-2 text-xs text-muted">Modellliste leer — Anmeldung prüfen oder neu laden.</p>
           )}
         </div>
       )}
-      {msg && <p className="mt-3 text-xs text-emerald-700">{msg}</p>}
+      {msg && <p className="mt-3 text-xs text-ok">{msg}</p>}
     </Card>
   )
 }

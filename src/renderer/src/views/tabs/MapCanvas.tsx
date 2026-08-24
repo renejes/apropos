@@ -47,7 +47,7 @@ export default function MapCanvas({
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
 
   return (
-    <div className="relative overflow-auto rounded-xl border border-slate-200 bg-slate-50" style={{ backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
+    <div className="relative overflow-auto border border-hairline bg-bg" style={{ backgroundImage: 'radial-gradient(#dddddd 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
       <div className="relative" style={{ width: graph.width, height: graph.height, minWidth: '100%' }}>
         <svg className="pointer-events-none absolute inset-0" width={graph.width} height={graph.height}>
           {graph.edges.map((e) => {
@@ -80,26 +80,24 @@ export default function MapCanvas({
           const isMarked = n.kind !== 'sub_question' && marked.has(key)
           const selected = selectedKey === key
           const diff = diffOf?.(n.kind, n.entity_id) ?? null
+          const inverted = selected || n.kind === 'sub_question'
           const ring =
             diff === 'only-left'
-              ? 'ring-2 ring-amber-400'
+              ? 'outline outline-2 outline-warn'
               : diff === 'only-right'
-                ? 'ring-2 ring-sky-400'
+                ? 'outline outline-2 outline-info'
                 : diff === 'both'
-                  ? 'ring-1 ring-emerald-300'
-                  : selected
-                    ? 'ring-2 ring-(--color-accent-500)'
-                    : 'ring-1 ring-slate-200'
-          const kindStyle =
-            n.kind === 'claim'
-              ? 'border-l-4 border-l-(--color-accent-600)'
-              : n.kind === 'sub_question'
-                ? 'bg-slate-800 text-white'
-                : 'bg-white'
+                  ? 'outline outline-1 outline-ok'
+                  : 'border border-hairline'
+          const kindStyle = inverted
+            ? 'bg-fg text-bg'
+            : n.kind === 'claim'
+              ? 'border-l-4 border-l-line bg-bg'
+              : 'bg-bg'
           return (
             <div
               key={n.id}
-              className={`absolute flex items-stretch overflow-hidden rounded-lg shadow-sm ${ring} ${kindStyle}`}
+              className={`absolute flex items-stretch overflow-hidden ${ring} ${kindStyle}`}
               style={{ left: n.pos_x, top: n.pos_y, width: NODE_W, height: NODE_H }}
             >
               <button
@@ -107,10 +105,10 @@ export default function MapCanvas({
                 onClick={() => onSelect(n.kind, n.entity_id)}
                 className="min-w-0 flex-1 px-2 py-1.5 text-left"
               >
-                <span className={`block text-[10px] font-semibold uppercase tracking-wide ${n.kind === 'sub_question' ? 'text-slate-300' : 'text-slate-400'}`}>
+                <span className={`block font-mono text-[10px] uppercase tracking-wide ${inverted ? 'text-bg/70' : 'text-muted'}`}>
                   {n.kind === 'source' ? 'Quelle' : n.kind === 'claim' ? 'Aussage' : 'Teilfrage'}
                 </span>
-                <span className={`block truncate text-xs font-medium leading-snug ${n.kind === 'sub_question' ? 'text-white' : 'text-slate-800'}`}>
+                <span className={`block truncate text-xs leading-snug ${inverted ? 'text-bg' : 'text-fg'}`}>
                   {n.label}
                 </span>
               </button>
@@ -121,7 +119,7 @@ export default function MapCanvas({
                   onClick={() => {
                     if (n.kind === 'source' || n.kind === 'claim') onToggleMark(n.kind, n.entity_id)
                   }}
-                  className={`shrink-0 px-1.5 ${isMarked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
+                  className={`shrink-0 px-1.5 ${isMarked ? 'text-warn' : inverted ? 'text-bg/40 hover:text-warn' : 'text-muted hover:text-warn'}`}
                 >
                   <Icon name={isMarked ? 'star' : 'star'} className={`!text-[18px] ${isMarked ? '' : 'opacity-40'}`} />
                 </button>

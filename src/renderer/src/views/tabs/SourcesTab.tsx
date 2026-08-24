@@ -78,12 +78,12 @@ export default function SourcesTab({
       <div className={`${selected ? 'w-1/2' : 'w-full'} min-w-0 transition-all`}>
         <div className="mb-3 flex items-center gap-2">
           <div className="relative flex-1">
-            <Icon name="search" className="icon-sm absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Icon name="search" className="icon-sm absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Quellen durchsuchen …"
-              className="w-full rounded-lg border border-slate-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--color-accent-600) focus:outline-none"
+              className="field w-full py-1.5 pl-8 pr-3 text-sm"
             />
           </div>
           {(
@@ -97,9 +97,7 @@ export default function SourcesTab({
             <button
               key={value}
               onClick={() => setFilter(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
-                filter === value ? 'bg-(--color-accent-600) font-medium text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-              }`}
+              className={`px-3 py-1.5 text-sm ${filter === value ? 'bg-fg text-bg' : 'border border-hairline text-muted hover:bg-fg hover:text-bg'}`}
             >
               {label}
             </button>
@@ -107,15 +105,15 @@ export default function SourcesTab({
         </div>
 
         <div className="space-y-2">
-          {sources.map((s, i) => (
+          {sources.map((s) => (
             <Card
               key={s.id}
-              className={`cursor-pointer p-3 transition-shadow hover:shadow ${selectedId === s.id ? 'ring-2 ring-(--color-accent-600)' : ''}`}
+              className={`cursor-pointer p-3 ${selectedId === s.id ? '!border-line' : ''}`}
             >
               <button className="w-full text-left" onClick={() => setSelectedId(s.id === selectedId ? null : s.id)}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium">
-                    <span className="mr-1.5 text-xs text-slate-400">[S{state.sources.indexOf(s) + 1}]</span>
+                    <span className="mr-1.5 text-xs text-muted">[S{state.sources.indexOf(s) + 1}]</span>
                     {s.title}
                   </span>
                   <div className="flex shrink-0 items-center gap-1.5">
@@ -123,8 +121,8 @@ export default function SourcesTab({
                     {statusBadge(s.review_status)}
                   </div>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{s.extraction}</p>
-                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-400">
+                <p className="mt-1 line-clamp-2 text-xs text-muted">{s.extraction}</p>
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
                   <span className="truncate">{s.url}</span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -224,10 +222,10 @@ function SourceDetail({
 
       <div className="space-y-4 text-sm">
         <Field label="URL">
-          <a href={s.url} target="_blank" rel="noreferrer" className="break-all text-(--color-accent-700) underline decoration-dotted">
+          <a href={s.url} target="_blank" rel="noreferrer" className="break-all underline decoration-dotted">
             {s.url}
           </a>
-          <span className="ml-2 text-xs text-slate-400">
+          <span className="ml-2 text-xs text-muted">
             Zugriff {fmtDate(s.accessed_at)} · {s.retrieval_method} · von {s.created_by}
           </span>
         </Field>
@@ -248,7 +246,7 @@ function SourceDetail({
               await window.api.assignSource(s.id, e.target.value || null)
               onReload()
             }}
-            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-(--color-accent-600) focus:outline-none"
+            className="field w-full text-sm"
           >
             <option value="">— nicht zugeordnet (zählt bei keiner Teilfrage) —</option>
             {state.subQuestions
@@ -263,16 +261,10 @@ function SourceDetail({
 
         <Field label="Wörtlicher Beleg">
           <blockquote
-            className={`rounded-lg border-l-4 p-3 text-[13px] italic ${
-              s.quote_verified === 1
-                ? 'border-emerald-400 bg-emerald-50/60'
-                : s.quote_verified === 0
-                  ? 'border-red-400 bg-red-50/60'
-                  : 'border-slate-300 bg-slate-50'
-            }`}
+            className={` border-l-4 p-3 text-[13px] italic ${ s.quote_verified === 1 ? 'border-ok bg-ok-bg' : s.quote_verified === 0 ? 'border-bad bg-bad-bg' : 'border-line bg-wash' }`}
           >
             „{s.verbatim_quote}“
-            {s.quote_locator && <div className="mt-1 text-[11px] not-italic text-slate-400">Fundstelle: {s.quote_locator}</div>}
+            {s.quote_locator && <div className="mt-1 text-[11px] not-italic text-muted">Fundstelle: {s.quote_locator}</div>}
           </blockquote>
           {s.document_id && s.quote_start != null && s.quote_end != null && (
             <QuoteInContext
@@ -288,9 +280,9 @@ function SourceDetail({
           <Field label={`Weitere Extraktionen (${extractions.length})`}>
             <ul className="space-y-2">
               {extractions.map((e) => (
-                <li key={e.id} className="rounded-lg bg-slate-50 p-2 text-xs">
-                  <div className="font-medium text-slate-700">{e.extracted_fact}</div>
-                  <div className="mt-1 italic text-slate-500">„{e.verbatim_quote}“</div>
+                <li key={e.id} className="bg-wash p-2 text-xs">
+                  <div className="font-medium text-fg">{e.extracted_fact}</div>
+                  <div className="mt-1 italic text-muted">„{e.verbatim_quote}“</div>
                 </li>
               ))}
             </ul>
@@ -300,7 +292,7 @@ function SourceDetail({
         {flags.length > 0 && (
           <Field label="Unsicherheits-Flags">
             {flags.map((f) => (
-              <div key={f.id} className="mb-1 flex items-start gap-1.5 text-xs text-violet-700">
+              <div key={f.id} className="mb-1 flex items-start gap-1.5 text-xs text-warn">
                 <Icon name="flag" className="!text-[14px] mt-0.5" />
                 {f.uncertainty_reason}
               </div>
@@ -315,12 +307,12 @@ function SourceDetail({
                 <li key={r.id} className="flex items-start gap-2 text-xs">
                   <Icon
                     name={r.reviewer_type === 'human' ? 'person' : r.reviewer_type === 'deterministic' ? 'rule' : 'neurology'}
-                    className="!text-[15px] mt-0.5 text-slate-400"
+                    className="!text-[15px] mt-0.5 text-muted"
                   />
                   <div>
                     <span className="font-medium">{r.verdict}</span>
-                    <span className="text-slate-400"> · {r.reviewer_id} · {fmtDate(r.created_at)}</span>
-                    {r.note && <div className="text-slate-500">{r.note}</div>}
+                    <span className="text-muted"> · {r.reviewer_id} · {fmtDate(r.created_at)}</span>
+                    {r.note && <div className="text-muted">{r.note}</div>}
                   </div>
                 </li>
               ))}
@@ -330,14 +322,14 @@ function SourceDetail({
       </div>
 
       {/* Sign-off */}
-      <div className="mt-5 border-t border-slate-200 pt-4">
+      <div className="mt-5 border-t border-hairline pt-4">
         <SectionTitle>Menschlicher Sign-off</SectionTitle>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
           placeholder="Optionale Notiz zur Entscheidung …"
-          className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-(--color-accent-600) focus:outline-none"
+          className="field mb-2 w-full text-sm"
         />
         <div className="flex gap-2">
           <Button variant="primary" icon="verified" onClick={() => sign('human_signed')} disabled={busy || s.review_status === 'human_signed'}>
@@ -347,7 +339,7 @@ function SourceDetail({
             Ablehnen
           </Button>
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
           Der Sign-off ist nur hier in der App möglich — keine KI kann ihn über MCP setzen. Deine Entscheidung wird als Review-Kante im
           Audit-Trail protokolliert.
         </p>
@@ -388,12 +380,12 @@ function QuoteInContext({
     }
   }, [documentId, start, end])
 
-  if (err) return <div className="mt-2 text-xs text-slate-400">Originaltext nicht mehr verfügbar.</div>
+  if (err) return <div className="mt-2 text-xs text-muted">Originaltext nicht mehr verfügbar.</div>
   if (!ex) return null
 
   return (
     <div className="mt-2">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 text-xs text-(--color-accent-700) hover:underline">
+      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 text-xs underline">
         <Icon name={open ? 'expand_less' : 'expand_more'} className="!text-[16px]" />
         {open ? 'Originaltext ausblenden' : 'Im Originaltext anzeigen'}
         <Badge tone="emerald" icon="anchor">
@@ -404,23 +396,23 @@ function QuoteInContext({
         <button
           type="button"
           onClick={() => onOpenDocument(documentId, start, end)}
-          className="ml-3 inline-flex items-center gap-1 text-xs text-(--color-accent-700) hover:underline"
+          className="ml-3 inline-flex items-center gap-1 text-xs underline"
         >
           <Icon name="menu_book" className="!text-[16px]" />
           Im Korpus öffnen
         </button>
       )}
       {open && (
-        <div className="mt-2 rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
+        <div className="mt-2 border border-hairline bg-bg">
+          <div className="border-b border-hairline px-3 py-1.5 text-[11px] text-muted">
             Abgerufen {fmtDate(ex.fetched_at)} · {ex.char_len.toLocaleString('de-DE')} Zeichen · Hash {ex.content_hash}
           </div>
-          <div className="max-h-72 overflow-y-auto p-3 text-[13px] leading-relaxed text-slate-600">
-            {ex.truncated_start && <span className="text-slate-300">… </span>}
+          <div className="max-h-72 overflow-y-auto p-3 text-[13px] leading-relaxed text-muted">
+            {ex.truncated_start && <span className="text-muted">… </span>}
             <span>{ex.before}</span>
-            <mark className="rounded bg-amber-200/70 px-0.5 font-medium text-slate-900">{ex.quote}</mark>
+            <mark className="rounded bg-warn-bg px-0.5 font-medium text-fg">{ex.quote}</mark>
             <span>{ex.after}</span>
-            {ex.truncated_end && <span className="text-slate-300"> …</span>}
+            {ex.truncated_end && <span className="text-muted"> …</span>}
           </div>
         </div>
       )}
@@ -431,8 +423,8 @@ function QuoteInContext({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="text-slate-700">{children}</div>
+      <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">{label}</div>
+      <div>{children}</div>
     </div>
   )
 }

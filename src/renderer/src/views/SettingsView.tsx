@@ -43,7 +43,7 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       <div className="mx-auto max-w-3xl space-y-6 p-8">
       <div>
         <h1 className="text-lg font-semibold">Einstellungen</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted">
           Alltagsweg: Cursor-Konto und Modell hier, Research im Agent-Chat des Projekts. MCP-HTTP bleibt für Fremdclients
           (IDE, Goose, Claude Code).
         </p>
@@ -66,12 +66,12 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
         </div>
         <CodeRow label="Endpoint" value={info.httpUrl} onCopy={copy} copied={copied} />
         {info.running ? (
-          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+          <p className="mt-2 text-xs leading-relaxed text-muted">
             Nur auf 127.0.0.1 erreichbar; mehrere Clients können gleichzeitig andocken. Werkzeuge greifen nur im{' '}
             <strong>Agent-Modus</strong>, nicht im Chat.
           </p>
         ) : (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900">
+          <div className="mt-3 border border-warn bg-warn-bg px-3 py-2 text-sm leading-relaxed text-warn">
             MCP läuft nicht. Die App muss gestartet sein (<code className="font-mono text-xs">npm start</code>). In Cursor den{' '}
             <strong>Agent-Modus</strong> öffnen, nicht den Chat — sonst bleiben die Werkzeuge unsichtbar.
           </div>
@@ -80,19 +80,19 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <Card className="p-5">
         <SectionTitle>Cursor (empfohlen)</SectionTitle>
-        <p className="mb-2 text-sm text-slate-500">
+        <p className="mb-2 text-sm text-muted">
           Nach <code className="font-mono text-xs">.cursor/mcp.json</code> (Projekt) oder{' '}
           <code className="font-mono text-xs">~/.cursor/mcp.json</code> (global — nötig, wenn das Projekt-MCP in einem Multi-Root-Workspace
           verschwindet). Anschließend <strong>Agent-Modus</strong> öffnen — im Chat sind MCP-Werkzeuge unsichtbar. Research mit einem{' '}
           <strong>benannten Modell</strong>, nicht Auto: WebSearch-Hooks feuern unter Auto oft nicht.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{cursorConfig}</pre>
+        <pre className="overflow-x-auto bg-fg p-3 text-xs leading-relaxed text-bg">{cursorConfig}</pre>
         <div className="mt-2">
           <Button icon="content_copy" onClick={() => copy('cursor', cursorConfig)}>
             {copied === 'cursor' ? 'Kopiert ✓' : 'mcp.json kopieren'}
           </Button>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-400">
+        <p className="mt-2 text-xs leading-relaxed text-muted">
           Kein <code className="font-mono">type</code>-Feld: Cursor erkennt Streamable HTTP am <code className="font-mono">url</code>
           -Feld. Einstieg im Agent: Werkzeug <code className="font-mono">start_transparent_research</code>. WebSearch darf entdecken;
           Berichtsquellen nur per <code className="font-mono">fetch_source</code>. WebFetch wird vom Projekt-Hook abgewiesen.
@@ -101,11 +101,11 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <Card className="p-5">
         <SectionTitle>Cursor-Allowlist (ohne Klick-Orgie)</SectionTitle>
-        <p className="mb-2 text-sm text-slate-500">
+        <p className="mb-2 text-sm text-muted">
           Datei <code className="font-mono text-xs">.cursor/permissions.json</code> (liegt im Repo). Cursor Settings → Agents →
           Approvals: <strong>Allowlist</strong> oder <strong>Auto-review</strong> — sonst fragt Cursor jeden der 10–40 Aufrufe einzeln.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{CURSOR_PERMISSIONS_JSON}</pre>
+        <pre className="overflow-x-auto bg-fg p-3 text-xs leading-relaxed text-bg">{CURSOR_PERMISSIONS_JSON}</pre>
         <div className="mt-2">
           <Button icon="content_copy" onClick={() => copy('allowlist', CURSOR_PERMISSIONS_JSON)}>
             {copied === 'allowlist' ? 'Kopiert ✓' : 'permissions.json kopieren'}
@@ -115,12 +115,12 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <Card className="p-5">
         <SectionTitle>Cursor-Rule (Arbeitsvertrag)</SectionTitle>
-        <p className="mb-2 text-sm text-slate-500">
+        <p className="mb-2 text-sm text-muted">
           Cursor hat keine Claude-Hooks. Diese Rule ist der Arbeitsvertrag: WebSearch darf entdecken, Berichtsquellen nur per{' '}
           <code className="font-mono text-xs">fetch_source</code>. Datei:{' '}
           <code className="font-mono text-xs">.cursor/rules/transparent-research.mdc</code>.
         </p>
-        <pre className="max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{CURSOR_RULE_MDC}</pre>
+        <pre className="max-h-64 overflow-auto bg-fg p-3 text-xs leading-relaxed text-bg">{CURSOR_RULE_MDC}</pre>
         <div className="mt-2">
           <Button icon="content_copy" onClick={() => copy('rule', CURSOR_RULE_MDC)}>
             {copied === 'rule' ? 'Kopiert ✓' : 'Rule kopieren'}
@@ -130,13 +130,13 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <Card className="p-5">
         <SectionTitle>Optional: stdio (Claude Desktop)</SectionTitle>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{claudeDesktopConfig}</pre>
+        <pre className="mt-2 overflow-x-auto bg-fg p-3 text-xs leading-relaxed text-bg">{claudeDesktopConfig}</pre>
         <div className="mt-2 flex gap-2">
           <Button icon="content_copy" onClick={() => copy('config', claudeDesktopConfig)}>
             {copied === 'config' ? 'Kopiert ✓' : 'Config kopieren'}
           </Button>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-400">
+        <p className="mt-2 text-xs leading-relaxed text-muted">
           In <code className="font-mono">claude_desktop_config.json</code>. Der stdio-Server teilt sich die Datenbank mit dieser App
           (WAL) und startet über das Electron-Binary im Node-Modus, damit die native SQLite-Bibliothek zur App passt.
         </p>
@@ -145,17 +145,17 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       {info.hookScriptPath && (
         <Card className="p-5">
           <SectionTitle>Optional: Claude Code Provenienz-Gate</SectionTitle>
-          <p className="mb-2 text-sm text-slate-500">
+          <p className="mb-2 text-sm text-muted">
             Nur für Claude Code. Hooks blockieren weitere Web-Recherche, bis die letzte Quelle dokumentiert ist. Snippet in{' '}
             <code className="font-mono text-xs">.claude/settings.json</code>:
           </p>
-          <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">{hooksConfig(info.hookScriptPath)}</pre>
+          <pre className="overflow-x-auto bg-fg p-3 text-xs leading-relaxed text-bg">{hooksConfig(info.hookScriptPath)}</pre>
           <div className="mt-2">
             <Button icon="content_copy" onClick={() => copy('hooks', hooksConfig(info.hookScriptPath!))}>
               {copied === 'hooks' ? 'Kopiert ✓' : 'Hooks-Config kopieren'}
             </Button>
           </div>
-          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+          <p className="mt-2 text-xs leading-relaxed text-muted">
             Dazu den Skill <code className="font-mono">skills/transparent-research</code>. In Cursor greift stattdessen die Rule oben;
             der Server erzwingt Provenienz unabhängig vom Client.
           </p>
@@ -165,7 +165,7 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       <Card className="p-5">
         <SectionTitle>Datenbank</SectionTitle>
         <CodeRow label="Pfad" value={info.dbPath} onCopy={copy} copied={copied} />
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-muted">
           SQLite mit append-only Audit-Trail (<span className="font-mono">event_log</span>) und FTS5-Volltextsuche — deine Daten bleiben
           lokal (local-first).
         </p>
@@ -173,7 +173,7 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <Card className="p-5">
         <SectionTitle>Demo</SectionTitle>
-        <p className="mb-3 text-sm text-slate-500">
+        <p className="mb-3 text-sm text-muted">
           Legt ein Demo-Projekt mit zwei Quellen, einem Claim und einer Berichtsversion an — zum Kennenlernen der Review-Oberfläche.
         </p>
         <Button
@@ -188,10 +188,10 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
         >
           Demo-Projekt laden
         </Button>
-        {seedMsg && <div className="mt-2 text-xs text-emerald-700">{seedMsg}</div>}
+        {seedMsg && <div className="mt-2 text-xs text-ok">{seedMsg}</div>}
       </Card>
 
-      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-800">
+      <div className="flex items-start gap-2 border border-warn bg-warn-bg p-4 text-xs leading-relaxed text-warn">
         <Icon name="info" className="icon-sm mt-0.5 shrink-0" />
         <p>
           <strong>Prinzip:</strong> Alles, was eine KI einträgt, ist eine <em>zu verifizierende Behauptung</em> — kein Fakt. Die App prüft
@@ -235,7 +235,7 @@ function CodeRow({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs">{value}</code>
+      <code className="min-w-0 flex-1 truncate bg-wash px-3 py-2 font-mono text-xs">{value}</code>
       <Button variant="ghost" icon={copied === label ? 'check' : 'content_copy'} onClick={() => onCopy(label, value)} title="Kopieren" />
     </div>
   )

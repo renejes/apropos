@@ -23,7 +23,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 640,
     title: 'Research Overview Platform',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Icon } from '../components/ui'
+import { Button } from '../components/ui'
 
 export default function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState('')
@@ -19,25 +19,27 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-project-title"
-        className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+        className="w-full max-w-lg border border-line bg-bg p-6"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onClose()
         }}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 id="new-project-title" className="text-base font-semibold">
+          <h2 id="new-project-title" className="text-base">
             Neues Research-Projekt
           </h2>
-          <Button variant="ghost" icon="close" onClick={onClose} title="Dialog schließen" />
+          <Button variant="ghost" onClick={onClose} title="Dialog schließen">
+            ×
+          </Button>
         </div>
 
-        <label htmlFor="np-title" className="mb-1 block text-xs font-medium text-slate-600">
+        <label htmlFor="np-title" className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
           Titel
         </label>
         <input
@@ -46,10 +48,10 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="z. B. Wettbewerbsanalyse KI-Research-Tools"
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-(--color-accent-600) focus:outline-none"
+          className="field mb-3 w-full"
         />
 
-        <label htmlFor="np-question" className="mb-1 block text-xs font-medium text-slate-600">
+        <label htmlFor="np-question" className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
           Forschungsfrage
         </label>
         <textarea
@@ -58,34 +60,32 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
           onChange={(e) => setQuestion(e.target.value)}
           rows={2}
           placeholder="Welche Frage soll diese Research beantworten?"
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-(--color-accent-600) focus:outline-none"
+          className="field mb-3 w-full"
         />
 
-        <label className="mb-1 block text-xs font-medium text-slate-600">Modus</label>
+        <label className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted">Modus</label>
         <div className="mb-5 flex gap-2">
           {(
             [
-              ['academic', 'school', 'Akademisch'],
-              ['business', 'storefront', 'Business / Marketing'],
+              ['academic', 'Akademisch'],
+              ['business', 'Business / Marketing'],
             ] as const
-          ).map(([value, icon, label]) => (
+          ).map(([value, label]) => (
             <button
               key={value}
               onClick={() => setMode(value)}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                mode === value
-                  ? 'border-(--color-accent-600) bg-(--color-accent-50) font-medium'
-                  : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+              className={`flex flex-1 items-center justify-center border px-3 py-2 text-sm ${
+                mode === value ? 'border-line bg-fg text-bg' : 'border-line text-muted hover:bg-fg hover:text-bg'
               }`}
             >
-              <Icon name={icon} className="icon-sm" /> {label}
+              {label}
             </button>
           ))}
         </div>
 
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" icon="add" onClick={create} disabled={busy || title.trim().length < 3}>
+          <Button variant="primary" onClick={create} disabled={busy || title.trim().length < 3}>
             Projekt anlegen
           </Button>
         </div>

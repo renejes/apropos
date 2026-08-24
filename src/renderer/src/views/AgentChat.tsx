@@ -135,7 +135,7 @@ function renderInline(line: string): ReactNode[] {
       )
     } else {
       parts.push(
-        <code key={i} className="rounded bg-slate-200/80 px-1 font-mono text-[0.85em]">
+        <code key={i} className="border border-hairline px-1 font-mono text-[0.85em]">
           {token.slice(1, -1)}
         </code>
       )
@@ -385,16 +385,13 @@ export default function AgentChat({
   const modeLabel = mode === 'plan' ? 'Plan' : 'Agent'
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
-        <Icon name="smart_toy" className="text-(--color-accent-700)" />
-        <span className="text-sm font-medium">Agent</span>
+    <div className="flex h-full min-h-0 flex-col bg-bg">
+      <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
+        <span className="font-mono text-[11px] uppercase tracking-[0.08em]">Agent</span>
         {signedIn && !expired ? (
           <Badge tone="emerald">Cursor</Badge>
         ) : (
-          <Badge tone="amber" icon="login">
-            {expired ? 'abgelaufen' : 'nicht angemeldet'}
-          </Badge>
+          <Badge tone="amber">{expired ? 'abgelaufen' : 'nicht angemeldet'}</Badge>
         )}
         <span className="ml-auto" />
         {signedIn && !expired && (
@@ -412,9 +409,9 @@ export default function AgentChat({
                 }}
               />
               {historyOpen && (
-                <div className="absolute top-full right-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                <div className="absolute top-full right-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto border border-line bg-bg py-1">
                   {sessions.all.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-slate-400">Noch keine Chats.</p>
+                    <p className="px-3 py-2 text-xs text-muted">Noch keine Chats.</p>
                   ) : (
                     sessions.all.map((s) => (
                       <HistoryRow
@@ -448,7 +445,7 @@ export default function AgentChat({
       </div>
 
       {!signedIn || expired ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 text-sm text-slate-600">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 text-sm text-muted">
           <p className="mb-3">
             {expired
               ? 'Die Cursor-Anmeldung ist abgelaufen. Bitte erneut anmelden, damit der Research-Agent weiterlaufen kann.'
@@ -457,16 +454,16 @@ export default function AgentChat({
           <Button variant="primary" icon="login" onClick={() => void loginBrowser()}>
             Mit Cursor anmelden
           </Button>
-          {sendError && <p className="mt-3 text-xs text-red-700">{sendError}</p>}
+          {sendError && <p className="mt-3 text-xs text-bad">{sendError}</p>}
         </div>
       ) : (
         <>
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {items.length === 0 && (
-              <div className="px-2 py-8 text-sm text-slate-500">
+              <div className="px-2 py-8 text-sm text-muted">
                 <p className="mb-3">
                   Chat mit dem Research-Agenten. Er schreibt nur über die Provenienz-Werkzeuge; Sign-off bleibt rechts bei dir.
-                  Mit <span className="font-medium text-slate-700">@</span> hängst du Quellen, Inbox-Dateien oder Teilfragen an.
+                  Mit <span className="text-fg">@</span> hängst du Quellen, Inbox-Dateien oder Teilfragen an.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {STARTERS.map((s) => (
@@ -482,19 +479,19 @@ export default function AgentChat({
                 <ChatBubble key={`${sessions.activeId ?? 'chat'}:${i}`} item={item} busy={running && i === items.length - 1} elapsedSec={elapsedSec} />
               ))}
               {running && !hasAssistantText && (
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted">
                   {runningTool && runningTool.kind === 'tool'
                     ? `Nutzt ${shortToolName(runningTool.name)}…`
                     : `Arbeitet${elapsedSec > 0 ? ` · ${elapsedSec}s` : '…'}`}
                 </p>
               )}
-              {stalling && <p className="text-xs text-amber-700">Keine neue Ausgabe seit {quietSec}s — der Lauf läuft noch.</p>}
+              {stalling && <p className="text-xs text-warn">Keine neue Ausgabe seit {quietSec}s — der Lauf läuft noch.</p>}
             </div>
           </div>
 
-          {sendError && <div className="px-3 pb-1 text-xs text-red-700">{sendError}</div>}
+          {sendError && <div className="px-3 pb-1 text-xs text-bad">{sendError}</div>}
 
-          <div className="border-t border-slate-200 p-3">
+          <div className="border-t border-hairline p-3">
             {(pendingFiles.length > 0 || pendingMentions.length > 0) && (
               <ul className="mb-2 flex flex-wrap gap-1">
                 {pendingFiles.map((f) => (
@@ -514,19 +511,19 @@ export default function AgentChat({
               </ul>
             )}
             {mentionQuery !== null && (
-              <ul className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-sm" role="listbox">
+              <ul className="mb-2 max-h-40 overflow-y-auto border border-line bg-bg py-1" role="listbox">
                 {mentionHits.length === 0 ? (
-                  <li className="px-3 py-1.5 text-xs text-slate-400">Keine Treffer.</li>
+                  <li className="px-3 py-1.5 text-xs text-muted">Keine Treffer.</li>
                 ) : (
                   mentionHits.map((hit, i) => (
                     <li key={`${hit.kind}:${hit.id}`}>
                       <button
                         type="button"
-                        className={`flex w-full flex-col px-3 py-1.5 text-left text-xs ${i === mentionIndex ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                        className={`flex w-full flex-col px-3 py-1.5 text-left text-xs ${i === mentionIndex ? 'bg-fg text-bg' : 'hover:bg-fg hover:text-bg'}`}
                         onClick={() => pickMention(hit)}
                       >
-                        <span className="font-medium text-slate-800">@{hit.label}</span>
-                        {hit.hint && <span className="truncate text-slate-400">{hit.hint}</span>}
+                        <span>@{hit.label}</span>
+                        {hit.hint && <span className="truncate opacity-70">{hit.hint}</span>}
                       </button>
                     </li>
                   ))
@@ -540,7 +537,7 @@ export default function AgentChat({
               rows={3}
               placeholder={signedIn ? 'Nachricht an den Research-Agenten…  @ für Quellen' : 'Zuerst mit Cursor anmelden'}
               disabled={!signedIn || running}
-              className="min-h-[4.5rem] w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm leading-relaxed disabled:bg-slate-50"
+              className="field min-h-[4.5rem] w-full resize-none text-sm leading-relaxed"
             />
             <div className="mt-2 flex items-end gap-2">
               <div className="relative" ref={menuRoot}>
@@ -556,20 +553,20 @@ export default function AgentChat({
                   {modeLabel} ▾
                 </Button>
                 {menuOpen && settings && (
-                  <div className="absolute bottom-full left-0 z-20 mb-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-                    <label className="mb-3 block text-xs font-medium text-slate-500">
+                  <div className="absolute bottom-full left-0 z-20 mb-1 w-72 border border-line bg-bg p-3">
+                    <label className="mb-3 block text-xs text-muted">
                       Modus
                       <select
                         value={mode}
                         onChange={(e) => setMode(e.target.value === 'plan' ? 'plan' : 'agent')}
-                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800"
+                        className="field mt-1 w-full text-sm"
                       >
                         <option value="agent">Agent — Tools ausführen</option>
                         <option value="plan">Plan — erst nachdenken</option>
                       </select>
                     </label>
                     <ModelPicker models={models} settings={settings} onChange={(next: AgentSettings) => void saveSettings(next)} />
-                    {usageLine && <p className="mt-2 text-xs text-slate-400">{usageLine}</p>}
+                    {usageLine && <p className="mt-2 font-mono text-xs text-muted">{usageLine}</p>}
                   </div>
                 )}
               </div>
@@ -588,15 +585,15 @@ export default function AgentChat({
           </div>
 
           {sessions.open.length > 0 && (
-            <nav className="flex shrink-0 gap-1 overflow-x-auto border-t border-slate-200 bg-slate-50 px-2 py-1" aria-label="Offene Chats">
+            <nav className="flex shrink-0 gap-px overflow-x-auto border-t border-hairline px-2 py-1" aria-label="Offene Chats">
               {sessions.open.map((s) => (
                 <div
                   key={s.id}
-                  className={`flex max-w-[10rem] items-center rounded-md ${s.id === sessions.activeId ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                  className={`flex max-w-[10rem] items-center ${s.id === sessions.activeId ? 'bg-fg text-bg' : 'hover:bg-fg hover:text-bg'}`}
                 >
                   <button
                     type="button"
-                    className="truncate px-2 py-1 text-xs text-slate-700"
+                    className="truncate px-2 py-1 text-xs"
                     title={sessionTitle(s.title)}
                     disabled={running}
                     onClick={() => void window.api.agentSwitchSession(projectId, s.id).then(applySession)}
@@ -606,7 +603,7 @@ export default function AgentChat({
                   {sessions.open.length > 1 && (
                     <button
                       type="button"
-                      className="px-1 text-slate-400 hover:text-slate-700"
+                      className="px-1 opacity-60 hover:opacity-100"
                       title="Tab schließen"
                       disabled={running && s.id === sessions.activeId}
                       onClick={() => void window.api.agentCloseTab(projectId, s.id).then(applySession)}
@@ -626,10 +623,10 @@ export default function AgentChat({
 
 function Chip({ label, icon, onRemove }: { label: string; icon: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 py-0.5 pr-1 pl-2 text-xs text-slate-700">
+    <span className="inline-flex max-w-full items-center gap-1 border border-hairline py-0.5 pr-1 pl-2 text-xs">
       <Icon name={icon} className="!text-[14px]" />
       <span className="truncate">{label}</span>
-      <button type="button" className="rounded-full px-1 text-slate-400 hover:text-slate-700" aria-label="Entfernen" onClick={onRemove}>
+      <button type="button" className="px-1 text-muted hover:text-fg" aria-label="Entfernen" onClick={onRemove}>
         ×
       </button>
     </span>
@@ -650,11 +647,11 @@ function HistoryRow({
   onDelete: () => void
 }) {
   return (
-    <div className={`flex items-center gap-1 px-1 ${active ? 'bg-slate-50' : ''}`}>
-      <button type="button" className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs text-slate-800" disabled={disabled} onClick={onPick}>
+    <div className={`flex items-center gap-1 px-1 ${active ? 'bg-fg text-bg' : ''}`}>
+      <button type="button" className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs" disabled={disabled} onClick={onPick}>
         {sessionTitle(session.title)}
       </button>
-      <button type="button" className="px-2 text-slate-400 hover:text-red-600" title="Chat löschen" disabled={disabled} onClick={onDelete}>
+      <button type="button" className="px-2 text-muted hover:text-bad" title="Chat löschen" disabled={disabled} onClick={onDelete}>
         ×
       </button>
     </div>
@@ -665,20 +662,20 @@ function ChatBubble({ item, busy, elapsedSec }: { item: ChatItem; busy: boolean;
   switch (item.kind) {
     case 'user':
       return (
-        <div className="ml-8 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-800">
+        <div className="ml-8 border border-hairline bg-wash px-3 py-2 text-sm">
           <ChatMarkdown text={item.text} />
         </div>
       )
     case 'assistant':
       return item.text ? (
-        <div className="mr-6 rounded-xl bg-(--color-accent-50) px-3 py-2 text-sm text-slate-800">
+        <div className="mr-6 border border-line px-3 py-2 text-sm">
           <ChatMarkdown text={item.text} />
         </div>
       ) : null
     case 'thinking':
       return (
-        <details className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
-          <summary className="cursor-pointer select-none">
+        <details className="border border-hairline px-3 py-1.5 text-xs text-muted">
+          <summary className="cursor-pointer select-none font-mono">
             Denken{busy && elapsedSec > 0 ? ` · ${elapsedSec}s` : ''}
           </summary>
           {item.text && (
@@ -690,22 +687,22 @@ function ChatBubble({ item, busy, elapsedSec }: { item: ChatItem; busy: boolean;
       )
     case 'tool':
       return (
-        <div className="flex items-center gap-2 text-xs">
-          <Icon name={item.status === 'running' ? 'progress_activity' : 'build'} className={item.status === 'running' ? 'animate-spin' : ''} />
+        <div className="flex items-center gap-2 font-mono text-xs">
+          {item.status === 'running' && <span className="text-warn">·</span>}
           <Badge tone={toolTone(item.status)}>{shortToolName(item.name)}</Badge>
-          <span className="text-slate-400">
+          <span className="text-muted">
             {item.status === 'running' ? 'läuft' : item.status === 'error' ? 'Fehler' : 'fertig'}
           </span>
         </div>
       )
     case 'status':
-      return <p className="text-xs text-slate-400">{item.text}</p>
+      return <p className="text-xs text-muted">{item.text}</p>
     case 'request':
-      return <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{item.text}</p>
+      return <p className="border border-warn bg-warn-bg px-3 py-2 text-xs text-warn">{item.text}</p>
     case 'run_end':
       if (item.status === 'finished') return null
       return (
-        <p className={`text-xs ${item.status === 'cancelled' ? 'text-slate-500' : 'text-red-700'}`}>
+        <p className={`text-xs ${item.status === 'cancelled' ? 'text-muted' : 'text-bad'}`}>
           {item.status === 'cancelled' ? 'Lauf abgebrochen.' : item.error ?? 'Lauf fehlgeschlagen.'}
         </p>
       )

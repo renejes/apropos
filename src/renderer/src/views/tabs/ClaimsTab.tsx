@@ -21,7 +21,7 @@ export default function ClaimsTab({ state, onOpenSource }: { state: ProjectState
 
   return (
     <div className="mx-auto max-w-4xl space-y-3">
-      <p className="flex items-center gap-1.5 text-xs text-slate-400">
+      <p className="flex items-center gap-1.5 text-xs text-muted">
         <Icon name="info" className="!text-[14px]" />
         Diese Ansicht zeigt, welche Berichts-Aussagen auf welchen Belegen ruhen. Belegkante anklicken → Quelle öffnen und dort reviewen.
       </p>
@@ -30,14 +30,14 @@ export default function ClaimsTab({ state, onOpenSource }: { state: ProjectState
         return (
           <Card key={claim.id} className="p-4">
             <div className="flex items-start gap-2">
-              <Icon name="format_quote" className="mt-0.5 text-slate-300" />
+              <Icon name="format_quote" className="mt-0.5 text-muted" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium leading-snug">{claim.claim_text}</p>
-                {claim.report_section && <div className="mt-0.5 text-xs text-slate-400">Abschnitt: {claim.report_section}</div>}
+                {claim.report_section && <div className="mt-0.5 text-xs text-muted">Abschnitt: {claim.report_section}</div>}
 
                 <div className="mt-3 space-y-2">
                   {links.length === 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-red-600">
+                    <div className="flex items-center gap-1.5 text-xs text-bad">
                       <Icon name="warning" className="!text-[15px]" /> Unbelegt — keine Quelle verknüpft
                     </div>
                   )}
@@ -49,20 +49,20 @@ export default function ClaimsTab({ state, onOpenSource }: { state: ProjectState
                         onClick={() => onOpenSource(link.source_id)}
                         disabled={!src}
                         title={src ? 'Quelle im Quellen-Tab öffnen' : 'Quelle nicht in diesem Projekt'}
-                        className="group w-full rounded-lg bg-slate-50 p-2.5 text-left transition-colors hover:bg-(--color-accent-50) hover:ring-1 hover:ring-(--color-accent-100) disabled:cursor-not-allowed"
+                        className="group w-full border border-hairline p-2.5 text-left hover:border-line disabled:cursor-not-allowed"
                       >
                         <div className="flex flex-wrap items-center gap-1.5 text-xs">
                           <Badge tone="slate">[S{sourceIndex.get(link.source_id) ?? '?'}]</Badge>
-                          <span className="truncate font-medium text-slate-600">{src?.title ?? link.source_id}</span>
+                          <span className="truncate font-medium text-muted">{src?.title ?? link.source_id}</span>
                           <SupportBadge type={link.support_type} />
                           <VerificationBadge status={link.verification_status} />
-                          {link.confidence && <span className="text-slate-400">Konfidenz: {link.confidence}</span>}
+                          {link.confidence && <span className="text-muted">Konfidenz: {link.confidence}</span>}
                           <Icon
                             name="open_in_new"
-                            className="!text-[14px] ml-auto text-slate-300 transition-colors group-hover:text-(--color-accent-700)"
+                            className="!text-[14px] ml-auto text-muted transition-colors group-hover:text-fg"
                           />
                         </div>
-                        <div className="mt-1.5 text-xs italic text-slate-500">„{link.quote_span}“</div>
+                        <div className="mt-1.5 text-xs italic text-muted">„{link.quote_span}“</div>
                       </button>
                     )
                   })}

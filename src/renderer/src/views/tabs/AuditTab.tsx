@@ -34,14 +34,14 @@ export default function AuditTab({ projectId }: { projectId: string }) {
   if (events.length === 0) return <EmptyState icon="history" title="Noch keine Ereignisse" />
 
   return (
-    <Card className="mx-auto max-w-3xl divide-y divide-slate-100">
+    <Card className="mx-auto max-w-3xl divide-y divide-hairline">
       {events.map((e) => (
         <div key={e.seq} className="flex items-start gap-3 px-4 py-2.5">
-          <Icon name={EVENT_ICONS[e.event_type] ?? 'circle'} className="icon-sm mt-0.5 text-slate-400" />
+          <Icon name={EVENT_ICONS[e.event_type] ?? 'circle'} className="icon-sm mt-0.5 text-muted" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
               <span className="font-medium">{e.event_type}</span>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-muted">
                 #{e.seq} · {fmtDate(e.created_at)} · <span className="font-mono">{e.actor}</span>
               </span>
             </div>
@@ -59,7 +59,7 @@ function PayloadPreview({ json }: { json: string }) {
     const entries = Object.entries(obj).filter(([, v]) => v != null)
     if (entries.length === 0) return null
     return (
-      <div className="mt-0.5 truncate text-xs text-slate-400">
+      <div className="mt-0.5 truncate text-xs text-muted">
         {entries
           .slice(0, 4)
           .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
