@@ -187,7 +187,7 @@ documentation/        Plan, Status, Next Steps · Archiv in documentation/done/
 | Dokument | Inhalt |
 |---|---|
 | [01 Implementation-Plan](documentation/01-implementationplan.md) | Architektur und Phasen (A/B/E–H gebaut) |
-| [02 Projekt-Status](documentation/02-project-status.md) | Aktueller Stand und Funktionsweise |
+| [02 Projekt-Status](documentation/02-project-status.md) | Aktueller Stand und Funktionsweise (2026-08-24) |
 | [03 Next Steps](documentation/03-next-steps.md) | Empirische Tests (echter Modell-Lauf) |
 | [HANDOVER.md](HANDOVER.md) | Kontext für Contributors |
 | Archiv | [04](documentation/done/04-feasability.md) · [05](documentation/done/05-market-research.md) · [06](documentation/done/06-eigene-research-engine.md) · [07](documentation/done/07-clients.md) |

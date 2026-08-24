@@ -25,6 +25,9 @@ import type {
   SubQuestion,
   DocumentSearchHit,
 } from '../../../shared/types'
+import { isFailedSearchAttempt } from '../../../shared/search-waves'
+
+export { isFailedSearchAttempt }
 
 /**
  * Service-Schicht: HIER lebt das Provenienz-Enforcement — nicht im MCP-Handler.
@@ -194,14 +197,6 @@ export function requireAdoptedBrief(repo: Repo, projectId: string): void {
       'Rufe zuerst draft_research_brief auf, lass den Menschen den Plan bestätigen, dann adopt_research_brief.'
     )
   }
-}
-
-/**
- * Netz- oder Register-Ausfall zählt nicht als Suchwelle: die nächste Suche darf
- * sofort wiederholt werden. 0 Treffer dagegen schon — das ist eine Lage.
- */
-export function isFailedSearchAttempt(entry: SearchLogEntry): boolean {
-  return entry.results_found == null && (entry.note ?? '').includes('FEHLGESCHLAGEN')
 }
 
 export function listPendingDiscoverySearches(repo: Repo, projectId: string): SearchLogEntry[] {

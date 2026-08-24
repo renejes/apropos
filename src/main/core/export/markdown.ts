@@ -1,5 +1,6 @@
 import type { ProjectState, ReportVersion, Source } from '../../../shared/types'
 import { citeMarker, rewriteCiteMarkers } from '../services/biblio'
+import { groupSearchWaves, nextActionLabel } from '../../../shared/search-waves'
 
 /**
  * Zitierbarer Markdown-Export (documentation/01, "Markdown-Export").
@@ -95,19 +96,36 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
     lines.push('')
   }
 
-  // Suchdokumentation (PRISMA-S): Queries + begründete Ausschlüsse
-  if (state.searchLog.length > 0 || state.excludedSources.length > 0) {
+  // Suchdokumentation (PRISMA-S): Queries, Lagen, begründete Ausschlüsse
+  if (state.searchLog.length > 0 || state.searchReflections.length > 0 || state.excludedSources.length > 0) {
     lines.push('## Suchdokumentation')
     lines.push('')
-    if (state.searchLog.length > 0) {
-      lines.push(`**Durchgeführte Suchen (${state.searchLog.length}):**`)
+    const waves = groupSearchWaves(state.searchLog, state.searchReflections)
+    for (const [i, wave] of waves.entries()) {
+      lines.push(`**Welle ${i + 1}**`)
       lines.push('')
-      for (const s of state.searchLog) {
+      for (const s of wave.searches) {
+        const fail = s.results_found == null && s.note ? ' · fehlgeschlagen' : ''
         lines.push(
-          `- \`${inline(s.query, 200)}\`${s.engine ? ` · ${inline(s.engine, 60)}` : ''}${s.results_found != null ? ` · ${s.results_found} Treffer` : ''} · ${s.created_at}${s.note ? ` — ${inline(s.note, 200)}` : ''}`
+          `- \`${inline(s.query, 200)}\`${s.engine ? ` · ${inline(s.engine, 60)}` : ''}${s.results_found != null ? ` · ${s.results_found} Treffer` : fail} · ${s.created_at}${s.note && s.results_found != null ? ` — ${inline(s.note, 200)}` : ''}`
         )
       }
+      if (wave.searches.length === 0) lines.push('- _(keine Suchzeile zugeordnet)_')
       lines.push('')
+      if (wave.blocksSearch) {
+        lines.push('_Lage ausstehend — die nächste Suche ist gesperrt, bis covered / underrepresented / next_action stehen._')
+        lines.push('')
+      } else if (wave.reflection) {
+        const r = wave.reflection
+        lines.push(`- **Nächster Schritt:** ${nextActionLabel(r.next_action)}${r.next_query ? ` · \`${inline(r.next_query, 200)}\`` : ''}`)
+        lines.push(`- **Getroffen:** ${inline(r.covered, 800)}`)
+        lines.push(`- **Unterrepräsentiert:** ${inline(r.underrepresented, 800)}`)
+        lines.push(`- **Warum:** ${inline(r.reason, 800)}`)
+        lines.push('')
+      } else {
+        lines.push('_Register ausgefallen — Wiederholung ohne neue Lage erlaubt._')
+        lines.push('')
+      }
     }
     if (state.excludedSources.length > 0) {
       lines.push(`**Gesichtet, aber begründet ausgeschlossen (${state.excludedSources.length}):**`)

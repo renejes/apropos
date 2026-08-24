@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { DeterministicVerifyResult, ProjectState } from '../../../../shared/types'
-import { Button, Card, SectionTitle } from '../../components/ui'
+import type { DeterministicVerifyResult, ProjectState, SearchNextAction } from '../../../../shared/types'
+import { groupSearchWaves, nextActionLabel } from '../../../../shared/search-waves'
+import { Badge, Button, Card, SectionTitle } from '../../components/ui'
 import CoveragePanel from '../../components/CoveragePanel'
 import SayablePanel from '../../components/SayablePanel'
 
@@ -121,27 +122,46 @@ export default function OverviewTab({
         )}
       </Card>
 
-      {(state.searchLog.length > 0 || state.excludedSources.length > 0) && (
+      {(state.searchLog.length > 0 || state.searchReflections.length > 0 || state.excludedSources.length > 0) && (
         <Card className="p-5">
           <SectionTitle>Suchdokumentation</SectionTitle>
-          {state.searchLog.length > 0 && (
-            <div className="mb-3">
+          {groupSearchWaves(state.searchLog, state.searchReflections).map((wave, i) => (
+            <div key={wave.reflection?.id ?? `pending-${i}`} className="mb-4 last:mb-3">
               <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
-                Durchgeführte Suchen ({state.searchLog.length})
+                Welle {i + 1}
+                {wave.searches.length > 0 && ` · ${wave.searches.length} ${wave.searches.length === 1 ? 'Suche' : 'Suchen'}`}
               </div>
-              <ul className="space-y-1">
-                {state.searchLog.map((s) => (
-                  <li key={s.id} className="flex items-baseline gap-2 text-sm">
-                    <code className="font-mono text-xs">{s.query}</code>
-                    <span className="text-xs text-muted">
-                      {s.engine && `${s.engine} · `}
-                      {s.results_found != null && `${s.results_found} Treffer`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              {wave.searches.length > 0 && (
+                <ul className="mb-2 space-y-1">
+                  {wave.searches.map((s) => (
+                    <li key={s.id} className="flex items-baseline gap-2 text-sm">
+                      <code className="font-mono text-xs">{s.query}</code>
+                      <span className="text-xs text-muted">
+                        {s.engine && `${s.engine} · `}
+                        {s.results_found != null && `${s.results_found} Treffer`}
+                        {s.results_found == null && s.note && 'fehlgeschlagen'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {wave.blocksSearch ? (
+                <div className="border border-warn bg-warn-bg px-3 py-2 text-sm text-warn">
+                  Lage ausstehend — die nächste Suche ist gesperrt, bis covered / underrepresented / next_action stehen.
+                </div>
+              ) : wave.reflection ? (
+                <LageBlock
+                  covered={wave.reflection.covered}
+                  underrepresented={wave.reflection.underrepresented}
+                  nextAction={wave.reflection.next_action}
+                  nextQuery={wave.reflection.next_query}
+                  reason={wave.reflection.reason}
+                />
+              ) : (
+                <p className="text-xs text-muted">Register ausgefallen — Wiederholung ohne neue Lage erlaubt.</p>
+              )}
             </div>
-          )}
+          ))}
           {state.excludedSources.length > 0 && (
             <div>
               <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
@@ -173,6 +193,53 @@ export default function OverviewTab({
           </ul>
         </Card>
       )}
+    </div>
+  )
+}
+
+function actionTone(action: SearchNextAction): 'amber' | 'sky' | 'emerald' {
+  switch (action) {
+    case 'search':
+      return 'amber'
+    case 'read':
+      return 'sky'
+    case 'enough':
+      return 'emerald'
+    default: {
+      const _never: never = action
+      return _never
+    }
+  }
+}
+
+function LageBlock({
+  covered,
+  underrepresented,
+  nextAction,
+  nextQuery,
+  reason,
+}: {
+  covered: string
+  underrepresented: string
+  nextAction: SearchNextAction
+  nextQuery: string | null
+  reason: string
+}) {
+  return (
+    <div className="border border-hairline px-3 py-2 text-sm">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <Badge tone={actionTone(nextAction)}>{nextActionLabel(nextAction)}</Badge>
+        {nextQuery && <code className="font-mono text-xs">{nextQuery}</code>}
+      </div>
+      <p>
+        <span className="text-muted">Getroffen: </span>
+        {covered}
+      </p>
+      <p className="mt-1">
+        <span className="text-muted">Unterrepräsentiert: </span>
+        {underrepresented}
+      </p>
+      <p className="mt-1 text-xs text-muted">{reason}</p>
     </div>
   )
 }
