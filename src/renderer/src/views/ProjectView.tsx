@@ -10,6 +10,7 @@ import MapTab from './tabs/MapTab'
 import ReportsTab from './tabs/ReportsTab'
 import ChatTab from './tabs/ChatTab'
 import AuditTab from './tabs/AuditTab'
+import EasyWritingExportButton from './EasyWritingExport'
 
 const TABS = [
   { id: 'overview', label: 'Übersicht' },
@@ -94,18 +95,14 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
             >
               Export
             </Button>
-            <Button
-              onClick={async () => {
-                const res = await window.api.exportBibliography(projectId)
-                if (res.saved) {
-                  setExportMsg(`BibTeX für Easy Writing: ${res.filePath}`)
-                  setTimeout(() => setExportMsg(null), 4000)
-                }
+            <EasyWritingExportButton
+              state={state}
+              onDone={(msg) => {
+                setExportMsg(msg)
+                setTimeout(() => setExportMsg(null), 4000)
+                void reload()
               }}
-              title="references.bib mit stabilen Citekeys"
-            >
-              Für Easy Writing exportieren
-            </Button>
+            />
           </div>
         </div>
         {exportMsg && <div className="mt-2 text-xs text-ok">{exportMsg}</div>}

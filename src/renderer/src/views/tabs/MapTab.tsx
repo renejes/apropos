@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ProjectState, VisualGraph, VisualLayoutKind, VisualVersion } from '../../../../shared/types'
 import { Badge, Button, Card, EmptyState, Icon } from '../../components/ui'
+import EasyWritingExportButton from '../EasyWritingExport'
 import MapCanvas, { type NodeDiff } from './MapCanvas'
 
 type ViewMode = 'live' | 'version' | 'compare'
@@ -209,10 +210,18 @@ export default function MapTab({
             icon="folder_zip"
             disabled={busy}
             onClick={() => void exportPack()}
-            title="Schreibpaket für Easy Writing aus dieser Sicht"
+            title="Markdown-Schreibpaket aus dieser Sicht"
           >
             Schreibpaket
           </Button>
+          <EasyWritingExportButton
+            state={state}
+            visualVersionId={mode === 'version' && versionId ? versionId : undefined}
+            onDone={(msg) => {
+              setMsg(msg)
+              onReload()
+            }}
+          />
         </div>
       </div>
 

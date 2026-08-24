@@ -7,6 +7,7 @@ import { reVerifyProject } from './core/enforce/verify'
 import { exportProjectMarkdown } from './core/export/markdown'
 import { exportBibliography } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
+import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage, ingestUploadedFiles } from './core/services/research'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
@@ -210,6 +211,17 @@ export function registerIpc(deps: IpcDeps): void {
     return { saved: true, filePath }
   })
 
+  ipcMain.handle('dialog:pickDirectory', async (e, title: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options = {
+      title: title || 'Ordner wählen',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+    }
+    const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (canceled || filePaths.length === 0) return null as string | null
+    return filePaths[0] ?? null
+  })
+
   ipcMain.handle(
     'export:writingPack',
     (
@@ -221,6 +233,22 @@ export function registerIpc(deps: IpcDeps): void {
         jpeg_base64?: string
       }
     ) => writeWritingPack(repo, input, HUMAN)
+  )
+
+  ipcMain.handle(
+    'export:easyWriting',
+    (
+      _e,
+      input: {
+        project_id: string
+        visual_version_id?: string
+        scope?: 'marked'
+        jpeg_base64?: string
+        target: 'new' | 'existing'
+        out_dir: string
+        project_type?: 'blog' | 'paper'
+      }
+    ) => writeEasyWriting(repo, input, HUMAN)
   )
 
   ipcMain.handle('server:info', (): ServerInfo => {

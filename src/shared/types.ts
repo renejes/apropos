@@ -23,6 +23,8 @@ export interface Project {
   research_question: string
   mode: ProjectMode
   policy_preset: string | null
+  /** Absoluter Pfad zum Easy-Writing-Ordner nach dem ersten Export; sonst null. */
+  easy_writing_dir: string | null
   created_at: string
   updated_at: string
 }

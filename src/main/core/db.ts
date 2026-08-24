@@ -11,7 +11,7 @@ import { dirname } from 'path'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 12 // v12 Such-Lage: search_reflections + search_log.reflection_id
+export const SCHEMA_VERSION = 13 // v13 Easy-Writing-Ordner am Projekt merken
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS projects (
   research_question TEXT NOT NULL DEFAULT '',
   mode         TEXT NOT NULL DEFAULT 'academic' CHECK (mode IN ('academic','business')),
   policy_preset TEXT,
+  easy_writing_dir TEXT,
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
@@ -461,6 +462,8 @@ function migrate(db: DB): void {
       addColumnIfMissing(db, 'documents', 'page_starts_json', 'TEXT')
       // v12: Such-Lage an das Protokoll hängen (bestehende search_log-Zeilen ohne Lage).
       addColumnIfMissing(db, 'search_log', 'reflection_id', 'TEXT')
+      // v13: verknüpfter Easy-Writing-Ordner für erneutes Schreiben ohne Picker.
+      addColumnIfMissing(db, 'projects', 'easy_writing_dir', 'TEXT')
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

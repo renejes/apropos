@@ -6,7 +6,7 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 02 — Projekt-Status |
-| **Stand** | 2026-08-24 · v3.2 |
+| **Stand** | 2026-08-24 · v3.3 |
 | **Phase** | Gebaut und gegen Fixtures verifiziert · echter Modell-Lauf ausstehend |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
@@ -27,8 +27,8 @@ Zwei Lieferformen, ein Korpus: Blogs (Frame) und wissenschaftliche Arbeiten (Zit
 
 | | |
 |---|---|
-| Schema | **v12** (Korpus-`origin`, `search_reflections`, `search_log.reflection_id`) |
-| Tests | **245** (Vitest) |
+| Schema | **v13** (`easy_writing_dir`, Korpus-`origin`, `search_reflections`) |
+| Tests | **258** (Vitest) |
 | MCP-SDK | `@modelcontextprotocol/sdk` **1.30** |
 | Agent | `@cursor/sdk` **1.0.28**, Runtime `local` |
 | Lizenz | MIT |
@@ -44,7 +44,7 @@ Typecheck und Unit-Tests sind grün. Smoke (`npm run smoke`) prüft den MCP-HTTP
 3. Erst danach Suche: zuerst `list_corpus` / `search_documents` für Uploads, dann `search_literature` und Cursor-WebSearch gegen den Plan. Nach jeder Suchwelle `reflect_search` (Getroffen / Unterrepräsentiert / nächster Schritt), **bevor** erneut gesucht wird. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. Lesen (`fetch_source`, `read_document`) bleibt dazwischen erlaubt.
 4. Was in den Bericht soll, geht über `fetch_source` oder `read_document` in die DB, dann `add_source` mit Offsets.
 5. Rechts prüfst du: Übersicht (Lücken, „Was darfst du sagen“, Such-Lagen), Korpus (PDF-Leser mit Offset-Sprung), Quellen (Excerpt + Sign-off), Aussagen, Karte, Berichte.
-6. Karte aufbereiten (`prepare_view`, Marks). Schreibpaket exportieren → Ordner in Easy Writing öffnen.
+6. Karte aufbereiten (`prepare_view`, Marks). Easy-Writing-Ordner exportieren (`research.mdx` + `.bib`) → in Easy Writing öffnen. Beim Artikel-Export dort das Dossier abwählen.
 
 Fremdclients (Cursor-IDE, Goose, Claude Code) docken weiter per **MCP-HTTP** `127.0.0.1:8790/mcp` an dieselbe SQLite und dasselbe Enforcement an. Die IDE ist optional. Der WebSearch-Hook fragt `GET /ingest/search-gate`; ist die App tot, darf die Suche durch (Fail-open) — sonst wäre ohne laufende App jede WebSearch tot.
 
@@ -77,7 +77,7 @@ Coverage / next_round  (Server entscheidet „genug“, nicht das Modell)
 Karte, Marks, ask_narrative, prepare_view
         │
         ▼
-Schreibpaket aus dieser Sicht  +  Sign-off in der UI
+Easy-Writing-Ordner aus dieser Sicht  +  Sign-off in der UI
 ```
 
 Ohne adoptierten Brief lehnen `search_literature`, `search_documents`, `fetch_source` und `ingest_local_file` mit `brief_required` ab. Menschliche Uploads (`ingestUploadedFiles`) brauchen keinen Brief und zählen nicht ins Pending-Gate für Netzabrufe.
@@ -133,7 +133,7 @@ Chrome wie Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl, ke
 | Korpus | Seed-PDFs und abgerufene Texte, Volltextsuche, Leser mit Offset-Sprung |
 | Quellen | Excerpt im Original, Sign-off / Ablehnen |
 | Aussagen | Claims und Belegkanten |
-| Karte | Live-Graph, gespeicherte Views, Splitscreen, Marks; Kantenfarbe = Relation |
+| Karte | Live-Graph, gespeicherte Views, Splitscreen, Marks; Kantenfarbe = Relation; Easy-Writing-Export aus der Sicht |
 | Berichte | Unveränderliche Versionen |
 | Einstellungen | Cursor-Login, Modell, MCP-URL, Demo-Seed |
 
@@ -145,16 +145,17 @@ Chrome wie Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl, ke
 - Bibliografie: DOI, Autoren, Jahr, Venue, Citekey `nachnameJahrKurztitel`. Ohne DOI: `@misc` mit URL, nie ein gefälschtes `@article`.
 - Locator: `S. 12` → `[@citekey, p. 12]`. Keine erfundene Seitenzahl.
 - `source_kind`: empirical / review / textbook / grey / web. Coverage kennt empirische und Zeitraum-Lücken.
-- Schreibpaket (`export_writing_pack`) braucht immer einen Scope (View oder Marks). Enthält Plan, `.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte.
+- Easy Writing (`export_easy_writing`) ist der Schreibweg. Immer mit Scope (View oder Marks). Neu: Blog- oder Paper-Ordner mit leerem `index.mdx` bzw. leeren Kapiteln. Bestehend: Schreibkapitel unangetastet, `research.mdx` überschrieben, `.bib` gemergt (gleiche DOI/URL behält den Key; Kollision vergibt einen neuen nur im Dossier). `research.mdx` ist das Dossier, kein Artikel — beim Export in Easy Writing abwählen. Der Ordner liegt in `easy_writing_dir`; der nächste Klick schreibt dorthin.
+- Markdown-Schreibpaket (`export_writing_pack`) bleibt daneben: Plan, `.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte.
 - Provenienz-Markdown enthält die Such-Lagen (Getroffen / Unterrepräsentiert / nächster Schritt), nicht nur die Query-Liste.
 
-Schreibweg: Ordner in [Easy Writing](https://github.com/renejes/easy-writing) öffnen. Satz und Design optional in [Penwright](https://github.com/renejes/penwright). Diese App schreibt und setzt keine Artikel.
+Schreibweg: Ordner in [Easy Writing](https://github.com/renejes/easy-writing) öffnen, Artikel dort schreiben, `research.mdx` beim Export abwählen. Satz und Design optional in [Penwright](https://github.com/renejes/penwright). Diese App schreibt und setzt keine Artikel.
 
 ---
 
 ## Was belegt ist — und was nicht
 
-**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus (Uploads ohne Brief, nicht Pending), Such-Lage (`reflect_search`, Gate, keine erfundene Query), Lage in Übersicht und Markdown-Export, Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart, Chat-Session-Index und Stream-Merge. 245 Tests.
+**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus (Uploads ohne Brief, nicht Pending), Such-Lage (`reflect_search`, Gate, keine erfundene Query), Lage in Übersicht und Markdown-Export, Easy-Writing-Ordner (`research.mdx`, Bib-Merge, gemerkter Pfad), Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart, Chat-Session-Index und Stream-Merge. 258 Tests.
 
 **Nicht belegt:** Ob ein echtes Cursor-Modell den Arbeitsvertrag hält — Brief zuerst, Korpus vor Netz, Lage vor der nächsten Suche, Offsets auf die richtige Stelle, Extraktion trägt die Aussage. Die Maschine ist gegen Fixtures und ein Fake-Modell verifiziert, nie gegen eine echte Recherche.
 
@@ -170,7 +171,7 @@ Das ist der nächste Schritt: [03 Next Steps](03-next-steps.md).
 | Enforcement | in `services/research.ts`, unter MCP und Agent |
 | Sign-off | nur UI |
 | Such-Lage | `reflect_search` vor der nächsten Suche; Query kommt vom Modell, nicht vom Code |
-| Schreibweg | `.bib` + `[@citekey]` → Easy Writing, nicht Zotero |
+| Schreibweg | Easy-Writing-Ordner (`research.mdx` + gemergte `.bib` + `[@citekey]`), nicht Zotero; diese App schreibt den Artikel nicht |
 | Oberfläche | Familie zu Easy Writing; Farbe nur für Bedeutung |
 | Ollama in der App | entfernt; Goose bleibt optionaler Fremdclient |
 | Geschäftsmodell | keines; MIT |

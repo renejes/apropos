@@ -122,6 +122,14 @@ export class Repo {
     this.db.prepare(`UPDATE projects SET updated_at = ? WHERE id = ?`).run(nowIso(), id)
   }
 
+  setEasyWritingDir(projectId: string, dir: string | null, actor: string): void {
+    if (!this.getProject(projectId)) return
+    this.db
+      .prepare(`UPDATE projects SET easy_writing_dir = ?, updated_at = ? WHERE id = ?`)
+      .run(dir, nowIso(), projectId)
+    this.logEvent(projectId, actor, 'project.easy_writing_dir', { dir })
+  }
+
   listProjects(): ProjectSummary[] {
     return this.db
       .prepare(

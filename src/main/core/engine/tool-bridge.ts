@@ -58,6 +58,7 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'add_report_version',
     'export_bibliography',
     'export_writing_pack',
+    'export_easy_writing',
     'flag_uncertainty',
     'describe_evidence_map',
     'prepare_view',

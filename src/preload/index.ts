@@ -115,6 +115,24 @@ const api = {
     jpeg_base64?: string
   }): Promise<{ dir: string; files: string[]; source_ids: string[]; claim_ids: string[]; scope: string }> =>
     ipcRenderer.invoke('export:writingPack', input),
+  exportEasyWriting: (input: {
+    project_id: string
+    visual_version_id?: string
+    scope?: 'marked'
+    jpeg_base64?: string
+    target: 'new' | 'existing'
+    out_dir: string
+    project_type?: 'blog' | 'paper'
+  }): Promise<{
+    dir: string
+    files: string[]
+    source_ids: string[]
+    claim_ids: string[]
+    scope: string
+    remapped_citekeys: Array<{ from: string; to: string }>
+    target: 'new' | 'existing'
+  }> => ipcRenderer.invoke('export:easyWriting', input),
+  pickDirectory: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pickDirectory', title),
 
   serverInfo: (): Promise<ServerInfo> => ipcRenderer.invoke('server:info'),
   seedDemo: (): Promise<string> => ipcRenderer.invoke('demo:seed'),

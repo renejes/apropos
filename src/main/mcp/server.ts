@@ -35,6 +35,7 @@ import { searchLiterature } from '../core/services/literature'
 import { adoptResearchBrief, draftResearchBrief, getResearchBrief } from '../core/services/brief'
 import { exportBibliography } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
+import { writeEasyWriting } from '../core/export/easy-writing'
 import type { Source } from '../../shared/types'
 
 /**
@@ -1218,6 +1219,38 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         return ok({
           ...pack,
           next_action: 'Ordner in Easy Writing öffnen. Artikel dort schreiben, nicht hier generieren.',
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'export_easy_writing',
+    {
+      title: 'Easy-Writing-Projekt schreiben',
+      description:
+        'Schreibt ein Easy-Writing-Ordnerprojekt: research.mdx (Dossier, kein Artikel), leeres index.mdx bzw. leere Paper-Kapitel, gemergte references.bib, Karte unter assets/. ' +
+        'target=new: legt einen Unterordner in out_dir an (project_type blog|paper). target=existing: schreibt in den Easy-Writing-Ordner, ohne Schreibkapitel zu überschreiben. ' +
+        'IMMER mit Scope: visual_version_id ODER scope=marked. Der Ordner wird am Projekt gemerkt.',
+      inputSchema: {
+        project_id: z.string(),
+        visual_version_id: z.string().optional(),
+        scope: z.enum(['marked']).optional(),
+        target: z.enum(['new', 'existing']),
+        out_dir: z.string().describe('Bei new: Elternordner. Bei existing: der Easy-Writing-Ordner selbst.'),
+        project_type: z.enum(['blog', 'paper']).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const result = writeEasyWriting(repo, args, actor())
+        return ok({
+          ...result,
+          next_action:
+            'Ordner in Easy Writing öffnen. Den Artikel in index.mdx oder den Paper-Kapiteln schreiben. research.mdx beim Export abwählen.',
         })
       } catch (err) {
         return failFrom(err)

@@ -9,6 +9,7 @@ function project(): Project {
     research_question: 'Q?',
     mode: 'academic',
     policy_preset: null,
+    easy_writing_dir: null,
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
   }

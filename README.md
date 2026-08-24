@@ -31,11 +31,11 @@ Die App **schreibt den Artikel nicht**. Nach der Research geht es so weiter:
 
 ```mermaid
 flowchart LR
-    R[Research Overview] -->|Schreibpaket<br/>Plan · .bib · Claims · Karte| E[Easy Writing]
-    E -->|MDX-Export<br/>Kapitel · assets · references.bib| P[Penwright]
+    R[Research Overview] -->|Easy Writing<br/>research.mdx · .bib · Karte| E[Easy Writing]
+    E -->|MDX-Export<br/>ohne research.mdx| P[Penwright]
 ```
 
-Easy Writing öffnet den Exportordner und autocompleted dieselben Citekeys. Penwright setzt denselben Ordner — `[@key]` bleibt `[@key]`, die `.bib` bleibt die `.bib`. Wortlaut-Änderungen gehören zurück nach Easy Writing, nicht in den Setzer.
+Easy Writing öffnet denselben Ordner: `research.mdx` ist das Dossier, `index.mdx` bzw. die Paper-Kapitel bleiben zum Schreiben. Citekeys in der `.bib` stimmen. Beim Export dort `research.mdx` abwählen. Ein zweiter Export schreibt in denselben Ordner, ohne den Artikel zu überschreiben.
 
 ---
 
@@ -68,7 +68,7 @@ Server misst Lücken und Sättigung  — „ich bin fertig“ zählt nicht
 Karte, Marks, Sign-off
         │
         ▼
-Schreibpaket → Easy Writing → optional Penwright
+Easy-Writing-Ordner → Easy Writing → optional Penwright
 ```
 
 Ohne adoptierten Research-Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief und zählen nicht als offene Netzabrufe. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen — nicht als Such-Snippet. Die nächste Query kommt aus der Lage, nicht aus einem Algorithmus.
@@ -81,7 +81,7 @@ Ohne adoptierten Research-Brief lehnen Suche und Quellenabruf ab. Uploads brauch
 | **Vollständigkeit** | Abgerufene Netzquellen müssen dokumentiert oder verworfen sein, bevor weitere Abrufe erlaubt sind. |
 | **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste, Sättigung pro Runde. |
 | **Was darfst du sagen** | Grün = signiert und Quote ok. Gelb = belegt, unsigniert. Rot = Widerspruch, Flag, Lücke, Tabu. |
-| **Schreibpaket** | Immer aus einer Kartensicht oder aus Markiertem: Plan, `references.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte. |
+| **Easy Writing** | Ordner mit `research.mdx`, gemergter `.bib` und Karte. Schreibkapitel bleiben leer bzw. unangetastet. Der Pfad wird gemerkt. |
 
 Local-first heißt: die **SQLite-Datenbank** bleibt auf deinem Rechner. Die Modelle laufen über Cursor Cloud.
 
@@ -165,7 +165,7 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `reflect_search` | Lage nach einer Suchwelle, bevor erneut gesucht wird |
 | `ingest_local_file` / `list_inbox` | PDFs und Text aus der Projekt-Inbox |
 | `describe_evidence_map` / `prepare_view` / `toggle_mark` | Karte und Arbeitsset |
-| `export_bibliography` / `export_writing_pack` | `.bib` und Schreibpaket für Easy Writing |
+| `export_easy_writing` / `export_writing_pack` | Easy-Writing-Ordner (`research.mdx`) bzw. Markdown-Schreibpaket |
 | `re_verify` / `get_next_unverified_claim` / `submit_verdict` | Verifikations-Leiter |
 
 Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` …), weil die meisten Clients Prompts nicht ausführen.

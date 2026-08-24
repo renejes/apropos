@@ -37,6 +37,13 @@ describe('Repo (in-memory SQLite)', () => {
     expect(list).toHaveLength(1)
     expect(list[0].source_count).toBe(1)
     expect(list[0].pending_count).toBe(1)
+    expect(p.easy_writing_dir).toBeNull()
+  })
+
+  it('merkt den Easy-Writing-Ordner am Projekt', () => {
+    const p = makeProject()
+    repo.setEasyWritingDir(p.id, '/tmp/ew-projekt', 'test')
+    expect(repo.getProject(p.id)?.easy_writing_dir).toBe('/tmp/ew-projekt')
   })
 
   it('erzwingt review_status-Übergänge und schreibt Review-Kanten beim Sign-off', () => {
