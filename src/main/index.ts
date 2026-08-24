@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, Menu, shell } from 'electron'
 import { join } from 'path'
 import { openDb } from './core/db'
 import { Repo } from './core/repo'
@@ -6,6 +6,7 @@ import { defaultDbPath, DEFAULT_MCP_PORT } from './core/paths'
 import { startMcpHttpServer, type RunningHttpServer } from './mcp/http'
 import { registerIpc } from './ipc'
 import { CursorAgentHost } from './core/agent/host'
+import { buildAppMenu } from './menu'
 
 /**
  * Electron Main: hostet DB, Repo und den eingebauten MCP-HTTP-Server
@@ -71,6 +72,8 @@ app.whenReady().then(async () => {
 
   registerIpc({ repo, dbPath, mcp: () => mcpServer, agent: host })
 
+  if (process.platform === 'darwin') app.setName('Research Overview')
+  Menu.setApplicationMenu(buildAppMenu())
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -171,6 +171,11 @@ const api = {
     return () => ipcRenderer.removeListener('agent:loginUrl', listener)
   },
   openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('open:external', url),
+  onOpenManual: (cb: () => void): (() => void) => {
+    const listener = () => cb()
+    ipcRenderer.on('ui:openManual', listener)
+    return () => ipcRenderer.removeListener('ui:openManual', listener)
+  },
 }
 
 export type RendererApi = typeof api

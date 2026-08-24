@@ -4,6 +4,7 @@ import { Button, Icon } from './components/ui'
 import ProjectView from './views/ProjectView'
 import SettingsView from './views/SettingsView'
 import NewProjectDialog from './views/NewProjectDialog'
+import ManualDialog from './views/ManualDialog'
 
 export default function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -13,6 +14,7 @@ export default function App() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [mcpRunning, setMcpRunning] = useState<boolean | null>(null)
+  const [showManual, setShowManual] = useState(false)
 
   const refresh = useCallback(async () => {
     const list = await window.api.listProjects()
@@ -32,6 +34,8 @@ export default function App() {
     const t = setInterval(() => void load(), 5000)
     return () => clearInterval(t)
   }, [])
+
+  useEffect(() => window.api.onOpenManual(() => setShowManual(true)), [])
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
@@ -146,6 +150,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {showManual && <ManualDialog onClose={() => setShowManual(false)} />}
 
       {showNew && (
         <NewProjectDialog

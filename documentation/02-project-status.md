@@ -129,6 +129,7 @@ Chrome wie Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl, ke
 | Ort | Funktion |
 |---|---|
 | Projekte | Anlegen; Löschen mit Bestätigung (DB + Agent-Workspace; Easy-Writing-Ordner bleibt) |
+| Manual | Native Menüleiste → Manual (⌘/); Modal mit Tabs, Alltagsweg und Easy-Writing-Workflow |
 | Agent-Chat | Research-Lauf: Stream, Denken, Tool-Chips, Stopp; mehrere Sessions (Verlauf, Tabs); Composer mit Agent/Plan und Modell; `@`-Mentions und Datei-Chips; PDF-Anhang landet im Korpus; Token-Usage |
 | Übersicht | Abdeckung, Lücken, Verifikation, **Was darfst du sagen** (grün/gelb/rot), **Suchdokumentation** (Wellen, Lage, ausstehende Sperre) |
 | Korpus | Seed-PDFs und abgerufene Texte, Volltextsuche, Leser mit Offset-Sprung |
