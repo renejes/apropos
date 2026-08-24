@@ -18,9 +18,9 @@ Zwei Gründe:
 1. **Du kannst kein Zitat mehr falsch wiedergeben.** Der Server nimmt den Text an genau diesen Positionen — abtippen entfällt, ein aus dem Gedächtnis rekonstruiertes Zitat ist ausgeschlossen. Gibst du zusätzlich `verbatim_quote` an und es passt nicht zu den Positionen, wird der Eintrag abgelehnt.
 2. **Der Server sieht deine Abrufe.** Er verweigert weitere, solange eine abgerufene Quelle noch nicht per `add_source` oder `exclude_source` dokumentiert ist. Lesen und Dokumentieren bleiben so ein Schritt — auch dann, wenn du als Subagent läufst, wo Client-Hooks nicht greifen.
 
-Client-Websuche bleibt für Beiläufiges erlaubt. Sobald eine Quelle in den Bericht soll, führt der Weg über `fetch_source`.
+Client-Websuche bleibt für Beiläufiges erlaubt. Sobald eine Quelle in den Bericht soll, führt der Weg über `fetch_source` oder — bei hochgeladenen PDFs — über `search_documents` / `read_document`.
 
-Wenn `fetch_source` scheitert (Scan ohne Textschicht, Paywall, Binärformat): `add_source` mit `verbatim_quote` statt `document_id`. Der Server holt die Quelle dann selbst und prüft das Zitat; klappt auch das nicht, braucht die Quelle menschlichen Sign-off in der App. PDFs mit Textschicht gehen über `fetch_source`.
+Wenn `fetch_source` scheitert (Scan ohne Textschicht, Paywall, Binärformat): `add_source` mit `verbatim_quote` statt `document_id`. Der Server holt die Quelle dann selbst und prüft das Zitat; klappt auch das nicht, braucht die Quelle menschlichen Sign-off in der App. PDFs mit Textschicht gehen über `fetch_source`. Hochgeladene PDFs des Menschen liegen im Korpus: zuerst `list_corpus` / `search_documents`, dann `read_document`.
 
 ## Ablauf
 
@@ -32,7 +32,8 @@ Wenn `fetch_source` scheitert (Scan ohne Textschicht, Paywall, Binärformat): `a
 
 3. **Recherche-Schleife** — arbeite **Teilfrage für Teilfrage**:
    - **Bei wissenschaftlichen Fragen zuerst `search_literature`** (OpenAlex, Crossref, Europe PMC, arXiv parallel). Du bekommst DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen frei zugänglichen Volltext-Link. Diese Suchen protokollieren sich **selbst** — danach kein `log_search` mehr nötig. Arbeiten, die in mehreren Registern auftauchen, stehen oben; das ist ein Qualitätssignal, kein Zufall.
-   - Für graue Literatur, News, Behörden- und Marktquellen dann die Websuche → sofort `log_search` (exakte Query, Suchort, Trefferzahl — auch bei 0 Treffern).
+   - **Nach jeder Suchwelle `reflect_search`**, bevor du erneut suchst: *covered* (welche Facetten die Treffer bedienen), *underrepresented* (was gegenüber Brief/Ziel fehlt — keine Stückzahl), *next_action* `search` (mit einer Query, die du selbst schreibst) / `read` (erst Quellen lesen) / `enough` (diese Facette reicht, weil …). Lesen (`fetch_source`, `read_document`) ist dazwischen erlaubt. `get_coverage_gaps` ist eine Zählung, kein Suchauftrag. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus.
+   - Für graue Literatur, News, Behörden- und Marktquellen dann die Websuche → sofort `log_search` (exakte Query, Suchort, Trefferzahl — auch bei 0 Treffern). Die nächste WebSearch ist geblockt, bis `reflect_search` die letzte Welle bewertet hat.
    - Treffer sichten. Für jede Quelle entscheiden:
      - **Genutzt** → `fetch_source` (mit `purpose`) → Textfenster lesen, bei langen Dokumenten mit `offset` weiterblättern → **sofort** `add_source` mit: `reason` (warum diese Quelle), `extraction` (welches Wissen), `contribution` (Beitrag zum Ergebnis), **`document_id` + `quote_start` + `quote_end`** (absolute Zeichenpositionen der Belegstelle), `retrieval_method` und **`sub_question_id`** der gerade bearbeiteten Teilfrage.
        - **Ohne `sub_question_id` zählt die Quelle bei keiner Teilfrage zur Abdeckung** und taucht als Lücke auf. Nachträglich korrigierbar mit `assign_source`.
@@ -81,7 +82,7 @@ Fehlen Quellen oder Inhalte, wird NICHT neu gestartet: Das Werkzeug `start_exten
 
 Dieses Skill-Paket enthält ein deterministisches Provenienz-Gate: [hooks/provenance-gate.cjs](hooks/provenance-gate.cjs). Es gilt **nur für Claude Code**. In Cursor: [hooks/cursor-search-ingest.cjs](hooks/cursor-search-ingest.cjs) (WebSearch protokollieren, WebFetch abweisen) plus Rule `.cursor/rules/transparent-research.mdc` plus Server-Enforcement.
 
-- Nach jeder **WebSearch**: nächster Schritt geblockt, bis `log_search` aufgerufen wurde.
+- Nach jeder **WebSearch**: nächster Suchschritt geblockt, bis `reflect_search` die Lage geschrieben hat (covered / underrepresented / next_action). Lesen via `fetch_source` bleibt erlaubt. Das Suchprotokoll kommt vom Hook (`log_search` nicht extra nötig).
 - Nach **WebFetch**: Quelle wird als „unprotokolliert" vorgemerkt; ab 3 offenen Quellen (konfigurierbar via `ROP_MAX_PENDING`) wird jeder weitere Fetch geblockt, bis `add_source`/`exclude_source` nachgeholt sind.
 - **Turn-Ende** wird blockiert, solange Pflichten offen sind.
 

@@ -89,12 +89,14 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     reviews: [],
     uncertaintyFlags: [],
     searchLog: [],
+    searchReflections: [],
     excludedSources: [],
     subQuestions: [],
     rounds: [],
     marks: [],
     visualVersions: [],
     researchBrief: null,
+    documents: [],
     ...over,
   }
 }

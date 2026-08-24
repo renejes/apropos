@@ -8,8 +8,9 @@ import { exportProjectMarkdown } from './core/export/markdown'
 import { exportBibliography } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
 import { seedDemoProject } from './core/seed'
-import { computeCoverage } from './core/services/research'
+import { computeCoverage, ingestUploadedFiles } from './core/services/research'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
+import { projectWorkspace, resolveInboxFile } from './core/agent/workspace'
 import type { ServerInfo } from '../shared/types'
 import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
@@ -96,6 +97,52 @@ export function registerIpc(deps: IpcDeps): void {
       truncated_start: from > 0,
       truncated_end: to < doc.char_len,
     }
+  })
+
+  ipcMain.handle('documents:get', (_e, documentId: string) => {
+    const doc = repo.getDocument(documentId)
+    return doc ?? null
+  })
+
+  ipcMain.handle('documents:search', (_e, projectId: string, query: string) => repo.searchDocuments(projectId, query))
+
+  ipcMain.handle('documents:openOriginal', async (_e, documentId: string) => {
+    const doc = repo.getDocument(documentId)
+    if (!doc?.filename) return false
+    try {
+      const abs = resolveInboxFile(projectWorkspace(doc.project_id), doc.filename)
+      if (!existsSync(abs)) return false
+      const err = await shell.openPath(abs)
+      return err === ''
+    } catch {
+      return false
+    }
+  })
+
+  const fileDialogOptions = {
+    title: 'PDFs und Texte in den Korpus',
+    properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+    filters: [
+      { name: 'Dokumente', extensions: ['pdf', 'txt', 'md', 'markdown', 'html', 'htm', 'csv'] },
+      { name: 'Alle Dateien', extensions: ['*'] },
+    ],
+  }
+
+  ipcMain.handle('corpus:upload', async (e, projectId: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const { canceled, filePaths } = win
+      ? await dialog.showOpenDialog(win, fileDialogOptions)
+      : await dialog.showOpenDialog(fileDialogOptions)
+    if (canceled || filePaths.length === 0) return { filenames: [] as string[], documents: [], errors: [] }
+    const names = deps.agent.importFiles(projectId, filePaths)
+    const ingested = await ingestUploadedFiles(repo, projectId, names, HUMAN)
+    return { filenames: names, ...ingested }
+  })
+
+  ipcMain.handle('corpus:import', async (_e, projectId: string, filePaths: string[]) => {
+    const names = deps.agent.importFiles(projectId, Array.isArray(filePaths) ? filePaths : [])
+    const ingested = await ingestUploadedFiles(repo, projectId, names, HUMAN)
+    return { filenames: names, ...ingested }
   })
 
   // Menschliche Berichts-Überarbeitung: erzeugt eine NEUE unveränderliche Version
@@ -259,7 +306,9 @@ export function registerIpc(deps: IpcDeps): void {
     }
     const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
     if (canceled || filePaths.length === 0) return [] as string[]
-    return agent.importFiles(projectId, filePaths)
+    const names = agent.importFiles(projectId, filePaths)
+    await ingestUploadedFiles(repo, projectId, names, HUMAN)
+    return names
   })
 
   ipcMain.handle('open:external', (_e, url: string) => {

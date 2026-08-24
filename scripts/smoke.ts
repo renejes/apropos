@@ -85,10 +85,20 @@ async function main(): Promise<void> {
     const client = await makeClient(mcp.url, 'smoke-researcher')
 
     const tools = await client.listTools()
-    check('26 Tools registriert', tools.tools.length >= 29, tools.tools.map((t) => t.name))
+    check('Tools registriert', tools.tools.length >= 32, tools.tools.map((t) => t.name))
     check(
       'Tiefen-Tools vorhanden (plan_research, get_coverage_gaps, next_round, assign_source)',
       ['plan_research', 'get_coverage_gaps', 'next_round', 'assign_source'].every((n) => tools.tools.some((t) => t.name === n)),
+      tools.tools.map((t) => t.name)
+    )
+    check(
+      'Korpus-Tools vorhanden (list_corpus, search_documents, read_document)',
+      ['list_corpus', 'search_documents', 'read_document'].every((n) => tools.tools.some((t) => t.name === n)),
+      tools.tools.map((t) => t.name)
+    )
+    check(
+      'reflect_search vorhanden',
+      tools.tools.some((t) => t.name === 'reflect_search'),
       tools.tools.map((t) => t.name)
     )
     check(

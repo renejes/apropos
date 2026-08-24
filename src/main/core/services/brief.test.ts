@@ -117,6 +117,7 @@ describe('Research-Brief (Phase E)', () => {
     const fallbackSkill = join(ws, 'skills', 'focused-research', 'SKILL.md')
     const skill = readFileSync(existsSync(cursorSkill) ? cursorSkill : fallbackSkill, 'utf-8')
     expect(skill).toMatch(/draft_research_brief/)
+    expect(skill).toMatch(/reflect_search/)
     expect(skill).toMatch(/nicht suchen/i)
   })
 

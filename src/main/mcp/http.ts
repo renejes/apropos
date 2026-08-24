@@ -6,7 +6,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { buildMcpServer, type McpDeps } from './server'
-import { ServiceError, ingestSearch } from '../core/services/research'
+import { ServiceError, ingestSearch, evaluateSearchGate } from '../core/services/research'
 
 /**
  * Lokaler Streamable-HTTP-Endpoint auf 127.0.0.1 — Multi-Client-fähig
@@ -174,6 +174,22 @@ export async function startMcpHttpServer(deps: McpDeps, port: number): Promise<R
         code: 'internal',
         error: err instanceof Error ? err.message : String(err),
         next_action: 'Prüfe, ob die App läuft, und wiederhole POST /ingest/search.',
+      })
+    }
+  })
+
+  app.get('/ingest/search-gate', (req, res) => {
+    try {
+      const projectId = typeof req.query.project_id === 'string' ? req.query.project_id : undefined
+      const gate = evaluateSearchGate(deps.repo, projectId)
+      res.json(gate)
+    } catch (err) {
+      res.status(500).json({
+        allowed: true,
+        project_id: null,
+        pending_queries: [],
+        code: 'internal',
+        error: err instanceof Error ? err.message : String(err),
       })
     }
   })

@@ -3,6 +3,7 @@ import type { ProjectState } from '../../../shared/types'
 import { Badge, Button, Icon } from '../components/ui'
 import AgentChat from './AgentChat'
 import OverviewTab from './tabs/OverviewTab'
+import CorpusTab from './tabs/CorpusTab'
 import SourcesTab from './tabs/SourcesTab'
 import ClaimsTab from './tabs/ClaimsTab'
 import MapTab from './tabs/MapTab'
@@ -12,6 +13,7 @@ import AuditTab from './tabs/AuditTab'
 
 const TABS = [
   { id: 'overview', label: 'Übersicht', icon: 'dashboard' },
+  { id: 'corpus', label: 'Korpus', icon: 'menu_book' },
   { id: 'sources', label: 'Quellen', icon: 'link' },
   { id: 'claims', label: 'Aussagen', icon: 'fact_check' },
   { id: 'map', label: 'Karte', icon: 'account_tree' },
@@ -28,9 +30,14 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const [coverageKey, setCoverageKey] = useState(0)
   const [focusSourceId, setFocusSourceId] = useState<string | null>(null)
+  const [focusDoc, setFocusDoc] = useState<{ documentId: string; start?: number; end?: number } | null>(null)
   const openSource = (sourceId: string) => {
     setFocusSourceId(sourceId)
     setTab('sources')
+  }
+  const openDocument = (documentId: string, start?: number, end?: number) => {
+    setFocusDoc({ documentId, start, end })
+    setTab('corpus')
   }
 
   const reload = useCallback(async () => {
@@ -114,7 +121,7 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-[42%] min-w-[300px] max-w-[560px] shrink-0 flex-col border-r border-slate-200">
-          <AgentChat projectId={projectId} onRunEnd={() => void reload()} />
+          <AgentChat projectId={projectId} onRunEnd={() => void reload()} onCorpusChange={() => void reload()} />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -133,13 +140,25 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
                 <Icon name={t.icon} className="icon-sm" />
                 {t.label}
                 {t.id === 'sources' && pendingCount > 0 && <Badge tone="amber">{pendingCount}</Badge>}
+                {t.id === 'corpus' && state.documents.filter((d) => d.status !== 'excluded').length > 0 && (
+                  <Badge tone="slate">{state.documents.filter((d) => d.status !== 'excluded').length}</Badge>
+                )}
               </button>
             ))}
           </nav>
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className={`min-h-0 flex-1 ${tab === 'corpus' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
             {tab === 'overview' && <OverviewTab state={state} onReload={reload} coverageKey={coverageKey} onOpenSource={openSource} />}
+            {tab === 'corpus' && (
+              <CorpusTab state={state} onReload={reload} focus={focusDoc} onFocusConsumed={() => setFocusDoc(null)} />
+            )}
             {tab === 'sources' && (
-              <SourcesTab state={state} onReload={reload} focusSourceId={focusSourceId} onFocusConsumed={() => setFocusSourceId(null)} />
+              <SourcesTab
+                state={state}
+                onReload={reload}
+                focusSourceId={focusSourceId}
+                onFocusConsumed={() => setFocusSourceId(null)}
+                onOpenDocument={openDocument}
+              />
             )}
             {tab === 'claims' && <ClaimsTab state={state} onOpenSource={openSource} />}
             {tab === 'map' && <MapTab state={state} onOpenSource={openSource} onReload={reload} />}

@@ -211,7 +211,8 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
   it('enthält die project_id im ersten Turn', () => {
     const text = sessionPreamble({ projectId: 'proj-42', title: 'T', researchQuestion: 'Warum?' })
     expect(text).toContain('proj-42')
-    expect(text).toContain('ingest_local_file')
+    expect(text).toContain('search_documents')
+    expect(text).toContain('reflect_search')
     expect(text).toContain('describe_evidence_map')
     expect(text).toContain('draft_research_brief')
     expect(text).not.toMatch(/sofort search_literature/i)

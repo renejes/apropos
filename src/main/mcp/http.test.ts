@@ -179,3 +179,59 @@ describe('POST /ingest/search', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('GET /ingest/search-gate', () => {
+  let db: DB
+  let mcp: RunningHttpServer
+  let repo: Repo
+
+  beforeEach(async () => {
+    db = openDb(':memory:')
+    repo = new Repo(db)
+    mcp = await startMcpHttpServer({ repo, actorLabel: 'test' }, 0)
+  })
+  afterEach(async () => {
+    await mcp.close()
+    delete process.env.ROP_PROJECT_ID
+  })
+
+  const getGate = (projectId?: string): Promise<{ status: number; json: any }> =>
+    new Promise((resolve, reject) => {
+      const path = projectId ? `/ingest/search-gate?project_id=${encodeURIComponent(projectId)}` : '/ingest/search-gate'
+      const req = httpRequest(
+        { hostname: '127.0.0.1', port: mcp.port, path, method: 'GET', headers: { accept: 'application/json' } },
+        (res) => {
+          let raw = ''
+          res.on('data', (c) => (raw += c))
+          res.on('end', () => {
+            let json: unknown = null
+            try {
+              json = JSON.parse(raw)
+            } catch {
+              json = raw
+            }
+            resolve({ status: res.statusCode ?? 0, json })
+          })
+        }
+      )
+      req.on('error', reject)
+      req.end()
+    })
+
+  it('erlaubt die erste Suche und sperrt die nächste nach Ingest', async () => {
+    const p = repo.createProject({ title: 'Gate', research_question: 'x?', mode: 'academic', policy_preset: null, actor: 't' })
+    expect((await getGate(p.id)).json.allowed).toBe(true)
+    repo.addSearchLog({ project_id: p.id, query: 'erste welle', engine: 'cursor-websearch', results_found: 2, actor: 't' })
+    const blocked = await getGate(p.id)
+    expect(blocked.status).toBe(200)
+    expect(blocked.json.allowed).toBe(false)
+    expect(blocked.json.code).toBe('search_reflection_required')
+    expect(blocked.json.next_action).toMatch(/reflect_search/)
+  })
+
+  it('fail-open ohne Projekt', async () => {
+    const res = await getGate()
+    expect(res.status).toBe(200)
+    expect(res.json.allowed).toBe(true)
+  })
+})

@@ -37,6 +37,7 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
   ],
   research: [
     'search_literature',
+    'reflect_search',
     'fetch_source',
     'add_source',
     'exclude_source',
@@ -46,6 +47,9 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'flag_uncertainty',
     'get_coverage_gaps',
     'get_research_brief',
+    'list_corpus',
+    'search_documents',
+    'read_document',
   ],
   synthesis: [
     'get_project_state',

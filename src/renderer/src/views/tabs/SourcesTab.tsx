@@ -11,11 +11,13 @@ export default function SourcesTab({
   onReload,
   focusSourceId,
   onFocusConsumed,
+  onOpenDocument,
 }: {
   state: ProjectState
   onReload: () => void
   focusSourceId?: string | null
   onFocusConsumed?: () => void
+  onOpenDocument?: (documentId: string, start?: number, end?: number) => void
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'problems' | 'unassigned'>('all')
@@ -152,12 +154,33 @@ export default function SourcesTab({
       </div>
 
       {/* Detail-Drawer — key erzwingt State-Reset beim Quellenwechsel (Review-Finding) */}
-      {selected && <SourceDetail key={selected.id} source={selected} state={state} onClose={() => setSelectedId(null)} onReload={onReload} />}
+      {selected && (
+        <SourceDetail
+          key={selected.id}
+          source={selected}
+          state={state}
+          onClose={() => setSelectedId(null)}
+          onReload={onReload}
+          onOpenDocument={onOpenDocument}
+        />
+      )}
     </div>
   )
 }
 
-function SourceDetail({ source: s, state, onClose, onReload }: { source: Source; state: ProjectState; onClose: () => void; onReload: () => void }) {
+function SourceDetail({
+  source: s,
+  state,
+  onClose,
+  onReload,
+  onOpenDocument,
+}: {
+  source: Source
+  state: ProjectState
+  onClose: () => void
+  onReload: () => void
+  onOpenDocument?: (documentId: string, start?: number, end?: number) => void
+}) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -252,7 +275,12 @@ function SourceDetail({ source: s, state, onClose, onReload }: { source: Source;
             {s.quote_locator && <div className="mt-1 text-[11px] not-italic text-slate-400">Fundstelle: {s.quote_locator}</div>}
           </blockquote>
           {s.document_id && s.quote_start != null && s.quote_end != null && (
-            <QuoteInContext documentId={s.document_id} start={s.quote_start} end={s.quote_end} />
+            <QuoteInContext
+              documentId={s.document_id}
+              start={s.quote_start}
+              end={s.quote_end}
+              onOpenDocument={onOpenDocument}
+            />
           )}
         </Field>
 
@@ -334,7 +362,17 @@ function SourceDetail({ source: s, state, onClose, onReload }: { source: Source;
  * Kontext, statt die URL zu öffnen und den Satz zu suchen. Und weil der Text
  * gespeichert ist, gilt das auch dann noch, wenn sich die Seite später ändert.
  */
-function QuoteInContext({ documentId, start, end }: { documentId: string; start: number; end: number }) {
+function QuoteInContext({
+  documentId,
+  start,
+  end,
+  onOpenDocument,
+}: {
+  documentId: string
+  start: number
+  end: number
+  onOpenDocument?: (documentId: string, start?: number, end?: number) => void
+}) {
   const [ex, setEx] = useState<DocumentExcerpt | null>(null)
   const [open, setOpen] = useState(false)
   const [err, setErr] = useState(false)
@@ -362,6 +400,16 @@ function QuoteInContext({ documentId, start, end }: { documentId: string; start:
           Position {start}–{end}
         </Badge>
       </button>
+      {onOpenDocument && (
+        <button
+          type="button"
+          onClick={() => onOpenDocument(documentId, start, end)}
+          className="ml-3 inline-flex items-center gap-1 text-xs text-(--color-accent-700) hover:underline"
+        >
+          <Icon name="menu_book" className="!text-[16px]" />
+          Im Korpus öffnen
+        </button>
+      )}
       {open && (
         <div className="mt-2 rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">

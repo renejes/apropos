@@ -166,9 +166,11 @@ const EMPTY_SESSIONS: AgentSessionsSnapshot = { activeId: null, open: [], all: [
 export default function AgentChat({
   projectId,
   onRunEnd,
+  onCorpusChange,
 }: {
   projectId: string
   onRunEnd: () => void
+  onCorpusChange?: () => void
 }) {
   const { auth, models, settings, saveSettings, loginBrowser } = useCursorAccount()
   const [events, setEvents] = useState<AgentChatEvent[]>([])
@@ -342,6 +344,7 @@ export default function AgentChat({
     const names = await window.api.agentAttach(projectId)
     if (!names.length) return
     setPendingFiles((cur) => [...new Set([...cur, ...names])].slice(0, MAX_ATTACH))
+    onCorpusChange?.()
   }
 
   const pickMention = (hit: AgentMentionable) => {
@@ -570,7 +573,7 @@ export default function AgentChat({
                   </div>
                 )}
               </div>
-              <Button type="button" variant="ghost" icon="attach_file" title="PDF oder Text anhängen" onClick={() => void attach()} />
+              <Button type="button" variant="ghost" icon="attach_file" title="PDF oder Text in den Korpus" onClick={() => void attach()} />
               <span className="flex-1" />
               {running ? (
                 <Button type="button" variant="danger" icon="stop" onClick={() => void window.api.agentCancel(projectId)}>

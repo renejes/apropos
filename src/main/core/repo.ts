@@ -6,6 +6,8 @@ import type {
   Claim,
   ExcludedSource,
   SearchLogEntry,
+  SearchReflection,
+  SearchNextAction,
   ClaimSourceLink,
   ConfidenceLevel,
   EventLogEntry,
@@ -28,6 +30,8 @@ import type {
   ResearchRound,
   FetchedDocument,
   DocumentStatus,
+  DocumentOrigin,
+  DocumentSearchHit,
   EngineRun,
   EngineRunStatus,
   Mark,
@@ -568,6 +572,71 @@ export class Repo {
     return this.db.prepare(`SELECT * FROM search_log WHERE project_id = ? ORDER BY created_at ASC`).all(projectId) as SearchLogEntry[]
   }
 
+  listUnreflectedSearches(projectId: string): SearchLogEntry[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM search_log WHERE project_id = ? AND reflection_id IS NULL ORDER BY created_at ASC`
+      )
+      .all(projectId) as SearchLogEntry[]
+  }
+
+  addSearchReflection(input: {
+    project_id: string
+    covered: string
+    underrepresented: string
+    next_action: SearchNextAction
+    next_query?: string | null
+    reason: string
+    sub_question_id?: string | null
+    actor: string
+  }): SearchReflection {
+    const id = randomUUID()
+    const ts = nowIso()
+    return this.tx(() => {
+      this.db
+        .prepare(
+          `INSERT INTO search_reflections (
+             id, project_id, covered, underrepresented, next_action, next_query, reason,
+             sub_question_id, created_at, created_by
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          input.project_id,
+          input.covered,
+          input.underrepresented,
+          input.next_action,
+          input.next_query ?? null,
+          input.reason,
+          input.sub_question_id ?? null,
+          ts,
+          input.actor
+        )
+      this.db
+        .prepare(`UPDATE search_log SET reflection_id = ? WHERE project_id = ? AND reflection_id IS NULL`)
+        .run(id, input.project_id)
+      this.logEvent(input.project_id, input.actor, 'search.reflected', {
+        reflection_id: id,
+        next_action: input.next_action,
+      })
+      return this.db.prepare(`SELECT * FROM search_reflections WHERE id = ?`).get(id) as SearchReflection
+    })
+  }
+
+  listSearchReflections(projectId: string): SearchReflection[] {
+    return this.db
+      .prepare(`SELECT * FROM search_reflections WHERE project_id = ? ORDER BY created_at ASC`)
+      .all(projectId) as SearchReflection[]
+  }
+
+  getLatestSearchReflection(projectId: string): SearchReflection | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM search_reflections WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(projectId) as SearchReflection | undefined
+  }
+
   addExcludedSource(input: { project_id: string; url: string; title?: string | null; reason: string; actor: string }): ExcludedSource {
     const id = randomUUID()
     this.db
@@ -595,12 +664,19 @@ export class Repo {
     content_hash: string
     purpose?: string | null
     actor: string
+    origin?: DocumentOrigin
+    filename?: string | null
+    page_starts?: number[] | null
+    status?: DocumentStatus
   }): FetchedDocument {
     const id = randomUUID()
+    const origin: DocumentOrigin = input.origin ?? 'fetched'
+    const status: DocumentStatus = input.status ?? 'open'
+    const pageJson = input.page_starts && input.page_starts.length > 0 ? JSON.stringify(input.page_starts) : null
     this.db
       .prepare(
-        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`
+        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -612,39 +688,47 @@ export class Repo {
         input.content_hash,
         nowIso(),
         input.actor,
-        input.purpose ?? null
+        input.purpose ?? null,
+        status,
+        origin,
+        input.filename ?? null,
+        pageJson
       )
-    this.logEvent(input.project_id, input.actor, 'document.fetched', {
+    this.logEvent(input.project_id, input.actor, origin === 'upload' ? 'document.uploaded' : 'document.fetched', {
       document_id: id,
       url: input.url,
       char_len: input.text.length,
       content_hash: input.content_hash,
+      origin,
     })
     return this.getDocument(id)!
   }
 
   getDocument(id: string): FetchedDocument | undefined {
-    return this.db.prepare(`SELECT * FROM documents WHERE id = ?`).get(id) as FetchedDocument | undefined
+    const row = this.db.prepare(`SELECT * FROM documents WHERE id = ?`).get(id) as DocumentRow | undefined
+    return row ? mapDocument(row) : undefined
   }
 
   /** Dokumente ohne Text — für Listen/UI, damit nicht megabyteweise Text durchgereicht wird. */
   listDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
-    return this.db
+    const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json
          FROM documents WHERE project_id = ? ORDER BY fetched_at ASC`
       )
-      .all(projectId) as Array<Omit<FetchedDocument, 'text'>>
+      .all(projectId) as DocumentRow[]
+    return rows.map(mapDocumentMeta)
   }
 
   /** Abgerufen, aber noch nicht dokumentiert — die Pflichten-Warteschlange des Gates. */
   listOpenDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
-    return this.db
+    const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json
          FROM documents WHERE project_id = ? AND status = 'open' ORDER BY fetched_at ASC`
       )
-      .all(projectId) as Array<Omit<FetchedDocument, 'text'>>
+      .all(projectId) as DocumentRow[]
+    return rows.map(mapDocumentMeta)
   }
 
   setDocumentStatus(id: string, status: DocumentStatus, actor: string): void {
@@ -1251,12 +1335,14 @@ export class Repo {
       reviews: this.listReviews(projectId),
       uncertaintyFlags: this.listUncertaintyFlags(projectId),
       searchLog: this.listSearchLog(projectId),
+      searchReflections: this.listSearchReflections(projectId),
       excludedSources: this.listExcludedSources(projectId),
       subQuestions: this.listSubQuestions(projectId),
       rounds: this.listRounds(projectId),
       marks: this.listMarks(projectId),
       visualVersions: this.listVisualVersions(projectId),
       researchBrief: this.getAdoptedBrief(projectId) ?? this.getLatestBrief(projectId) ?? null,
+      documents: this.listDocuments(projectId),
     }
   }
 
@@ -1269,6 +1355,40 @@ export class Repo {
       )
       .all(ftsQuery(query), projectId) as Source[]
   }
+
+  /** Volltextsuche im Korpus. Liefert Treffer mit Zeichenpositionen, kein Zitat-Abschreiben. */
+  searchDocuments(projectId: string, query: string): DocumentSearchHit[] {
+    const q = query.trim()
+    if (!q) return []
+    let rows: Array<{
+      id: string
+      title: string | null
+      url: string
+      origin: string | null
+      char_len: number
+      text: string
+    }> = []
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT d.id, d.title, d.url, d.origin, d.char_len, d.text
+           FROM documents_fts f JOIN documents d ON d.rowid = f.rowid
+           WHERE documents_fts MATCH ? AND d.project_id = ? AND d.status != 'excluded'
+           LIMIT 20`
+        )
+        .all(ftsQuery(q), projectId) as typeof rows
+    } catch {
+      return []
+    }
+    return rows.map((row) => ({
+      document_id: row.id,
+      title: row.title,
+      url: row.url,
+      origin: row.origin === 'upload' ? 'upload' : 'fetched',
+      char_len: row.char_len,
+      matches: findTextMatches(row.text, q),
+    }))
+  }
 }
 
 /** Nutzer-Query in eine sichere FTS5-Prefix-Query übersetzen. */
@@ -1278,6 +1398,99 @@ function ftsQuery(raw: string): string {
     .filter(Boolean)
     .map((t) => `"${t.replace(/"/g, '""')}"*`)
     .join(' ')
+}
+
+interface DocumentRow {
+  id: string
+  project_id: string
+  url: string
+  title: string | null
+  text?: string
+  char_len: number
+  content_hash: string
+  fetched_at: string
+  fetched_by: string
+  purpose: string | null
+  status: DocumentStatus
+  origin?: string | null
+  filename?: string | null
+  page_starts_json?: string | null
+}
+
+function parsePageStarts(raw: string | null | undefined): number[] | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === 'number' && Number.isFinite(n))) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function mapDocument(row: DocumentRow): FetchedDocument {
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    url: row.url,
+    title: row.title,
+    text: row.text ?? '',
+    char_len: row.char_len,
+    content_hash: row.content_hash,
+    fetched_at: row.fetched_at,
+    fetched_by: row.fetched_by,
+    purpose: row.purpose,
+    status: row.status,
+    origin: row.origin === 'upload' ? 'upload' : 'fetched',
+    filename: row.filename ?? null,
+    page_starts: parsePageStarts(row.page_starts_json),
+  }
+}
+
+function mapDocumentMeta(row: DocumentRow): Omit<FetchedDocument, 'text'> {
+  const mapped = mapDocument(row)
+  return {
+    id: mapped.id,
+    project_id: mapped.project_id,
+    url: mapped.url,
+    title: mapped.title,
+    char_len: mapped.char_len,
+    content_hash: mapped.content_hash,
+    fetched_at: mapped.fetched_at,
+    fetched_by: mapped.fetched_by,
+    purpose: mapped.purpose,
+    status: mapped.status,
+    origin: mapped.origin,
+    filename: mapped.filename,
+    page_starts: mapped.page_starts,
+  }
+}
+
+function findTextMatches(text: string, query: string, maxHits = 8): Array<{ start: number; end: number; snippet: string }> {
+  const terms = query
+    .split(/\s+/)
+    .map((t) => t.replace(/["*]/g, ''))
+    .filter((t) => t.length >= 2)
+  const hits: Array<{ start: number; end: number; snippet: string }> = []
+  const lower = text.toLowerCase()
+  for (const term of terms) {
+    const needle = term.toLowerCase()
+    let from = 0
+    while (hits.length < maxHits) {
+      const i = lower.indexOf(needle, from)
+      if (i < 0) break
+      const end = i + needle.length
+      const snipFrom = Math.max(0, i - 80)
+      const snipTo = Math.min(text.length, end + 80)
+      hits.push({
+        start: i,
+        end,
+        snippet: `${snipFrom > 0 ? '…' : ''}${text.slice(snipFrom, snipTo)}${snipTo < text.length ? '…' : ''}`,
+      })
+      from = end
+    }
+  }
+  return hits
 }
 
 interface BriefRow {

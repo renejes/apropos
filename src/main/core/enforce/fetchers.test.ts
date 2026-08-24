@@ -22,9 +22,10 @@ describe('PDF-Erkennung', () => {
 describe('PDF-Textextraktion', () => {
   it('schneidet den bekannten Satz aus der Fixture-PDF', async () => {
     const bytes = buildMinimalPdf(QUOTE)
-    const { text, pages } = await extractPdfText(bytes)
+    const { text, pages, pageStarts } = await extractPdfText(bytes)
     expect(pages).toBe(1)
     expect(text).toContain(QUOTE)
+    expect(pageStarts[0]).toBe(0)
   })
 })
 

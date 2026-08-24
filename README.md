@@ -149,6 +149,7 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
 | `search_literature` | OpenAlex, Crossref, Europe PMC |
+| `reflect_search` | Lage nach einer Suchwelle, bevor erneut gesucht wird |
 | `ingest_local_file` / `list_inbox` | PDFs und Text aus der Projekt-Inbox |
 | `describe_evidence_map` / `prepare_view` / `toggle_mark` | Karte und Arbeitsset |
 | `export_bibliography` / `export_writing_pack` | `.bib` und Schreibpaket für Easy Writing |

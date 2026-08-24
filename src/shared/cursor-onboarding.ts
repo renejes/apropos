@@ -47,10 +47,10 @@ Einstieg: Werkzeug \`start_transparent_research\` (nicht den MCP-Prompt). Danach
 ## Ablauf
 
 1. \`plan_research\` mit 3–8 Teilfragen. Ohne sie lehnt \`add_report_version\` ab.
-2. Wissenschaft: zuerst \`search_literature\` (\`oa_url\` darf PDF sein). Graue Literatur: WebSearch (wird automatisch protokolliert).
-3. Genutzt → \`fetch_source\` → sofort \`add_source\` inkl. \`sub_question_id\`. Verworfen → \`exclude_source\`.
+2. Wissenschaft: zuerst \`search_literature\` (\`oa_url\` darf PDF sein). Hochgeladene PDFs: \`search_documents\` / \`read_document\`. Graue Literatur: WebSearch (wird automatisch protokolliert). Nach jeder Suchwelle \`reflect_search\`, bevor du erneut suchst.
+3. Genutzt → \`fetch_source\` oder \`read_document\` → sofort \`add_source\` inkl. \`sub_question_id\`. Verworfen → \`exclude_source\`.
 4. \`quote_verified: false\` korrigieren, nie ignorieren. Weitere Fakten: \`log_extraction\`.
-5. Runde: \`next_round\`. \`should_continue\` entscheidet, nicht deine Einschätzung. Arbeitsliste: \`get_coverage_gaps\`.
+5. Runde: \`next_round\`. \`should_continue\` entscheidet, nicht deine Einschätzung. Arbeitsliste: \`get_coverage_gaps\` (Zählung, kein Suchauftrag).
 6. Synthese: \`link_claim_to_source\`, dann \`add_report_version\`. Lücken quittieren nur mit \`acknowledge_gaps\`.
 7. Abschluss: \`re_verify\`. Verify in einer **neuen** Agent-Session (\`start_verify_session\`). Sign-off nur in der App.
 

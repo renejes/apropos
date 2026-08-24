@@ -230,4 +230,35 @@ describe('Literatursuche über offene Register', () => {
     expect(res.backends_used.sort()).toEqual(['crossref', 'europepmc', 'openalex'])
     expect(res.backends_used).not.toContain('arxiv')
   })
+
+  it('blockiert die zweite Suche bis reflect_search, erlaubt sie danach', async () => {
+    stubFetch({ openalex: { results: [openAlexWork()] } })
+    await search({ backends: ['openalex'] })
+    await expect(search({ backends: ['openalex'], query: 'zweite suche bitte' })).rejects.toMatchObject({
+      code: 'search_reflection_required',
+    })
+    const { reflectSearch } = await import('./research')
+    reflectSearch(
+      repo,
+      {
+        project_id: projectId,
+        covered: 'Die Treffer treffen die Transformer-Architektur als Kernmechanismus.',
+        underrepresented: 'Gegenüber dem Ziel fehlen empirische Replikationen außerhalb von Englisch.',
+        next_action: 'search',
+        next_query: 'transformer attention replication studies',
+        reason: 'Die erste Welle zeigt den Mechanismus; die nächste Query geht auf Replikationen.',
+      },
+      ACTOR
+    )
+    const second = await search({ backends: ['openalex'], query: 'transformer attention replication studies' })
+    expect(second.query).toBe('transformer attention replication studies')
+    expect(second.hint).toMatch(/reflect_search/)
+  })
+
+  it('erlaubt den sofortigen Retry, wenn alle Register ausgefallen sind', async () => {
+    stubFetch({ fail: ['api.openalex.org'] })
+    await expect(search({ backends: ['openalex'] })).rejects.toBeInstanceOf(ServiceError)
+    stubFetch({ openalex: { results: [openAlexWork()] } })
+    await expect(search({ backends: ['openalex'] })).resolves.toMatchObject({ total: 1 })
+  })
 })

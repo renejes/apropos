@@ -37,6 +37,7 @@ export interface SourceTextResult {
   snapshotHash: string | null
   status: number | null
   note: string
+  pageStarts?: number[] | null
 }
 
 function withTimeout(ms: number): { signal: AbortSignal; cancel: () => void } {
@@ -236,6 +237,7 @@ export async function fetchSourceText(rawUrl: string): Promise<SourceTextResult>
           snapshotHash,
           status: res.status,
           note: `ok (pdf, ${extracted.pages} Seite(n), ${contentType || 'application/pdf'})`,
+          pageStarts: extracted.pageStarts,
         }
       } catch (err) {
         return {

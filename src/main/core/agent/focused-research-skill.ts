@@ -18,7 +18,7 @@ Du maximierst nicht die Trefferzahl. Du findest **passende** Belege für EINEN g
 3. \`draft_research_brief\` mit den Pflichtfeldern. Den Markdown-Plan dem Menschen zeigen.
 4. Erst nach ausdrücklicher Bestätigung: \`adopt_research_brief\`.
 5. \`plan_research\` — Teilfragen aus dem Brief, keine parallele Agenda.
-6. Dann erst \`search_literature\` / WebSearch. Jede Suche nennt das Plan-Ziel. Treffer, die den Plan nicht treffen: \`exclude_source\`, nicht „zur Sicherheit“ ablegen.
+6. Dann erst den Korpus und das Netz: list_corpus / search_documents (hochgeladene PDFs), danach \`search_literature\` / WebSearch. Jede Suche nennt das Plan-Ziel. Nach jeder Suchwelle \`reflect_search\` (Getroffen / Unterrepräsentiert vs Ziel / nächster Schritt), bevor du erneut suchst. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. Treffer, die den Plan nicht treffen: \`exclude_source\`, nicht „zur Sicherheit“ ablegen.
 7. \`fetch_source\` → sofort \`add_source\` mit Offsets. Nie Zitate abtippen. Sign-off nur der Mensch.
 
 ## Stopp

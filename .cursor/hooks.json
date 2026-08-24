@@ -6,6 +6,11 @@
         "command": "node skills/transparent-research/hooks/cursor-search-ingest.cjs",
         "matcher": "WebFetch",
         "failClosed": false
+      },
+      {
+        "command": "node skills/transparent-research/hooks/cursor-search-ingest.cjs",
+        "matcher": "WebSearch",
+        "failClosed": false
       }
     ],
     "postToolUse": [

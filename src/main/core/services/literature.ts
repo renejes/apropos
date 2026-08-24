@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Repo } from '../repo'
-import { ServiceError, requireAdoptedBrief } from './research'
+import { ServiceError, requireAdoptedBrief, requireSearchReflection } from './research'
 
 /**
  * Wissenschaftliche Literatursuche über offene, kostenlose APIs.
@@ -352,6 +352,7 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
     )
   }
   requireAdoptedBrief(repo, input.project_id)
+  requireSearchReflection(repo, input.project_id)
   const brief = repo.getAdoptedBrief(input.project_id)
   const yearFrom = input.year_from ?? brief?.year_from ?? undefined
   const yearTo = input.year_to ?? brief?.year_to ?? undefined
@@ -449,7 +450,8 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       (triangulated > 0 ? `, ${triangulated} in mehreren Registern gefunden (stehen oben)` : '') +
       '. ' +
       'Die Suchen sind bereits protokolliert — log_search ist hier NICHT nötig. ' +
-      'Nächster Schritt: oa_url (HTML oder PDF) mit fetch_source abrufen und die Quelle per document_id + Offsets belegen. ' +
+      'Lesen ist jetzt erlaubt: oa_url (HTML oder PDF) mit fetch_source abrufen und per document_id + Offsets belegen. ' +
+      'Bevor du erneut suchst: reflect_search (covered / underrepresented / next_action). Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. ' +
       'url ist die Landing-Page/DOI — nicht automatisch die PDF. ' +
       'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — dann exclude_source mit Grund "Paywall" ' +
       'oder eine frei zugängliche Fassung suchen.' +

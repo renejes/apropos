@@ -148,6 +148,12 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     const tables = (migrated.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as Array<{ name: string }>).map((t) => t.name)
     expect(tables).toContain('visual_versions')
     expect(tables).toContain('marks')
+    expect(tables).toContain('documents_fts')
+    expect(tables).toContain('search_reflections')
+    const docCols = (migrated.pragma('table_info(documents)') as Array<{ name: string }>).map((c) => c.name)
+    expect(docCols).toContain('origin')
+    const searchCols = (migrated.pragma('table_info(search_log)') as Array<{ name: string }>).map((c) => c.name)
+    expect(searchCols).toContain('reflection_id')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()

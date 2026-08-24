@@ -39,6 +39,12 @@ describe('Cursor-Such-Ingest-Hook', () => {
     expect(d.ingest).toBeUndefined()
   })
 
+  it('markiert preToolUse WebSearch als Gate-Prüfung', () => {
+    const d = hook.decide({ hook_event_name: 'preToolUse', tool_name: 'WebSearch', tool_input: { query: 'x' } })
+    expect(d.checkSearchGate).toBe(true)
+    expect(d.permission).toBeUndefined()
+  })
+
   it('zieht URLs aus WebSearch-Output', () => {
     const urls = hook.extractUrls({ results: [{ url: 'https://arxiv.org/abs/1706.03762' }, { link: 'https://doi.org/10.1/abc' }] })
     expect(urls).toContain('https://arxiv.org/abs/1706.03762')
@@ -94,7 +100,46 @@ describe('Cursor-Hook POST /ingest/search', () => {
     expect(code).toBe(0)
     const parsed = JSON.parse(stdout)
     expect(parsed.additional_context).toMatch(/fetch_source/)
+    expect(parsed.additional_context).toMatch(/reflect_search/)
     expect(parsed.permission).toBeUndefined()
     expect(received).toMatchObject({ query: 'attention is all you need', provider: 'cursor-websearch' })
+  })
+
+  it('weist die nächste WebSearch ab, wenn das Gate search_reflection_required meldet', async () => {
+    server = createServer((req, res) => {
+      if (req.url?.startsWith('/ingest/search-gate')) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            allowed: false,
+            code: 'search_reflection_required',
+            next_action: 'Rufe reflect_search auf: covered, underrepresented, next_action.',
+          })
+        )
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as { port: number }).port
+
+    const { stdout, code } = await runHook(
+      { hook_event_name: 'preToolUse', tool_name: 'WebSearch', tool_input: { query: 'zweite suche' } },
+      { ROP_INGEST_URL: `http://127.0.0.1:${port}/ingest/search` }
+    )
+    expect(code).toBe(0)
+    const parsed = JSON.parse(stdout)
+    expect(parsed.permission).toBe('deny')
+    expect(String(parsed.agent_message)).toMatch(/reflect_search/)
+  })
+
+  it('fail-open: unerreichbares Gate lässt WebSearch durch', async () => {
+    const { stdout, code } = await runHook(
+      { hook_event_name: 'preToolUse', tool_name: 'WebSearch', tool_input: { query: 'ohne app' } },
+      { ROP_INGEST_URL: 'http://127.0.0.1:1/ingest/search' }
+    )
+    expect(code).toBe(0)
+    expect(JSON.parse(stdout).permission).toBeUndefined()
   })
 })

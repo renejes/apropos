@@ -86,6 +86,7 @@ describe('Agenten-Schleife & Engine', () => {
       expect(tools.length).toBeLessThanOrEqual(15)
     }
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('fetch_source')
+    expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('reflect_search')
     // Der Bericht darf in der Recherche-Phase nicht schreibbar sein.
     expect((await bridge.listForPhase('research')).map((t) => t.name)).not.toContain('add_report_version')
   })

@@ -184,6 +184,9 @@ const CONTRACT = `Du recherchierst über eine Plattform, die Provenienz ERZWINGT
 - Bei wissenschaftlichen Fragen ZUERST search_literature: liefert DOI, Autoren, Jahr und wo
   vorhanden einen frei zugänglichen Volltext (oa_url) — genau der geht dann in fetch_source.
   Diese Suchen protokollieren sich selbst; log_search ist dafür nicht nötig.
+- Nach jeder Suchwelle reflect_search, BEVOR du erneut suchst: covered, underrepresented
+  (gegenüber Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query
+  kommt aus dieser Lage. Lesen bleibt erlaubt. get_coverage_gaps ist eine Zählung, kein Suchauftrag.
 - Gesichtete, aber verworfene Quellen: exclude_source mit ehrlichem Grund. Das ist kein
   Makel, sondern Teil der Dokumentation.
 - Unsicherheit, dünne Beleglage, Widersprüche: flag_uncertainty. Lieber einmal zu viel.

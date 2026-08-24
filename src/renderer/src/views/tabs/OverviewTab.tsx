@@ -49,6 +49,7 @@ export default function OverviewTab({
 
   const src = state.sources
   const stats = [
+    { icon: 'menu_book', label: 'Korpus', value: state.documents.filter((d) => d.status !== 'excluded').length, tone: 'text-slate-700' },
     { icon: 'link', label: 'Quellen', value: src.length, tone: 'text-slate-700' },
     { icon: 'schedule', label: 'offen', value: src.filter((s) => s.review_status === 'pending').length, tone: 'text-amber-600' },
     { icon: 'neurology', label: 'KI-geprüft', value: src.filter((s) => s.review_status === 'ai_checked').length, tone: 'text-sky-600' },
@@ -71,7 +72,7 @@ export default function OverviewTab({
       <SayablePanel state={state} />
 
       {/* Kennzahlen */}
-      <div className="grid grid-cols-4 gap-3 lg:grid-cols-8">
+      <div className="grid grid-cols-3 gap-3 lg:grid-cols-9">
         {stats.map((s) => (
           <Card key={s.label} className="px-3 py-3 text-center">
             <Icon name={s.icon} className={`${s.tone}`} />

@@ -3,6 +3,7 @@ import type {
   CoverageReport,
   DeterministicVerifyResult,
   DocumentExcerpt,
+  DocumentSearchHit,
   EventLogEntry,
   FetchedDocument,
   Mark,
@@ -67,6 +68,25 @@ const api = {
   listDocuments: (projectId: string): Promise<Array<Omit<FetchedDocument, 'text'>>> => ipcRenderer.invoke('documents:list', projectId),
   getExcerpt: (documentId: string, start: number, end: number, context?: number): Promise<DocumentExcerpt | null> =>
     ipcRenderer.invoke('documents:excerpt', documentId, start, end, context),
+  getDocument: (documentId: string): Promise<FetchedDocument | null> => ipcRenderer.invoke('documents:get', documentId),
+  searchDocuments: (projectId: string, query: string): Promise<DocumentSearchHit[]> =>
+    ipcRenderer.invoke('documents:search', projectId, query),
+  openOriginalDocument: (documentId: string): Promise<boolean> => ipcRenderer.invoke('documents:openOriginal', documentId),
+  uploadCorpus: (
+    projectId: string
+  ): Promise<{
+    filenames: string[]
+    documents: Array<{ document_id: string; filename: string; char_len: number; url: string }>
+    errors: Array<{ filename: string; message: string }>
+  }> => ipcRenderer.invoke('corpus:upload', projectId),
+  importCorpus: (
+    projectId: string,
+    filePaths: string[]
+  ): Promise<{
+    filenames: string[]
+    documents: Array<{ document_id: string; filename: string; char_len: number; url: string }>
+    errors: Array<{ filename: string; message: string }>
+  }> => ipcRenderer.invoke('corpus:import', projectId, filePaths),
 
   addReportVersion: (
     projectId: string,

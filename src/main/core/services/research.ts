@@ -19,8 +19,11 @@ import type {
   ResearchRound,
   RoundResult,
   SearchLogEntry,
+  SearchNextAction,
+  SearchReflection,
   Source,
   SubQuestion,
+  DocumentSearchHit,
 } from '../../../shared/types'
 
 /**
@@ -193,6 +196,168 @@ export function requireAdoptedBrief(repo: Repo, projectId: string): void {
   }
 }
 
+/**
+ * Netz- oder Register-Ausfall zählt nicht als Suchwelle: die nächste Suche darf
+ * sofort wiederholt werden. 0 Treffer dagegen schon — das ist eine Lage.
+ */
+export function isFailedSearchAttempt(entry: SearchLogEntry): boolean {
+  return entry.results_found == null && (entry.note ?? '').includes('FEHLGESCHLAGEN')
+}
+
+export function listPendingDiscoverySearches(repo: Repo, projectId: string): SearchLogEntry[] {
+  return repo.listUnreflectedSearches(projectId).filter((entry) => !isFailedSearchAttempt(entry))
+}
+
+const REFLECT_HINT =
+  'Rufe reflect_search auf: covered (welche Facetten/Teilfragen die Treffer bedienen), ' +
+  'underrepresented (was gegenüber Brief/Ziel fehlt — keine Stückzahl), ' +
+  'next_action search|read|enough. Bei search die next_query selbst formulieren. ' +
+  'get_coverage_gaps ist nur eine Zählung, kein Auftrag zu suchen.'
+
+export function requireSearchReflection(repo: Repo, projectId: string): void {
+  const pending = listPendingDiscoverySearches(repo, projectId)
+  if (pending.length === 0) return
+  const queries = [...new Set(pending.map((p) => p.query))]
+  const shown = queries[0] ?? ''
+  const extra = queries.length > 1 ? ' u. a.' : ''
+  throw new ServiceError(
+    'search_reflection_required',
+    `Nach der Suche „${shown}“${extra} steht noch keine Lage. Die nächste Suche läuft erst nach reflect_search.`,
+    REFLECT_HINT
+  )
+}
+
+export function evaluateSearchGate(
+  repo: Repo,
+  explicitProjectId?: string | null
+): {
+  allowed: boolean
+  project_id: string | null
+  pending_queries: string[]
+  code?: string
+  error?: string
+  next_action?: string
+} {
+  let projectId: string
+  try {
+    projectId = resolveIngestProjectId(repo, explicitProjectId)
+  } catch {
+    return { allowed: true, project_id: null, pending_queries: [] }
+  }
+  const pending = listPendingDiscoverySearches(repo, projectId)
+  if (pending.length === 0) return { allowed: true, project_id: projectId, pending_queries: [] }
+  const queries = [...new Set(pending.map((p) => p.query))]
+  const shown = queries[0] ?? ''
+  const extra = queries.length > 1 ? ' u. a.' : ''
+  return {
+    allowed: false,
+    project_id: projectId,
+    pending_queries: queries,
+    code: 'search_reflection_required',
+    error: `Nach der Suche „${shown}“${extra} steht noch keine Lage. Die nächste Suche läuft erst nach reflect_search.`,
+    next_action: REFLECT_HINT,
+  }
+}
+
+export const reflectSearchSchema = z.object({
+  project_id: z.string().min(1),
+  covered: z
+    .string()
+    .min(20)
+    .describe('Welche Facetten oder Teilfragen die letzte Suche bedient — am Brief/Ziel, nicht an der Trefferzahl'),
+  underrepresented: z
+    .string()
+    .min(20)
+    .describe('Was gegenüber Brief/Ziel unterrepräsentiert ist — keine Stückzahl wie „noch 2 Quellen“'),
+  next_action: z.enum(['search', 'read', 'enough']),
+  next_query: z.string().min(3).optional(),
+  reason: z.string().min(20).describe('Warum dieser nächste Schritt — bei enough: warum diese Facette reicht'),
+  sub_question_id: z.string().min(1).optional(),
+})
+
+export function reflectSearch(
+  repo: Repo,
+  rawInput: unknown,
+  actor: string
+): {
+  reflection: SearchReflection
+  attached_search_ids: string[]
+  hint: string
+} {
+  const input = parseOrThrow(reflectSearchSchema, rawInput, 'reflection_invalid')
+  assertProject(repo, input.project_id)
+
+  const unreflected = repo.listUnreflectedSearches(input.project_id)
+  if (unreflected.length === 0) {
+    throw new ServiceError(
+      'nothing_to_reflect',
+      'Es gibt keine unbewertete Suche. Die letzte Lage gilt noch, oder es wurde noch nicht gesucht.',
+      'Suche zuerst mit search_literature, search_documents oder WebSearch. Die nächste Lage kommt nach der nächsten Suchwelle.'
+    )
+  }
+
+  const action: SearchNextAction = input.next_action
+  switch (action) {
+    case 'search':
+      if (!input.next_query?.trim()) {
+        throw new ServiceError(
+          'next_query_required',
+          'next_action=search braucht eine next_query — die nächste Suche kommt aus dieser Lage, nicht aus einem Algorithmus.',
+          'Formuliere next_query selbst (neue Facette, anderer Register-Schnitt, andere Sprache). Dann erst suchen.'
+        )
+      }
+      break
+    case 'read':
+    case 'enough':
+      if (input.next_query?.trim()) {
+        throw new ServiceError(
+          'next_query_forbidden',
+          `next_action=${action} darf keine next_query tragen.`,
+          action === 'read'
+            ? 'Lass next_query weg und lies zuerst mit fetch_source oder read_document. Eine neue Suche braucht eine neue Lage mit next_action=search.'
+            : 'Lass next_query weg. Wenn doch weitergesucht werden soll: next_action=search und die Query selbst schreiben.'
+        )
+      }
+      break
+    default: {
+      const _never: never = action
+      throw new ServiceError('reflection_invalid', `Unbekannte next_action: ${_never}`, 'Nutze search, read oder enough.')
+    }
+  }
+
+  if (input.sub_question_id) {
+    const sq = repo.getSubQuestion(input.sub_question_id)
+    if (!sq || sq.project_id !== input.project_id) {
+      throw new ServiceError(
+        'sub_question_not_found',
+        `Teilfrage ${input.sub_question_id} existiert in diesem Projekt nicht.`,
+        'Lass sub_question_id weg oder nimm eine ID aus get_project_state / plan_research.'
+      )
+    }
+  }
+
+  const attached_search_ids = unreflected.map((s) => s.id)
+  const reflection = repo.addSearchReflection({
+    project_id: input.project_id,
+    covered: input.covered.trim(),
+    underrepresented: input.underrepresented.trim(),
+    next_action: action,
+    next_query: action === 'search' ? input.next_query!.trim() : null,
+    reason: input.reason.trim(),
+    sub_question_id: input.sub_question_id ?? null,
+    actor,
+  })
+
+  const hint =
+    action === 'search'
+      ? `Lage gespeichert. Nächste Suche mit der Query aus next_query: „${reflection.next_query}“. Nicht vom Algorithmus nachziehen — du suchst selbst.`
+      : action === 'read'
+        ? 'Lage gespeichert. Als Nächstes fetch_source oder read_document, dann add_source. Die nächste Suche braucht danach eine neue Lage.'
+        : 'Lage gespeichert: diese Facette reicht. get_coverage_gaps bleibt die Zählung; next_round entscheidet über Sättigung. Eine neue Suche braucht eine neue Lage.'
+
+  return { reflection, attached_search_ids, hint }
+}
+
 // ---------------------------------------------------------------- Dokumente
 
 /** Wie viele abgerufene, aber undokumentierte Dokumente gleichzeitig offen sein dürfen. */
@@ -273,6 +438,8 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
     content_hash: fetched.snapshotHash ?? '',
     purpose: input.purpose,
     actor,
+    origin: 'fetched',
+    page_starts: fetched.pageStarts ?? null,
   })
 
   return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
@@ -425,16 +592,8 @@ export async function ingestLocalFile(repo: Repo, rawInput: unknown, actor: stri
     )
   }
 
-  let text = ''
-  if (isPdfMagic(bytes) || ext === '.pdf') {
-    const extracted = await extractPdfText(new Uint8Array(bytes))
-    text = extracted.text
-  } else if (ext === '.html' || ext === '.htm') {
-    text = htmlToText(bytes.toString('utf-8'))
-  } else {
-    text = bytes.toString('utf-8')
-  }
-  if (!text.trim()) {
+  const extracted = await extractInboxBytes(bytes, ext)
+  if (!extracted.text.trim()) {
     throw new ServiceError(
       'ingest_empty',
       `Aus "${input.filename}" konnte kein Text gelesen werden (leere Datei oder PDF ohne Textschicht).`,
@@ -446,12 +605,183 @@ export async function ingestLocalFile(repo: Repo, rawInput: unknown, actor: stri
     project_id: input.project_id,
     url,
     title: input.filename,
-    text,
+    text: extracted.text,
     content_hash: createHash('sha256').update(bytes).digest('hex'),
     purpose: input.purpose,
     actor,
+    origin: 'upload',
+    filename: input.filename,
+    page_starts: extracted.pageStarts,
   })
   return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
+}
+
+async function extractInboxBytes(bytes: Buffer, ext: string): Promise<{ text: string; pageStarts: number[] | null }> {
+  if (isPdfMagic(bytes) || ext === '.pdf') {
+    const extracted = await extractPdfText(new Uint8Array(bytes))
+    return { text: extracted.text, pageStarts: extracted.pageStarts }
+  }
+  if (ext === '.html' || ext === '.htm') {
+    return { text: htmlToText(bytes.toString('utf-8')), pageStarts: null }
+  }
+  return { text: bytes.toString('utf-8'), pageStarts: null }
+}
+
+export interface CorpusIngestResult {
+  documents: Array<{ document_id: string; filename: string; char_len: number; url: string }>
+  errors: Array<{ filename: string; message: string }>
+}
+
+/**
+ * Mensch legt Dateien in den Projekt-Korpus. Kein Brief-Gate, kein Pending-Gate:
+ * der Upload IST die Entscheidung, die Datei dazuzunehmen. Zitieren bleibt add_source.
+ */
+export async function ingestUploadedFiles(
+  repo: Repo,
+  projectId: string,
+  filenames: string[],
+  actor: string
+): Promise<CorpusIngestResult> {
+  assertProject(repo, projectId)
+  const ws = workspaceFor(projectId)
+  const documents: CorpusIngestResult['documents'] = []
+  const errors: CorpusIngestResult['errors'] = []
+
+  for (const filename of filenames) {
+    const ext = extname(filename).toLowerCase()
+    if (!ALLOWED_INBOX_EXT.has(ext)) {
+      errors.push({ filename, message: `Dateityp "${ext || '(ohne Endung)'}" ist nicht erlaubt.` })
+      continue
+    }
+    let absPath: string
+    try {
+      absPath = resolveInboxFile(ws, filename)
+    } catch {
+      errors.push({ filename, message: 'Datei liegt nicht in der Inbox.' })
+      continue
+    }
+    if (!existsSync(absPath)) {
+      errors.push({ filename, message: 'Datei wurde in der Inbox nicht gefunden.' })
+      continue
+    }
+    const url = localInboxUrl(filename)
+    const existing = repo.listDocuments(projectId).find((d) => d.url === url && d.status !== 'excluded')
+    if (existing) {
+      documents.push({ document_id: existing.id, filename, char_len: existing.char_len, url })
+      continue
+    }
+    const bytes = readFileSync(absPath)
+    if (bytes.length > MAX_PDF_BYTES) {
+      errors.push({ filename, message: `Datei ist größer als ${MAX_PDF_BYTES} Bytes.` })
+      continue
+    }
+    try {
+      const extracted = await extractInboxBytes(bytes, ext)
+      if (!extracted.text.trim()) {
+        errors.push({ filename, message: 'Kein Text lesbar (leere Datei oder Scan-PDF ohne Textschicht).' })
+        continue
+      }
+      const doc = repo.addDocument({
+        project_id: projectId,
+        url,
+        title: filename,
+        text: extracted.text,
+        content_hash: createHash('sha256').update(bytes).digest('hex'),
+        purpose: 'Vom Menschen in den Projekt-Korpus gelegt',
+        actor,
+        origin: 'upload',
+        filename,
+        page_starts: extracted.pageStarts,
+        status: 'used',
+      })
+      documents.push({ document_id: doc.id, filename, char_len: doc.char_len, url })
+    } catch (err) {
+      errors.push({ filename, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  return { documents, errors }
+}
+
+export const readDocumentSchema = z.object({
+  project_id: z.string().min(1),
+  document_id: z.string().min(1),
+  offset: z.number().int().min(0).optional(),
+  limit: z.number().int().min(500).max(WINDOW_MAX).optional(),
+})
+
+/** Liest ein bereits gespeichertes Dokument — kein neuer Abruf, kein Pending-Zähler. */
+export function readDocumentWindow(repo: Repo, rawInput: unknown): FetchDocumentResult {
+  const input = parseOrThrow(readDocumentSchema, rawInput, 'read_invalid')
+  assertProject(repo, input.project_id)
+  requireAdoptedBrief(repo, input.project_id)
+  const doc = repo.getDocument(input.document_id)
+  if (!doc || doc.project_id !== input.project_id) {
+    throw new ServiceError(
+      'document_missing',
+      'Dokument nicht gefunden.',
+      'Rufe list_corpus oder search_documents auf und verwende eine document_id aus diesem Projekt.'
+    )
+  }
+  if (doc.status === 'excluded') {
+    throw new ServiceError(
+      'document_excluded',
+      'Dieses Dokument wurde ausgeschlossen.',
+      'Wähle ein anderes Dokument aus list_corpus.'
+    )
+  }
+  return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true)
+}
+
+export const searchDocumentsSchema = z.object({
+  project_id: z.string().min(1),
+  query: z.string().min(2),
+})
+
+export function searchProjectDocuments(
+  repo: Repo,
+  rawInput: unknown,
+  actor: string
+): { query: string; hits: DocumentSearchHit[]; next_action: string } {
+  const input = parseOrThrow(searchDocumentsSchema, rawInput, 'search_invalid')
+  assertProject(repo, input.project_id)
+  requireAdoptedBrief(repo, input.project_id)
+  requireSearchReflection(repo, input.project_id)
+  const hits = repo.searchDocuments(input.project_id, input.query)
+  repo.addSearchLog({
+    project_id: input.project_id,
+    query: input.query,
+    engine: 'corpus',
+    results_found: hits.length,
+    note: null,
+    actor,
+  })
+  return {
+    query: input.query,
+    hits,
+    next_action:
+      (hits.length === 0
+        ? 'Keine Treffer im Korpus. '
+        : 'Lies die Stelle mit read_document (document_id + offset nahe am Treffer), dann SOFORT add_source mit Offsets. ') +
+      'Lesen ist jetzt erlaubt. Bevor du erneut suchst: reflect_search (covered / underrepresented / next_action).',
+  }
+}
+
+export function listProjectCorpus(
+  repo: Repo,
+  rawInput: unknown
+): { documents: Array<Omit<FetchedDocument, 'text'>>; next_action: string } {
+  const input = parseOrThrow(inboxListSchema, rawInput, 'corpus_invalid')
+  assertProject(repo, input.project_id)
+  const documents = repo.listDocuments(input.project_id).filter((d) => d.status !== 'excluded')
+  const uploads = documents.filter((d) => d.origin === 'upload').length
+  return {
+    documents,
+    next_action:
+      documents.length === 0
+        ? 'Der Korpus ist leer. Der Mensch lädt PDFs im Tab „Korpus“ hoch oder hängt sie im Chat an.'
+        : `${documents.length} Dokument(e), davon ${uploads} Upload(s). Suche mit search_documents, lies mit read_document, belege mit add_source.`,
+  }
 }
 
 // ---------------------------------------------------------------- Quellen

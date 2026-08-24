@@ -96,6 +96,8 @@ export interface ResearchBrief {
 }
 
 export type DocumentStatus = 'open' | 'used' | 'excluded'
+/** fetched = Netz/OA; upload = vom Menschen in den Projekt-Korpus gelegt. */
+export type DocumentOrigin = 'fetched' | 'upload'
 
 /** Belegstelle im Originaltext mit Kontext — für den menschlichen Sign-off. */
 export interface DocumentExcerpt {
@@ -111,7 +113,17 @@ export interface DocumentExcerpt {
   truncated_end: boolean
 }
 
-/** Von der App selbst abgerufener Quelltext — Grundlage für Offset-Zitate. */
+/** Treffer einer Volltextsuche über gespeicherte Dokumente (PDF/HTML). */
+export interface DocumentSearchHit {
+  document_id: string
+  title: string | null
+  url: string
+  origin: DocumentOrigin
+  char_len: number
+  matches: Array<{ start: number; end: number; snippet: string }>
+}
+
+/** Von der App selbst abgerufener oder hochgeladener Quelltext — Grundlage für Offset-Zitate. */
 export interface FetchedDocument {
   id: string
   project_id: string
@@ -124,6 +136,10 @@ export interface FetchedDocument {
   fetched_by: string
   purpose: string | null
   status: DocumentStatus
+  origin: DocumentOrigin
+  filename: string | null
+  /** Zeichenoffset des ersten Zeichens je PDF-Seite (0-basiert). null = kein Seitenumbruch bekannt. */
+  page_starts: number[] | null
 }
 
 export interface Extraction {
@@ -214,6 +230,28 @@ export interface SearchLogEntry {
   engine: string | null
   results_found: number | null
   note: string | null
+  /** Gesetzt, sobald reflect_search diese Suche einer Lage zugeordnet hat. */
+  reflection_id: string | null
+  created_at: string
+  created_by: string
+}
+
+export type SearchNextAction = 'search' | 'read' | 'enough'
+
+/**
+ * Lage nach einer Suchwelle: was getroffen ist, was gegenüber dem Ziel fehlt,
+ * und was als Nächstes passiert. Die nächste Query kommt aus diesem Eintrag,
+ * nicht aus einem Algorithmus.
+ */
+export interface SearchReflection {
+  id: string
+  project_id: string
+  covered: string
+  underrepresented: string
+  next_action: SearchNextAction
+  next_query: string | null
+  reason: string
+  sub_question_id: string | null
   created_at: string
   created_by: string
 }
@@ -466,12 +504,15 @@ export interface ProjectState {
   reviews: Review[]
   uncertaintyFlags: UncertaintyFlag[]
   searchLog: SearchLogEntry[]
+  searchReflections: SearchReflection[]
   excludedSources: ExcludedSource[]
   subQuestions: SubQuestion[]
   rounds: ResearchRound[]
   marks: Mark[]
   visualVersions: VisualVersion[]
   researchBrief: ResearchBrief | null
+  /** Korpus ohne Volltext — der Text kommt über documents:text / search_documents. */
+  documents: Array<Omit<FetchedDocument, 'text'>>
 }
 
 export interface ProjectSummary extends Project {

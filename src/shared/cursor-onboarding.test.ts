@@ -22,6 +22,7 @@ describe('cursorMcpJson', () => {
     expect(CURSOR_RULE_MDC).toContain('Agent-Modus')
     expect(CURSOR_RULE_MDC).toContain('start_transparent_research')
     expect(CURSOR_RULE_MDC).toContain('WebSearch')
+    expect(CURSOR_RULE_MDC).toContain('reflect_search')
     expect(CURSOR_RULE_MDC).toContain('benannten Modell')
     expect(CURSOR_RULE_MDC).toMatch(/Snippets sind keine Quelle/)
   })

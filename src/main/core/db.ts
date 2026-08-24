@@ -11,7 +11,7 @@ import { dirname } from 'path'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 10 // v7 briefs · v8 biblio · v9 report-scope · v10 source_kind / brief-coverage
+export const SCHEMA_VERSION = 12 // v12 Such-Lage: search_reflections + search_log.reflection_id
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS search_log (
   engine       TEXT,
   results_found INTEGER,
   note         TEXT,
+  reflection_id TEXT,
   created_at   TEXT NOT NULL,
   created_by   TEXT NOT NULL DEFAULT 'unknown'
 );
@@ -211,7 +212,11 @@ CREATE TABLE IF NOT EXISTS documents (
   fetched_by   TEXT NOT NULL DEFAULT 'unknown',
   purpose      TEXT,
   -- 'open' = abgerufen, aber noch nicht dokumentiert (blockiert weitere Abrufe)
-  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','used','excluded'))
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','used','excluded')),
+  -- v11: Seed-Korpus (Upload) vs. Discovery (Netz). Uploads starten als 'used' und zählen nicht ins Pending-Gate.
+  origin       TEXT NOT NULL DEFAULT 'fetched' CHECK (origin IN ('fetched','upload')),
+  filename     TEXT,
+  page_starts_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(project_id, status);
@@ -326,6 +331,22 @@ CREATE TABLE IF NOT EXISTS research_briefs (
 );
 CREATE INDEX IF NOT EXISTS idx_briefs_project ON research_briefs(project_id, created_at);
 
+-- v12: Lage nach einer Suchwelle — nächste Suche erst nach diesem Eintrag.
+-- Das Modell schreibt covered/underrepresented/next_step; der Code erzwingt nur, dass es passiert.
+CREATE TABLE IF NOT EXISTS search_reflections (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  covered TEXT NOT NULL,
+  underrepresented TEXT NOT NULL,
+  next_action TEXT NOT NULL CHECK (next_action IN ('search','read','enough')),
+  next_query TEXT,
+  reason TEXT NOT NULL,
+  sub_question_id TEXT REFERENCES sub_questions(id),
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_search_reflections_project ON search_reflections(project_id, created_at);
+
 -- Append-only Audit-Trail (Event Sourcing light): nichts wird gelöscht,
 -- Korrekturen sind neue Events.
 CREATE TABLE IF NOT EXISTS event_log (
@@ -356,6 +377,26 @@ CREATE TRIGGER IF NOT EXISTS sources_au AFTER UPDATE ON sources BEGIN
   VALUES ('delete', old.rowid, old.title, old.reason, old.extraction, old.contribution, old.verbatim_quote);
   INSERT INTO sources_fts(rowid, title, reason, extraction, contribution, verbatim_quote)
   VALUES (new.rowid, new.title, new.reason, new.extraction, new.contribution, new.verbatim_quote);
+END;
+
+-- v11: Volltext über den Korpus (hochgeladene PDFs und gefetchte Seiten), nicht nur über Zitate.
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+  title, text,
+  content='documents', content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+  INSERT INTO documents_fts(rowid, title, text)
+  VALUES (new.rowid, new.title, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+  INSERT INTO documents_fts(documents_fts, rowid, title, text)
+  VALUES ('delete', old.rowid, old.title, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+  INSERT INTO documents_fts(documents_fts, rowid, title, text)
+  VALUES ('delete', old.rowid, old.title, old.text);
+  INSERT INTO documents_fts(rowid, title, text)
+  VALUES (new.rowid, new.title, new.text);
 END;
 `
 
@@ -414,11 +455,18 @@ function migrate(db: DB): void {
       addColumnIfMissing(db, 'report_versions', 'mark_scope', 'INTEGER NOT NULL DEFAULT 0 CHECK (mark_scope IN (0,1))')
       // v10: Quellentyp für Coverage-Regeln des Briefs.
       addColumnIfMissing(db, 'sources', 'source_kind', "TEXT CHECK (source_kind IS NULL OR source_kind IN ('empirical','review','textbook','grey','web'))")
+      // v11: Korpus-Metadaten auf bestehenden documents-Tabellen.
+      addColumnIfMissing(db, 'documents', 'origin', "TEXT NOT NULL DEFAULT 'fetched'")
+      addColumnIfMissing(db, 'documents', 'filename', 'TEXT')
+      addColumnIfMissing(db, 'documents', 'page_starts_json', 'TEXT')
+      // v12: Such-Lage an das Protokoll hängen (bestehende search_log-Zeilen ohne Lage).
+      addColumnIfMissing(db, 'search_log', 'reflection_id', 'TEXT')
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach
       // jeder Migration ist billig und schließt das aus.
       db.exec(`INSERT INTO sources_fts(sources_fts) VALUES('rebuild')`)
+      db.exec(`INSERT INTO documents_fts(documents_fts) VALUES('rebuild')`)
       db.pragma(`user_version = ${SCHEMA_VERSION}`)
       db.exec('COMMIT')
       return true
