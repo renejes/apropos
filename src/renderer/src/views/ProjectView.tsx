@@ -10,7 +10,7 @@ import MapTab from './tabs/MapTab'
 import ReportsTab from './tabs/ReportsTab'
 import ChatTab from './tabs/ChatTab'
 import AuditTab from './tabs/AuditTab'
-import EasyWritingExportButton from './EasyWritingExport'
+import ExportDialog from './ExportDialog'
 
 const TABS = [
   { id: 'overview', label: 'Übersicht' },
@@ -29,6 +29,7 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
   const [state, setState] = useState<ProjectState | null>(null)
   const [tab, setTab] = useState<TabId>('overview')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
   const [coverageKey, setCoverageKey] = useState(0)
   const [focusSourceId, setFocusSourceId] = useState<string | null>(null)
   const [focusDoc, setFocusDoc] = useState<{ documentId: string; start?: number; end?: number } | null>(null)
@@ -83,30 +84,25 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
             >
               Kopieren
             </Button>
-            <Button
-              variant="primary"
-              onClick={async () => {
-                const res = await window.api.exportMarkdown(projectId, null)
-                if (res.saved) {
-                  setExportMsg(`Gespeichert: ${res.filePath}`)
-                  setTimeout(() => setExportMsg(null), 4000)
-                }
-              }}
-            >
+            <Button variant="primary" onClick={() => setExportOpen(true)} title="Provenienz oder Easy Writing">
               Export
             </Button>
-            <EasyWritingExportButton
-              state={state}
-              onDone={(msg) => {
-                setExportMsg(msg)
-                setTimeout(() => setExportMsg(null), 4000)
-                void reload()
-              }}
-            />
           </div>
         </div>
         {exportMsg && <div className="mt-2 text-xs text-ok">{exportMsg}</div>}
       </header>
+
+      {exportOpen && (
+        <ExportDialog
+          state={state}
+          onClose={() => setExportOpen(false)}
+          onDone={(msg) => {
+            setExportMsg(msg)
+            setTimeout(() => setExportMsg(null), 4000)
+            void reload()
+          }}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-[42%] min-w-[300px] max-w-[560px] shrink-0 flex-col border-r border-line">

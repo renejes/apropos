@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ProjectState, VisualGraph, VisualLayoutKind, VisualVersion } from '../../../../shared/types'
 import { Badge, Button, Card, EmptyState, Icon } from '../../components/ui'
-import EasyWritingExportButton from '../EasyWritingExport'
 import MapCanvas, { type NodeDiff } from './MapCanvas'
 
 type ViewMode = 'live' | 'version' | 'compare'
@@ -214,14 +213,6 @@ export default function MapTab({
           >
             Schreibpaket
           </Button>
-          <EasyWritingExportButton
-            state={state}
-            visualVersionId={mode === 'version' && versionId ? versionId : undefined}
-            onDone={(msg) => {
-              setMsg(msg)
-              onReload()
-            }}
-          />
         </div>
       </div>
 

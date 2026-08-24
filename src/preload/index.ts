@@ -36,6 +36,7 @@ const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
   createProject: (input: { title: string; research_question: string; mode: 'academic' | 'business' }): Promise<Project> =>
     ipcRenderer.invoke('projects:create', input),
+  deleteProject: (projectId: string): Promise<{ deleted: boolean }> => ipcRenderer.invoke('projects:delete', projectId),
   getProjectState: (projectId: string): Promise<ProjectState> => ipcRenderer.invoke('projects:state', projectId),
   listEvents: (projectId: string): Promise<EventLogEntry[]> => ipcRenderer.invoke('projects:events', projectId),
   searchSources: (projectId: string, query: string): Promise<Source[]> => ipcRenderer.invoke('projects:search', projectId, query),

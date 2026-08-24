@@ -28,7 +28,7 @@ Zwei Lieferformen, ein Korpus: Blogs (Frame) und wissenschaftliche Arbeiten (Zit
 | | |
 |---|---|
 | Schema | **v13** (`easy_writing_dir`, Korpus-`origin`, `search_reflections`) |
-| Tests | **258** (Vitest) |
+| Tests | **260** (Vitest) |
 | MCP-SDK | `@modelcontextprotocol/sdk` **1.30** |
 | Agent | `@cursor/sdk` **1.0.28**, Runtime `local` |
 | Lizenz | MIT |
@@ -44,7 +44,7 @@ Typecheck und Unit-Tests sind grün. Smoke (`npm run smoke`) prüft den MCP-HTTP
 3. Erst danach Suche: zuerst `list_corpus` / `search_documents` für Uploads, dann `search_literature` und Cursor-WebSearch gegen den Plan. Nach jeder Suchwelle `reflect_search` (Getroffen / Unterrepräsentiert / nächster Schritt), **bevor** erneut gesucht wird. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. Lesen (`fetch_source`, `read_document`) bleibt dazwischen erlaubt.
 4. Was in den Bericht soll, geht über `fetch_source` oder `read_document` in die DB, dann `add_source` mit Offsets.
 5. Rechts prüfst du: Übersicht (Lücken, „Was darfst du sagen“, Such-Lagen), Korpus (PDF-Leser mit Offset-Sprung), Quellen (Excerpt + Sign-off), Aussagen, Karte, Berichte.
-6. Karte aufbereiten (`prepare_view`, Marks). Easy-Writing-Ordner exportieren (`research.mdx` + `.bib`) → in Easy Writing öffnen. Beim Artikel-Export dort das Dossier abwählen.
+6. Karte aufbereiten (`prepare_view`, Marks). Über **Export** Provenienz-Markdown oder Easy Writing wählen (`research.mdx` + `.bib`) → in Easy Writing öffnen. Beim Artikel-Export dort das Dossier abwählen. Projekte löschst du in der Liste (Bestätigung); der Easy-Writing-Ordner auf der Platte bleibt.
 
 Fremdclients (Cursor-IDE, Goose, Claude Code) docken weiter per **MCP-HTTP** `127.0.0.1:8790/mcp` an dieselbe SQLite und dasselbe Enforcement an. Die IDE ist optional. Der WebSearch-Hook fragt `GET /ingest/search-gate`; ist die App tot, darf die Suche durch (Fail-open) — sonst wäre ohne laufende App jede WebSearch tot.
 
@@ -128,12 +128,14 @@ Chrome wie Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl, ke
 
 | Ort | Funktion |
 |---|---|
+| Projekte | Anlegen; Löschen mit Bestätigung (DB + Agent-Workspace; Easy-Writing-Ordner bleibt) |
 | Agent-Chat | Research-Lauf: Stream, Denken, Tool-Chips, Stopp; mehrere Sessions (Verlauf, Tabs); Composer mit Agent/Plan und Modell; `@`-Mentions und Datei-Chips; PDF-Anhang landet im Korpus; Token-Usage |
 | Übersicht | Abdeckung, Lücken, Verifikation, **Was darfst du sagen** (grün/gelb/rot), **Suchdokumentation** (Wellen, Lage, ausstehende Sperre) |
 | Korpus | Seed-PDFs und abgerufene Texte, Volltextsuche, Leser mit Offset-Sprung |
 | Quellen | Excerpt im Original, Sign-off / Ablehnen |
 | Aussagen | Claims und Belegkanten |
-| Karte | Live-Graph, gespeicherte Views, Splitscreen, Marks; Kantenfarbe = Relation; Easy-Writing-Export aus der Sicht |
+| Karte | Live-Graph, gespeicherte Views, Splitscreen, Marks; Kantenfarbe = Relation; Schreibpaket aus der Sicht |
+| Export | Dialog: Provenienz-Markdown oder Easy Writing (neuer Ordner, bestehend, zuletzt gemerkt) |
 | Berichte | Unveränderliche Versionen |
 | Einstellungen | Cursor-Login, Modell, MCP-URL, Demo-Seed |
 
@@ -145,7 +147,7 @@ Chrome wie Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl, ke
 - Bibliografie: DOI, Autoren, Jahr, Venue, Citekey `nachnameJahrKurztitel`. Ohne DOI: `@misc` mit URL, nie ein gefälschtes `@article`.
 - Locator: `S. 12` → `[@citekey, p. 12]`. Keine erfundene Seitenzahl.
 - `source_kind`: empirical / review / textbook / grey / web. Coverage kennt empirische und Zeitraum-Lücken.
-- Easy Writing (`export_easy_writing`) ist der Schreibweg. Immer mit Scope (View oder Marks). Neu: Blog- oder Paper-Ordner mit leerem `index.mdx` bzw. leeren Kapiteln. Bestehend: Schreibkapitel unangetastet, `research.mdx` überschrieben, `.bib` gemergt (gleiche DOI/URL behält den Key; Kollision vergibt einen neuen nur im Dossier). `research.mdx` ist das Dossier, kein Artikel — beim Export in Easy Writing abwählen. Der Ordner liegt in `easy_writing_dir`; der nächste Klick schreibt dorthin.
+- Easy Writing (`export_easy_writing`) ist der Schreibweg, als Option im Export-Dialog. Immer mit Scope (View oder Marks). Neu: Blog- oder Paper-Ordner mit leerem `index.mdx` bzw. leeren Kapiteln. Bestehend: Schreibkapitel unangetastet, `research.mdx` überschrieben, `.bib` gemergt (gleiche DOI/URL behält den Key; Kollision vergibt einen neuen nur im Dossier). `research.mdx` ist das Dossier, kein Artikel — beim Export in Easy Writing abwählen. Der Ordner liegt in `easy_writing_dir`; „Erneut schreiben“ zielt dorthin.
 - Markdown-Schreibpaket (`export_writing_pack`) bleibt daneben: Plan, `.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte.
 - Provenienz-Markdown enthält die Such-Lagen (Getroffen / Unterrepräsentiert / nächster Schritt), nicht nur die Query-Liste.
 
@@ -155,7 +157,7 @@ Schreibweg: Ordner in [Easy Writing](https://github.com/renejes/easy-writing) ö
 
 ## Was belegt ist — und was nicht
 
-**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus (Uploads ohne Brief, nicht Pending), Such-Lage (`reflect_search`, Gate, keine erfundene Query), Lage in Übersicht und Markdown-Export, Easy-Writing-Ordner (`research.mdx`, Bib-Merge, gemerkter Pfad), Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart, Chat-Session-Index und Stream-Merge. 258 Tests.
+**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate, Coverage-Gate, Pending-Gate, Sign-off nur in der UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus (Uploads ohne Brief, nicht Pending), Such-Lage (`reflect_search`, Gate, keine erfundene Query), Lage in Übersicht und Markdown-Export, Easy-Writing-Ordner (`research.mdx`, Bib-Merge, gemerkter Pfad), Schreibpaket mit JPEG, Biblio/Citekey, Locator, Sayable-Lesart, Chat-Session-Index und Stream-Merge, Projekt-Löschen. 260 Tests.
 
 **Nicht belegt:** Ob ein echtes Cursor-Modell den Arbeitsvertrag hält — Brief zuerst, Korpus vor Netz, Lage vor der nächsten Suche, Offsets auf die richtige Stelle, Extraktion trägt die Aussage. Die Maschine ist gegen Fixtures und ein Fake-Modell verifiziert, nie gegen eine echte Recherche.
 

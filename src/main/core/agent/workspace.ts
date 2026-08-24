@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'path'
 import { defaultAgentRoot } from '../paths'
 import { FOCUSED_RESEARCH_SKILL } from './focused-research-skill'
@@ -59,6 +59,14 @@ export function resolveInboxFile(workspace: string, filename: string): string {
 
 export function inboxDisplayName(absPath: string): string {
   return basename(absPath)
+}
+
+/** Entfernt den Agent-Workspace. Der Easy-Writing-Ordner auf der Platte bleibt. */
+export function removeProjectWorkspace(projectId: string, root = defaultAgentRoot()): void {
+  workspaces.delete(projectId)
+  const dir = join(root, projectId)
+  if (!existsSync(dir)) return
+  rmSync(dir, { recursive: true, force: true })
 }
 
 /** Speicherschlüssel für add_source — muss z.string().url() erfüllen. */

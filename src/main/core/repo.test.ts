@@ -46,6 +46,73 @@ describe('Repo (in-memory SQLite)', () => {
     expect(repo.getProject(p.id)?.easy_writing_dir).toBe('/tmp/ew-projekt')
   })
 
+  it('löscht ein Projekt samt Quellen und Karten-Versionen', () => {
+    const p = makeProject()
+    const doc = repo.addDocument({
+      project_id: p.id,
+      url: 'https://example.org/page',
+      title: 'Beispielquelle',
+      text: 'Example Domain. This domain is for use in illustrative examples.',
+      content_hash: 'hash-doc',
+      actor: 'test',
+      status: 'used',
+    })
+    const s = repo.addSource({
+      project_id: p.id,
+      url: 'https://example.org/page',
+      title: 'Beispielquelle',
+      retrieval_method: 'test',
+      accessed_at: new Date().toISOString(),
+      reason: 'Weil sie das Kernargument der Studie dokumentiert.',
+      extraction: 'Die Studie zeigt X unter Bedingung Y mit Effektstärke Z.',
+      contribution: 'Stützt These 2 des Berichts.',
+      verbatim_quote: 'Example Domain. This domain is for use in illustrative examples.',
+      quote_locator: null,
+      confidence: 'medium',
+      document_id: doc.id,
+      actor: 'mcp:test@1.0',
+    })
+    repo.signSourceHuman(s.id, 'human_signed', null, 'human:test')
+    const first = repo.insertVisualVersion({
+      project_id: p.id,
+      parent_version_id: null,
+      prompt: 'Erste Sicht',
+      layout_kind: 'argument_map',
+      scope: 'all',
+      interpretative: false,
+      snapshot_hash: 'hash-a',
+      nodes: [{ kind: 'source', entity_id: s.id, label: s.title, cluster_key: null, pos_x: 0, pos_y: 0 }],
+      edges: [],
+      actor: 'test',
+    })
+    repo.insertVisualVersion({
+      project_id: p.id,
+      parent_version_id: first.version.id,
+      prompt: 'Kind-Sicht',
+      layout_kind: 'argument_map',
+      scope: 'all',
+      interpretative: false,
+      snapshot_hash: 'hash-b',
+      nodes: [],
+      edges: [],
+      actor: 'test',
+    })
+    repo.addReportVersion({
+      project_id: p.id,
+      content_markdown: '# Bericht'.padEnd(60, '.'),
+      visual_version_id: first.version.id,
+      actor: 'test',
+    })
+    expect(repo.deleteProject(p.id, 'test')).toBe(true)
+    expect(repo.getProject(p.id)).toBeUndefined()
+    expect(repo.listProjects()).toHaveLength(0)
+    expect(repo.listSources(p.id)).toHaveLength(0)
+    expect(repo.listReviews(p.id)).toHaveLength(0)
+    expect(repo.deleteProject(p.id, 'test')).toBe(false)
+    const events = repo.listEvents(p.id)
+    expect(events.map((e) => e.event_type)).toContain('project.deleted')
+  })
+
   it('erzwingt review_status-Übergänge und schreibt Review-Kanten beim Sign-off', () => {
     const p = makeProject()
     const s = makeSource(p.id)

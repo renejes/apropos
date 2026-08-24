@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,7 +11,7 @@ import { describeEvidenceMap } from '../services/visual'
 import { mapSdkMessage } from './events'
 import { sessionPreamble, followUpPrefix, mentionContext } from './instructions'
 import { defaultAgentSettings, loadAgentSettings, normalizeParamValues, saveAgentSettings } from './settings'
-import { localInboxUrl, projectWorkspace, resolveInboxFile } from './workspace'
+import { localInboxUrl, projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './workspace'
 
 describe('Inbox-Pfade', () => {
   let root: string
@@ -34,6 +34,14 @@ describe('Inbox-Pfade', () => {
     const ws = projectWorkspace('proj-b', root)
     expect(() => resolveInboxFile(ws, '..')).toThrow(/Ungültig/)
     expect(() => resolveInboxFile(ws, '.')).toThrow(/Ungültig/)
+  })
+
+  it('entfernt den Workspace beim Projektlöschen', () => {
+    root = mkdtempSync(join(tmpdir(), 'rop-ws-'))
+    const ws = projectWorkspace('proj-del', root)
+    writeFileSync(join(ws, 'inbox', 'note.txt'), 'bye')
+    removeProjectWorkspace('proj-del', root)
+    expect(existsSync(ws)).toBe(false)
   })
 
   it('erzeugt eine URL, die z.string().url() akzeptiert', () => {

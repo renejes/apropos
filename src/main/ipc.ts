@@ -11,7 +11,7 @@ import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage, ingestUploadedFiles } from './core/services/research'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
-import { projectWorkspace, resolveInboxFile } from './core/agent/workspace'
+import { projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './core/agent/workspace'
 import type { ServerInfo } from '../shared/types'
 import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
@@ -35,6 +35,16 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('projects:create', (_e, input: { title: string; research_question: string; mode: 'academic' | 'business' }) =>
     repo.createProject({ ...input, policy_preset: null, actor: HUMAN })
   )
+  ipcMain.handle('projects:delete', async (_e, projectId: string) => {
+    try {
+      await deps.agent.disposeProject(projectId)
+    } catch {
+      /* Session weg, Projekt trotzdem löschen */
+    }
+    const deleted = repo.deleteProject(projectId, HUMAN)
+    if (deleted) removeProjectWorkspace(projectId)
+    return { deleted }
+  })
   ipcMain.handle('projects:state', (_e, projectId: string) => repo.getProjectState(projectId))
   ipcMain.handle('projects:events', (_e, projectId: string) => repo.listEvents(projectId))
   ipcMain.handle('projects:search', (_e, projectId: string, query: string) => repo.searchSources(projectId, query))

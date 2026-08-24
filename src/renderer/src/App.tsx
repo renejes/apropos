@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProjectSummary } from '../../shared/types'
-import { Button } from './components/ui'
+import { Button, Icon } from './components/ui'
 import ProjectView from './views/ProjectView'
 import SettingsView from './views/SettingsView'
 import NewProjectDialog from './views/NewProjectDialog'
@@ -10,6 +10,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'project' | 'settings'>('project')
   const [showNew, setShowNew] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const [mcpRunning, setMcpRunning] = useState<boolean | null>(null)
 
   const refresh = useCallback(async () => {
@@ -30,6 +32,30 @@ export default function App() {
     const t = setInterval(() => void load(), 5000)
     return () => clearInterval(t)
   }, [])
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    const id = deleteTarget.id
+    const fallbackId = projects.find((p) => p.id !== id)?.id ?? null
+    setSelectedId((cur) => (cur === id ? fallbackId : cur))
+    try {
+      const { deleted } = await window.api.deleteProject(id)
+      setDeleteTarget(null)
+      const list = await window.api.listProjects()
+      setProjects(list)
+      setSelectedId((cur) => {
+        if (cur && list.some((p) => p.id === cur)) return cur
+        return list[0]?.id ?? null
+      })
+      if (!deleted) setSelectedId(id)
+    } catch {
+      await refresh()
+      setSelectedId(id)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
 
   return (
     <div className="flex h-full bg-bg text-fg">
@@ -57,24 +83,34 @@ export default function App() {
           {projects.map((p) => {
             const active = selectedId === p.id && view === 'project'
             return (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setSelectedId(p.id)
-                  setView('project')
-                }}
-                className={`w-full px-3 py-2 text-left ${active ? 'bg-fg text-bg' : 'hover:bg-fg hover:text-bg'}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm">{p.title}</span>
-                  {p.pending_count > 0 && (
-                    <span className={`font-mono text-xs ${active ? 'text-bg' : 'text-warn'}`}>{p.pending_count}</span>
-                  )}
-                </div>
-                <div className={`mt-0.5 font-mono text-[11px] ${active ? 'text-bg/70' : 'text-muted'}`}>
-                  {p.source_count} Quellen · {p.signed_count} frei · {p.mode === 'academic' ? 'akademisch' : 'business'}
-                </div>
-              </button>
+              <div key={p.id} className={`group flex items-stretch ${active ? 'bg-fg text-bg' : 'hover:bg-fg hover:text-bg'}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(p.id)
+                    setView('project')
+                  }}
+                  className="min-w-0 flex-1 px-3 py-2 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm">{p.title}</span>
+                    {p.pending_count > 0 && (
+                      <span className={`font-mono text-xs ${active ? 'text-bg' : 'text-warn'}`}>{p.pending_count}</span>
+                    )}
+                  </div>
+                  <div className={`mt-0.5 font-mono text-[11px] ${active ? 'text-bg/70' : 'group-hover:text-bg/70 text-muted'}`}>
+                    {p.source_count} Quellen · {p.signed_count} frei · {p.mode === 'academic' ? 'akademisch' : 'business'}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  title="Projekt löschen"
+                  onClick={() => setDeleteTarget(p)}
+                  className={`shrink-0 px-2 ${active ? 'text-bg/70 hover:text-bg' : 'text-muted opacity-0 group-hover:opacity-100 group-hover:text-bg'}`}
+                >
+                  <Icon name="delete" className="icon-sm" />
+                </button>
+              </div>
             )
           })}
         </nav>
@@ -121,6 +157,42 @@ export default function App() {
             setView('project')
           }}
         />
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 p-4"
+          onClick={() => {
+            if (!deleteBusy) setDeleteTarget(null)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+            className="w-full max-w-md border border-line bg-bg p-6"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && !deleteBusy) setDeleteTarget(null)
+            }}
+          >
+            <h2 id="delete-project-title" className="text-base">
+              Projekt löschen
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              „{deleteTarget.title}“ wird unwiderruflich entfernt — Quellen, Korpus, Chats und der Agent-Workspace. Ein
+              Easy-Writing-Ordner auf der Platte bleibt.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button disabled={deleteBusy} onClick={() => setDeleteTarget(null)}>
+                Abbrechen
+              </Button>
+              <Button variant="danger" disabled={deleteBusy} onClick={() => void confirmDelete()}>
+                Löschen
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

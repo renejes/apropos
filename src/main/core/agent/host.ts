@@ -416,6 +416,10 @@ export class CursorAgentHost {
     return false
   }
 
+  async disposeProject(projectId: string): Promise<void> {
+    await this.unbind(projectId)
+  }
+
   async newSession(projectId: string): Promise<AgentSessionResult> {
     if (!this.repo.getProject(projectId)) return this.result(projectId, { ok: false, error: `Projekt ${projectId} existiert nicht.` })
     const current = this.bound.get(projectId)

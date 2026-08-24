@@ -130,6 +130,39 @@ export class Repo {
     this.logEvent(projectId, actor, 'project.easy_writing_dir', { dir })
   }
 
+  deleteProject(projectId: string, actor: string): boolean {
+    const project = this.getProject(projectId)
+    if (!project) return false
+    this.tx(() => {
+      // Optionale FKs ohne CASCADE würden das Löschen sonst mit SQLITE_CONSTRAINT abbrechen.
+      this.db.prepare(`UPDATE sources SET sub_question_id = NULL, document_id = NULL WHERE project_id = ?`).run(projectId)
+      this.db.prepare(`UPDATE report_versions SET visual_version_id = NULL WHERE project_id = ?`).run(projectId)
+      this.db.prepare(`UPDATE visual_versions SET parent_version_id = NULL WHERE project_id = ?`).run(projectId)
+      this.db.prepare(`UPDATE search_reflections SET sub_question_id = NULL WHERE project_id = ?`).run(projectId)
+      this.db
+        .prepare(
+          `DELETE FROM reviews
+           WHERE (entity_type = 'source' AND entity_id IN (SELECT id FROM sources WHERE project_id = @p))
+              OR (entity_type = 'claim' AND entity_id IN (SELECT id FROM claims WHERE project_id = @p))
+              OR (entity_type = 'claim_source_link' AND entity_id IN
+                   (SELECT l.id FROM claim_source_links l JOIN claims c ON c.id = l.claim_id WHERE c.project_id = @p))
+              OR (entity_type = 'report_version' AND entity_id IN (SELECT id FROM report_versions WHERE project_id = @p))`
+        )
+        .run({ p: projectId })
+      this.db
+        .prepare(
+          `DELETE FROM uncertainty_flags
+           WHERE (entity_type = 'source' AND entity_id IN (SELECT id FROM sources WHERE project_id = @p))
+              OR (entity_type = 'claim' AND entity_id IN (SELECT id FROM claims WHERE project_id = @p))
+              OR (entity_type = 'project' AND entity_id = @p)`
+        )
+        .run({ p: projectId })
+      this.db.prepare(`DELETE FROM projects WHERE id = ?`).run(projectId)
+    })
+    this.logEvent(projectId, actor, 'project.deleted', { title: project.title })
+    return true
+  }
+
   listProjects(): ProjectSummary[] {
     return this.db
       .prepare(
