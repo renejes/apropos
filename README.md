@@ -21,6 +21,8 @@ Zwei Lieferformen, ein Korpus:
 | **Blogs / Kundenstücke** | Blickwinkel und Frame. Der Text selbst ist Commodity — wertvoll ist, *was du behaupten darfst*. |
 | **Hausarbeiten, Papers, Abschlussarbeiten** | Zitate mit Seite, empirische Papers, ehrliche Lücken. Nicht „viele Quellen“, sondern passende. |
 
+Hochgeladene PDFs sind **Seed-Quellen** im selben Korpus — sie bleiben im Projekt, unabhängig vom Chat.
+
 Die App **schreibt den Artikel nicht**. Nach der Research geht es so weiter:
 
 1. **Recherchieren und prüfen** — diese Plattform
@@ -42,16 +44,22 @@ Easy Writing öffnet den Exportordner und autocompleted dieselben Citekeys. Penw
 Alltagsweg: **Cursor-Agent in der App** (dein Cursor-Abo, inkl. WebSearch). Chat links, Beweis rechts. Die IDE ist optional; Goose oder Claude Code können per MCP-HTTP an dieselbe Datenbank andocken.
 
 ```
+PDFs in den Korpus  (optional, ohne Brief)
+        │
+        ▼
 Brief entwerfen → du bestätigst
         │
         ▼
 Teilfragen aus dem Brief  (nicht aus der Luft)
         │
         ▼
-Gezielte Suche  (Literaturregister + WebSearch)
+Suche  (Korpus, dann Literaturregister + WebSearch)
         │
         ▼
-fetch_source → add_source  oder  exclude_source
+Lage nach jeder Welle  (reflect_search)  — erst dann die nächste Suche
+        │
+        ▼
+fetch_source / read_document → add_source  oder  exclude_source
         │
         ▼
 Server misst Lücken und Sättigung  — „ich bin fertig“ zählt nicht
@@ -63,12 +71,14 @@ Karte, Marks, Sign-off
 Schreibpaket → Easy Writing → optional Penwright
 ```
 
-Ohne adoptierten Research-Brief lehnen Suche und Quellenabruf ab. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen — nicht als Such-Snippet.
+Ohne adoptierten Research-Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief und zählen nicht als offene Netzabrufe. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen — nicht als Such-Snippet. Die nächste Query kommt aus der Lage, nicht aus einem Algorithmus.
 
 | Mechanismus | Was es bedeutet |
 |---|---|
 | **Unfälschbare Zitate** | `fetch_source` speichert den Text (HTML und PDF). `add_source` bekommt Zeichenpositionen — der Server schneidet das Zitat heraus. Das Modell tippt nichts ab. |
-| **Vollständigkeit** | Abgerufene Quellen müssen dokumentiert oder verworfen sein, bevor weitere Abrufe erlaubt sind. |
+| **Seed-Korpus** | Hochgeladene PDFs zuerst durchsuchen (`search_documents` / `read_document`), dann belegen. Sie bleiben im Projekt. |
+| **Such-Lage** | Nach jeder Suchwelle `reflect_search`: was getroffen ist, was fehlt, was als Nächstes passiert (`search` / `read` / `enough`). Die nächste Suche ist gesperrt, bis die Lage steht. |
+| **Vollständigkeit** | Abgerufene Netzquellen müssen dokumentiert oder verworfen sein, bevor weitere Abrufe erlaubt sind. |
 | **Messbare Tiefe** | Teilfragen, serverseitige Lückenliste, Sättigung pro Runde. |
 | **Was darfst du sagen** | Grün = signiert und Quote ok. Gelb = belegt, unsigniert. Rot = Widerspruch, Flag, Lücke, Tabu. |
 | **Schreibpaket** | Immer aus einer Kartensicht oder aus Markiertem: Plan, `references.bib`, Claims, Bericht, `do-not-claim.md`, JPEG der Karte. |
@@ -88,9 +98,9 @@ flowchart TB
 
     subgraph app [Electron-App]
         MCP[MCP-Server · HTTP + stdio]
-        Enforce[Enforcement<br/>Brief · Quote · Coverage]
+        Enforce[Enforcement<br/>Brief · Quote · Lage · Coverage]
         DB[(SQLite WAL · FTS5)]
-        UI[Review-UI<br/>Sign-off · Karte · Export]
+        UI[Review-UI<br/>Korpus · Sign-off · Karte · Export]
     end
 
     Cursor -->|customTools / In-Memory| MCP
@@ -100,6 +110,8 @@ flowchart TB
 ```
 
 **Stack:** Electron · React 18 · Tailwind CSS v4 · better-sqlite3 (WAL, FTS5) · `@cursor/sdk` · `@modelcontextprotocol/sdk` 1.30 · Zod · Vitest
+
+Die Oberfläche ist Familie zu Easy Writing: weiße Fläche, schwarze Linie, Invert für Auswahl. Farbe nur, wo sie Bedeutung trägt (Status, Lücke, Graph).
 
 ---
 
@@ -119,7 +131,7 @@ npm start         # App (Electron-ABI + Dev-Server)
 
 `better-sqlite3` ist ein natives Addon. `npm run abi:node` / `npm run abi:electron` schalten zwischen Tests und App um. `npm start` macht den Electron-Rebuild selbst.
 
-In der App: Einstellungen → bei Cursor anmelden → benanntes Modell wählen (nicht Auto) → Projekt anlegen → im Chat den Brief erarbeiten, dann erst suchen.
+In der App: Einstellungen → bei Cursor anmelden → benanntes Modell wählen (nicht Auto) → Projekt anlegen. PDFs kannst du sofort in den Korpus legen. Im Chat den Brief erarbeiten, dann erst suchen.
 
 ### MCP für die IDE (optional)
 
@@ -135,7 +147,7 @@ Dieselbe App muss laufen, sonst ist Port 8790 tot. Config liegt im Repo (`.curso
 }
 ```
 
-Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld. **Agent-Modus**, nicht Chat. Allowlist: `.cursor/permissions.json`. Arbeitsvertrag: [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc).
+Kein `"type"`-Feld — Cursor erkennt Streamable HTTP am `url`-Feld. **Agent-Modus**, nicht Chat. Allowlist: `.cursor/permissions.json`. Arbeitsvertrag: [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc). Der WebSearch-Hook fragt `GET /ingest/search-gate`; ist die App tot, darf die Suche durch (Fail-open).
 
 stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen dieselbe SQLite (WAL).
 
@@ -146,6 +158,7 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | Tool | Zweck |
 |---|---|
 | `draft_research_brief` / `adopt_research_brief` | Blickwinkel und Plan, bevor gesucht wird |
+| `list_corpus` / `search_documents` / `read_document` | Seed-PDFs und abgerufene Texte |
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
 | `search_literature` | OpenAlex, Crossref, Europe PMC |
@@ -172,9 +185,9 @@ Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` 
 
 ```
 src/main/core/        DB, Repo, Enforcement, Cursor-Agent, Testharness
-src/main/mcp/         MCP-Server, HTTP, stdio
+src/main/mcp/         MCP-Server, HTTP, stdio, Such-Gate
 src/preload/          Typisierte IPC-Brücke
-src/renderer/         React-UI: Chat, Übersicht, Quellen, Karte, Export
+src/renderer/         React-UI: Chat, Übersicht, Korpus, Quellen, Karte, Export
 .cursor/              mcp.json, permissions.json, hooks.json, Rule
 skills/               Claude-Code-Skill + Such-Ingest-Hook
 documentation/        Plan, Status, Next Steps · Archiv in documentation/done/
