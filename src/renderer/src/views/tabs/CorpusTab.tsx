@@ -216,6 +216,12 @@ function OriginBadge({ origin }: { origin: DocMeta['origin'] }) {
           Upload
         </Badge>
       )
+    case 'youtube':
+      return (
+        <Badge tone="red" icon="smart_display">
+          YouTube
+        </Badge>
+      )
     case 'fetched':
       return (
         <Badge tone="sky" icon="public">

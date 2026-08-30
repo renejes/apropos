@@ -10,6 +10,9 @@ import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage, ingestUploadedFiles } from './core/services/research'
+import { createNote, deleteNote, updateNote } from './core/services/notes'
+import { ingestYoutubeUrl } from './core/services/youtube'
+import { listArtifacts, readArtifact } from './core/services/artifacts'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
 import { projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './core/agent/workspace'
 import type { ServerInfo } from '../shared/types'
@@ -32,8 +35,10 @@ export function registerIpc(deps: IpcDeps): void {
   const HUMAN = 'human:ui'
 
   ipcMain.handle('projects:list', () => repo.listProjects())
-  ipcMain.handle('projects:create', (_e, input: { title: string; research_question: string; mode: 'academic' | 'business' }) =>
-    repo.createProject({ ...input, policy_preset: null, actor: HUMAN })
+  ipcMain.handle(
+    'projects:create',
+    (_e, input: { title: string; research_question: string; mode: 'academic' | 'business'; kind?: 'research' | 'notebook' }) =>
+      repo.createProject({ ...input, policy_preset: null, actor: HUMAN })
   )
   ipcMain.handle('projects:delete', async (_e, projectId: string) => {
     try {
@@ -332,6 +337,23 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('agent:closeTab', (_e, projectId: string, sessionId: string) => agent.closeTab(projectId, sessionId))
   ipcMain.handle('agent:deleteSession', (_e, projectId: string, sessionId: string) => agent.deleteSession(projectId, sessionId))
   ipcMain.handle('agent:mentionables', (_e, projectId: string) => agent.mentionables(projectId))
+  ipcMain.handle('notes:list', (_e, projectId: string) => repo.listNotes(projectId))
+  ipcMain.handle('notes:get', (_e, noteId: string) => repo.getNote(noteId) ?? null)
+  ipcMain.handle(
+    'notes:create',
+    (
+      _e,
+      input: { project_id: string; title: string; body_markdown: string; origin?: 'human' | 'chat' | 'agent'; citations?: unknown }
+    ) => createNote(repo, input, HUMAN)
+  )
+  ipcMain.handle(
+    'notes:update',
+    (_e, input: { note_id: string; title?: string; body_markdown?: string; citations?: unknown }) => updateNote(repo, input, HUMAN)
+  )
+  ipcMain.handle('notes:delete', (_e, noteId: string) => ({ deleted: deleteNote(repo, noteId, HUMAN) }))
+  ipcMain.handle('notebook:youtube', (_e, projectId: string, url: string) => ingestYoutubeUrl(repo, projectId, url, HUMAN))
+  ipcMain.handle('notebook:artifacts', (_e, projectId: string) => listArtifacts(projectId))
+  ipcMain.handle('notebook:artifact', (_e, projectId: string, relativePath: string) => readArtifact(projectId, relativePath))
   ipcMain.handle('agent:attach', async (e, projectId: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const options = {

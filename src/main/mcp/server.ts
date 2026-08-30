@@ -37,6 +37,8 @@ import { exportBibliography } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
 import { writeEasyWriting } from '../core/export/easy-writing'
 import type { Source } from '../../shared/types'
+import { createNote, updateNote } from '../core/services/notes'
+import { listArtifacts } from '../core/services/artifacts'
 
 /**
  * Serving-Leases für den geblindeten Re-Verify-Pass (Review-Finding):
@@ -354,11 +356,12 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         research_question: z.string().min(5).describe('Die konkrete Forschungs-/Research-Frage'),
         mode: z.enum(['academic', 'business']).describe('academic = Zitier-Rigorosität; business = Markt-/Marketing-Research'),
         policy_preset: z.string().optional().describe('Optionales Policy-Preset, z. B. ICMJE, PRISMA, DFG'),
+        kind: z.enum(['research', 'notebook']).optional().describe('research (Standard) oder notebook (Quellen-Chat ohne Brief)'),
       },
     },
     async (args) => {
       const project = repo.createProject({ ...args, policy_preset: args.policy_preset ?? null, actor: actor() })
-      return ok({ project_id: project.id, title: project.title, mode: project.mode })
+      return ok({ project_id: project.id, title: project.title, mode: project.mode, kind: project.kind })
     }
   )
 
@@ -384,7 +387,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       inputSchema: {
         project_id: z.string().describe('ID des Projekts'),
         include: z
-          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections']))
+          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes']))
           .optional()
           .describe('Optional: nur bestimmte Teile zurückgeben (Standard: alles)'),
       },
@@ -406,6 +409,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         if (include.includes('rounds')) filtered.rounds = state.rounds
         if (include.includes('documents')) filtered.documents = state.documents
         if (include.includes('search_reflections')) filtered.searchReflections = state.searchReflections
+        if (include.includes('notes')) filtered.notes = state.notes
         return ok(filtered)
       } catch (err) {
         return failFrom(err)
@@ -1829,6 +1833,108 @@ Beginne jetzt.`,
         },
       ],
     })
+  )
+
+  defineTool(
+    server,
+    'save_note',
+    {
+      title: 'Notiz speichern (Markdown, Offset-Belege)',
+      description:
+        'Legt eine bearbeitbare Markdown-Notiz im Notebook an. ' +
+        'Wörtliche Stellen NUR mit citations (document_id + quote_start + quote_end aus read_document) — der Server schneidet das Zitat. ' +
+        'Ohne citations ist die Notiz ein Entwurf.',
+      inputSchema: {
+        project_id: z.string(),
+        title: z.string().min(1).describe('Kurzer Titel der Notiz'),
+        body_markdown: z.string().describe('Notiztext in Markdown'),
+        citations: z
+          .array(
+            z.object({
+              document_id: z.string(),
+              quote_start: z.number().int().min(0),
+              quote_end: z.number().int().min(0),
+            })
+          )
+          .optional()
+          .describe('Offset-Belege aus read_document; leer = Entwurf'),
+      },
+    },
+    async (args) => {
+      try {
+        const note = createNote(repo, { ...args, origin: 'agent' }, actor())
+        return ok({ note_id: note.id, title: note.title, file_name: note.file_name, citations: note.citations })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'list_notes',
+    {
+      title: 'Notizen auflisten',
+      description: 'Listet Markdown-Notizen des Notebooks (ohne dass du sie neu schreibst).',
+      inputSchema: { project_id: z.string() },
+    },
+    async ({ project_id }) => {
+      try {
+        return ok(repo.listNotes(project_id).map((n) => ({ note_id: n.id, title: n.title, origin: n.origin, citations: n.citations.length, updated_at: n.updated_at })))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'update_note',
+    {
+      title: 'Notiz aktualisieren',
+      description: 'Überschreibt Titel und/oder Markdown einer bestehenden Notiz. citations wie bei save_note.',
+      inputSchema: {
+        note_id: z.string(),
+        title: z.string().min(1).optional(),
+        body_markdown: z.string().optional(),
+        citations: z
+          .array(
+            z.object({
+              document_id: z.string(),
+              quote_start: z.number().int().min(0),
+              quote_end: z.number().int().min(0),
+            })
+          )
+          .optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const note = updateNote(repo, args, actor())
+        return ok({ note_id: note.id, title: note.title, file_name: note.file_name, citations: note.citations })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'list_artifacts',
+    {
+      title: 'Artefakte im Workspace auflisten',
+      description:
+        'Listet Dateien unter artifacts/ (HTML-Folien, Tabellen, Markdown). ' +
+        'Schreibe Aufbereitungen selbst nach artifacts/, dann dieses Werkzeug zur Kontrolle.',
+      inputSchema: { project_id: z.string() },
+    },
+    async ({ project_id }) => {
+      try {
+        return ok(listArtifacts(project_id))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
   )
 
   return server

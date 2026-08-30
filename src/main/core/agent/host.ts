@@ -37,7 +37,8 @@ import {
   type AgentSessionIndex,
 } from '../../../shared/agentSessions'
 import { mapSdkMessage } from './events'
-import { followUpPrefix, sessionPreamble } from './instructions'
+import { followUpPrefix, notebookPreamble, sessionPreamble } from './instructions'
+import { toolsForKind } from './notebook-tools'
 import {
   apiKeySource,
   loadAgentSettings,
@@ -514,8 +515,9 @@ export class CursorAgentHost {
       this.emit(projectId, { type: 'user', text: visible })
       this.touchActiveTitle(projectId, trimmed || attached[0] || mentions[0]?.label || '')
       session.running = true
+      const notebook = project.kind === 'notebook'
       const body = session.fresh
-        ? `${sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
+        ? `${notebook ? notebookPreamble({ projectId, title: project.title }) : sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
         : `${followUpPrefix(projectId, attached, mentions)}${trimmed}`
       session.fresh = false
 
@@ -619,7 +621,8 @@ export class CursorAgentHost {
     const storeDir = join(cwd, '.sdk-store')
     mkdirSync(storeDir, { recursive: true })
     const store = new JsonlLocalAgentStore(storeDir)
-    const customTools = await this.ensureBridge()
+    const kind = this.repo.getProject(projectId)?.kind === 'notebook' ? 'notebook' : 'research'
+    const customTools = toolsForKind(await this.ensureBridge(), kind)
     const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))
     this.modelsCache = models.length ? models : this.modelsCache
     const model = selectionFrom(this.getSettings(), models)
@@ -640,7 +643,7 @@ export class CursorAgentHost {
         if (!(err instanceof AgentNotFoundError)) throw err
       }
     }
-    const agent = await Agent.create({ ...base, name: `research:${projectId.slice(0, 8)}` })
+    const agent = await Agent.create({ ...base, name: `${kind}:${projectId.slice(0, 8)}` })
     return { agent, store, fresh: true }
   }
 

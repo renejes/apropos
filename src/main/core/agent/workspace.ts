@@ -2,18 +2,16 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'path'
 import { defaultAgentRoot } from '../paths'
 import { FOCUSED_RESEARCH_SKILL } from './focused-research-skill'
+import { NOTEBOOK_SKILL } from './notebook-skill'
 
 const workspaces = new Map<string, string>()
 
-function seedFocusedResearchSkill(dir: string): void {
-  const targets = [
-    join(dir, '.cursor', 'skills', 'focused-research'),
-    join(dir, 'skills', 'focused-research'),
-  ]
+function seedSkill(dir: string, name: string, body: string): void {
+  const targets = [join(dir, '.cursor', 'skills', name), join(dir, 'skills', name)]
   for (const skillDir of targets) {
     try {
       mkdirSync(skillDir, { recursive: true })
-      writeFileSync(join(skillDir, 'SKILL.md'), FOCUSED_RESEARCH_SKILL, 'utf-8')
+      writeFileSync(join(skillDir, 'SKILL.md'), body, 'utf-8')
       return
     } catch {
       /* .cursor kann in Tests gesperrt sein — Fallback auf skills/ */
@@ -21,10 +19,27 @@ function seedFocusedResearchSkill(dir: string): void {
   }
 }
 
+function seedNotebookDirs(dir: string): void {
+  mkdirSync(join(dir, 'notes'), { recursive: true })
+  mkdirSync(join(dir, 'artifacts'), { recursive: true })
+  try {
+    mkdirSync(join(dir, '.cursor'), { recursive: true })
+    writeFileSync(
+      join(dir, '.cursor', 'sandbox.json'),
+      JSON.stringify({ type: 'workspace', network: { default: 'deny' } }, null, 2),
+      'utf-8'
+    )
+  } catch {
+    /* optional */
+  }
+}
+
 export function projectWorkspace(projectId: string, root = defaultAgentRoot()): string {
   const dir = join(root, projectId)
   mkdirSync(join(dir, 'inbox'), { recursive: true })
-  seedFocusedResearchSkill(dir)
+  seedNotebookDirs(dir)
+  seedSkill(dir, 'focused-research', FOCUSED_RESEARCH_SKILL)
+  seedSkill(dir, 'notebook-sources', NOTEBOOK_SKILL)
   workspaces.set(projectId, dir)
   return dir
 }

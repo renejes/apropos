@@ -156,6 +156,8 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(searchCols).toContain('reflection_id')
     const projectCols = (migrated.pragma('table_info(projects)') as Array<{ name: string }>).map((c) => c.name)
     expect(projectCols).toContain('easy_writing_dir')
+    expect(projectCols).toContain('kind')
+    expect(tables).toContain('notes')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()

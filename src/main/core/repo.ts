@@ -50,6 +50,10 @@ import type {
   BriefStatus,
   SourceKind,
   BibEntryType,
+  ProjectKind,
+  Note,
+  NoteCitation,
+  NoteOrigin,
 } from '../../shared/types'
 
 /**
@@ -100,22 +104,25 @@ export class Repo {
     research_question: string
     mode: ProjectMode
     policy_preset?: string | null
+    kind?: ProjectKind
     actor: string
   }): Project {
     const id = randomUUID()
     const ts = nowIso()
+    const kind: ProjectKind = input.kind === 'notebook' ? 'notebook' : 'research'
     this.db
       .prepare(
-        `INSERT INTO projects (id, title, research_question, mode, policy_preset, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO projects (id, title, research_question, mode, policy_preset, kind, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.title, input.research_question, input.mode, input.policy_preset ?? null, ts, ts)
-    this.logEvent(id, input.actor, 'project.created', { title: input.title, mode: input.mode })
+      .run(id, input.title, input.research_question, input.mode, input.policy_preset ?? null, kind, ts, ts)
+    this.logEvent(id, input.actor, 'project.created', { title: input.title, mode: input.mode, kind })
     return this.getProject(id)!
   }
 
   getProject(id: string): Project | undefined {
-    return this.db.prepare(`SELECT * FROM projects WHERE id = ?`).get(id) as Project | undefined
+    const row = this.db.prepare(`SELECT * FROM projects WHERE id = ?`).get(id) as ProjectRow | undefined
+    return row ? mapProject(row) : undefined
   }
 
   touchProject(id: string): void {
@@ -171,10 +178,12 @@ export class Repo {
            (SELECT COUNT(*) FROM sources s WHERE s.project_id = p.id AND s.review_status = 'pending') AS pending_count,
            (SELECT COUNT(*) FROM sources s WHERE s.project_id = p.id AND s.review_status = 'human_signed') AS signed_count,
            (SELECT COUNT(*) FROM claims c WHERE c.project_id = p.id) AS claim_count,
-           (SELECT COUNT(*) FROM report_versions r WHERE r.project_id = p.id) AS version_count
+           (SELECT COUNT(*) FROM report_versions r WHERE r.project_id = p.id) AS version_count,
+           (SELECT COUNT(*) FROM notes n WHERE n.project_id = p.id) AS note_count
          FROM projects p ORDER BY p.updated_at DESC`
       )
-      .all() as ProjectSummary[]
+      .all()
+      .map((row) => mapProjectSummary(row as ProjectSummaryRow))
   }
 
   // ---------- Quellen ----------
@@ -1384,7 +1393,66 @@ export class Repo {
       visualVersions: this.listVisualVersions(projectId),
       researchBrief: this.getAdoptedBrief(projectId) ?? this.getLatestBrief(projectId) ?? null,
       documents: this.listDocuments(projectId),
+      notes: this.listNotes(projectId),
     }
+  }
+
+  // ---------- Notizen (Notebook) ----------
+  addNote(input: {
+    project_id: string
+    title: string
+    body_markdown: string
+    file_name: string
+    origin?: NoteOrigin
+    citations?: NoteCitation[]
+  }): Note {
+    const id = randomUUID()
+    const ts = nowIso()
+    const origin: NoteOrigin = input.origin ?? 'human'
+    const citations = input.citations ?? []
+    this.db
+      .prepare(
+        `INSERT INTO notes (id, project_id, title, body_markdown, file_name, origin, citations_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, input.project_id, input.title, input.body_markdown, input.file_name, origin, JSON.stringify(citations), ts, ts)
+    return this.getNote(id)!
+  }
+
+  getNote(id: string): Note | undefined {
+    const row = this.db.prepare(`SELECT * FROM notes WHERE id = ?`).get(id) as NoteRow | undefined
+    return row ? mapNote(row) : undefined
+  }
+
+  listNotes(projectId: string): Note[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM notes WHERE project_id = ? ORDER BY updated_at DESC`)
+      .all(projectId) as NoteRow[]
+    return rows.map(mapNote)
+  }
+
+  updateNote(
+    id: string,
+    patch: { title?: string; body_markdown?: string; file_name?: string; citations?: NoteCitation[] }
+  ): Note | undefined {
+    const current = this.getNote(id)
+    if (!current) return undefined
+    const title = patch.title ?? current.title
+    const body = patch.body_markdown ?? current.body_markdown
+    const fileName = patch.file_name ?? current.file_name
+    const citations = patch.citations ?? current.citations
+    this.db
+      .prepare(`UPDATE notes SET title = ?, body_markdown = ?, file_name = ?, citations_json = ?, updated_at = ? WHERE id = ?`)
+      .run(title, body, fileName, JSON.stringify(citations), nowIso(), id)
+    this.touchProject(current.project_id)
+    return this.getNote(id)
+  }
+
+  deleteNote(id: string): boolean {
+    const current = this.getNote(id)
+    if (!current) return false
+    this.db.prepare(`DELETE FROM notes WHERE id = ?`).run(id)
+    return true
   }
 
   searchSources(projectId: string, query: string): Source[] {
@@ -1425,7 +1493,7 @@ export class Repo {
       document_id: row.id,
       title: row.title,
       url: row.url,
-      origin: row.origin === 'upload' ? 'upload' : 'fetched',
+      origin: mapDocumentOrigin(row.origin),
       char_len: row.char_len,
       matches: findTextMatches(row.text, q),
     }))
@@ -1458,6 +1526,114 @@ interface DocumentRow {
   page_starts_json?: string | null
 }
 
+interface ProjectRow {
+  id: string
+  title: string
+  research_question: string
+  mode: ProjectMode
+  kind?: string | null
+  policy_preset: string | null
+  easy_writing_dir: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface ProjectSummaryRow extends ProjectRow {
+  source_count: number
+  pending_count: number
+  signed_count: number
+  claim_count: number
+  version_count: number
+  note_count?: number
+}
+
+interface NoteRow {
+  id: string
+  project_id: string
+  title: string
+  body_markdown: string
+  file_name: string
+  origin: string
+  citations_json: string
+  created_at: string
+  updated_at: string
+}
+
+function mapProjectKind(kind: string | null | undefined): ProjectKind {
+  return kind === 'notebook' ? 'notebook' : 'research'
+}
+
+function mapProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    title: row.title,
+    research_question: row.research_question,
+    mode: row.mode,
+    kind: mapProjectKind(row.kind),
+    policy_preset: row.policy_preset,
+    easy_writing_dir: row.easy_writing_dir,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function mapProjectSummary(row: ProjectSummaryRow): ProjectSummary {
+  return {
+    ...mapProject(row),
+    source_count: Number(row.source_count) || 0,
+    pending_count: Number(row.pending_count) || 0,
+    signed_count: Number(row.signed_count) || 0,
+    claim_count: Number(row.claim_count) || 0,
+    version_count: Number(row.version_count) || 0,
+    note_count: Number(row.note_count) || 0,
+  }
+}
+
+function mapDocumentOrigin(origin: string | null | undefined): DocumentOrigin {
+  if (origin === 'upload') return 'upload'
+  if (origin === 'youtube') return 'youtube'
+  return 'fetched'
+}
+
+function mapNoteOrigin(origin: string): NoteOrigin {
+  if (origin === 'chat') return 'chat'
+  if (origin === 'agent') return 'agent'
+  return 'human'
+}
+
+function mapNote(row: NoteRow): Note {
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    title: row.title,
+    body_markdown: row.body_markdown,
+    file_name: row.file_name,
+    origin: mapNoteOrigin(row.origin),
+    citations: parseNoteCitations(row.citations_json),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function parseNoteCitations(raw: string): NoteCitation[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((c): c is NoteCitation => {
+      if (!c || typeof c !== 'object') return false
+      const rec = c as Record<string, unknown>
+      return (
+        typeof rec.document_id === 'string' &&
+        typeof rec.quote_start === 'number' &&
+        typeof rec.quote_end === 'number' &&
+        typeof rec.quote === 'string'
+      )
+    })
+  } catch {
+    return []
+  }
+}
+
 function parsePageStarts(raw: string | null | undefined): number[] | null {
   if (!raw) return null
   try {
@@ -1482,7 +1658,7 @@ function mapDocument(row: DocumentRow): FetchedDocument {
     fetched_by: row.fetched_by,
     purpose: row.purpose,
     status: row.status,
-    origin: row.origin === 'upload' ? 'upload' : 'fetched',
+    origin: mapDocumentOrigin(row.origin),
     filename: row.filename ?? null,
     page_starts: parsePageStarts(row.page_starts_json),
   }

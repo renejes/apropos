@@ -38,6 +38,8 @@ describe('Repo (in-memory SQLite)', () => {
     expect(list[0].source_count).toBe(1)
     expect(list[0].pending_count).toBe(1)
     expect(p.easy_writing_dir).toBeNull()
+    expect(p.kind).toBe('research')
+    expect(list[0].note_count).toBe(0)
   })
 
   it('merkt den Easy-Writing-Ordner am Projekt', () => {
@@ -201,5 +203,7 @@ describe('Repo (in-memory SQLite)', () => {
     expect(state.sources).toHaveLength(1)
     expect(state.extractions).toHaveLength(1)
     expect(state.project.id).toBe(p.id)
+    expect(state.notes).toEqual([])
+    expect(state.project.kind).toBe('research')
   })
 })

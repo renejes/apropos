@@ -6,10 +6,10 @@
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 03 — Next Steps |
-| **Stand** | 2026-08-20 · v3.0 |
-| **Phase** | Empirische Tests |
+| **Stand** | 2026-08-30 · v3.1 |
+| **Phase** | Empirische Tests (Research) · Notebook gegen Unit-Tests grün |
 
-**Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
+**Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [08 Notebook](08-notebook.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
 
 ---
 
@@ -20,7 +20,7 @@
 ### Spike 1 — eine echte Research (Go/No-Go)
 
 1. App starten (`npm start`), in den Einstellungen anmelden, **benanntes Modell** (nicht Auto).
-2. Neues Projekt. Im Agent-Chat Intake: Brief entwerfen, bestätigen, `adopt_research_brief`.
+2. Neues **Research**-Projekt. Im Agent-Chat Intake: Brief entwerfen, bestätigen, `adopt_research_brief`.
 3. Erst danach suchen. Einstieg darf `start_transparent_research` sein — der Server muss trotzdem den Brief verlangen.
 4. Eine überschaubare Frage (nicht Vierstundenlauf). Ziel: Quellen in der DB, Chat zeigt Tool-Chips, mindestens eine signierbare Quelle, Schreibpaket mit JPEG.
 
@@ -74,4 +74,6 @@ npm run smoke
 
 - **Phase C** (`disallowedTools` im SDK): kleiner Rest aus [01](01-implementationplan.md), blockiert Spike 1 nicht.
 - **Phase D** (MCP-Apps-iframe): bewusst nicht Alltag.
+- **Notebook-Modell-Lauf:** Unit-Tests decken Gates, Notizen, YouTube-Parsing. Ob der Agent `save_note` mit Offsets nutzt, ist derselbe empirische Test — **nach** Spike 1, nicht statt.
 - RO-Crate, Lasttest mit 6–16 Agenten: erst wenn Spike 1 zeigt, dass der Alltagsweg trägt.
+

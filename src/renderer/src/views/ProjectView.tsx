@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ProjectState } from '../../../shared/types'
 import { Badge, Button } from '../components/ui'
 import AgentChat from './AgentChat'
+import NotebookView from './NotebookView'
 import OverviewTab from './tabs/OverviewTab'
 import CorpusTab from './tabs/CorpusTab'
 import SourcesTab from './tabs/SourcesTab'
@@ -56,6 +57,10 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
 
   if (!state) {
     return <div className="flex h-full items-center justify-center font-mono text-xs text-muted">lädt …</div>
+  }
+
+  if (state.project.kind === 'notebook') {
+    return <NotebookView projectId={projectId} state={state} onReload={reload} />
   }
 
   const pendingCount = state.sources.filter((s) => s.review_status === 'pending').length

@@ -9,7 +9,7 @@ import { ServiceError, ingestLocalFile, listProjectInbox, linkClaim, planResearc
 import { adoptMinimalBrief } from '../services/brief'
 import { describeEvidenceMap } from '../services/visual'
 import { mapSdkMessage } from './events'
-import { sessionPreamble, followUpPrefix, mentionContext } from './instructions'
+import { sessionPreamble, followUpPrefix, mentionContext, notebookPreamble } from './instructions'
 import { defaultAgentSettings, loadAgentSettings, normalizeParamValues, saveAgentSettings } from './settings'
 import { localInboxUrl, projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './workspace'
 
@@ -236,6 +236,15 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
     expect(mentions).toContain('paper.pdf')
     expect(mentions).toContain('sq-1')
     expect(followUpPrefix('proj-1', ['note.txt'], [{ kind: 'source', id: 'src-1', label: 'smith2024' }])).toContain('@-Erwähnungen')
+  })
+
+  it('Notebook-Preamble verlangt Korpus und Notizen, keinen Brief', () => {
+    const text = notebookPreamble({ projectId: 'nb-1', title: 'Seminar' })
+    expect(text).toContain('nb-1')
+    expect(text).toContain('save_note')
+    expect(text).toContain('list_corpus')
+    expect(text).toContain('artifacts/')
+    expect(text).not.toContain('draft_research_brief')
   })
 
   it('mappt Usage-Events auf Token-Zahlen', () => {

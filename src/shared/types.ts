@@ -4,6 +4,7 @@
  */
 
 export type ProjectMode = 'academic' | 'business'
+export type ProjectKind = 'research' | 'notebook'
 export type ReviewStatus = 'pending' | 'ai_checked' | 'human_signed' | 'rejected'
 export type BriefStatus = 'draft' | 'adopted'
 export type BriefDeliverable = 'blog' | 'academic' | 'both'
@@ -22,6 +23,8 @@ export interface Project {
   title: string
   research_question: string
   mode: ProjectMode
+  /** research = Brief/Gates/Karte; notebook = Quellen-Chat und bearbeitbare Notizen. */
+  kind: ProjectKind
   policy_preset: string | null
   /** Absoluter Pfad zum Easy-Writing-Ordner nach dem ersten Export; sonst null. */
   easy_writing_dir: string | null
@@ -98,8 +101,8 @@ export interface ResearchBrief {
 }
 
 export type DocumentStatus = 'open' | 'used' | 'excluded'
-/** fetched = Netz/OA; upload = vom Menschen in den Projekt-Korpus gelegt. */
-export type DocumentOrigin = 'fetched' | 'upload'
+/** fetched = Netz/OA; upload = vom Menschen in den Projekt-Korpus gelegt; youtube = Transkript. */
+export type DocumentOrigin = 'fetched' | 'upload' | 'youtube'
 
 /** Belegstelle im Originaltext mit Kontext — für den menschlichen Sign-off. */
 export interface DocumentExcerpt {
@@ -494,6 +497,36 @@ export interface RoundResult {
   coverage: CoverageReport
 }
 
+/** Offset-Beleg in einer Notiz — derselbe Vertrag wie add_source, ohne Zitat-Abschreiben. */
+export interface NoteCitation {
+  document_id: string
+  quote_start: number
+  quote_end: number
+  quote: string
+}
+
+export type NoteOrigin = 'human' | 'chat' | 'agent'
+
+/** Bearbeitbare Markdown-Notiz. citations leer = Entwurf, noch nicht gegroundet. */
+export interface Note {
+  id: string
+  project_id: string
+  title: string
+  body_markdown: string
+  file_name: string
+  origin: NoteOrigin
+  citations: NoteCitation[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ArtifactFile {
+  path: string
+  kind: 'html' | 'markdown' | 'csv' | 'other'
+  size: number
+  updated_at: string
+}
+
 /** Aggregierter Projektzustand für UI und get_project_state-Tool. */
 export interface ProjectState {
   project: Project
@@ -515,6 +548,7 @@ export interface ProjectState {
   researchBrief: ResearchBrief | null
   /** Korpus ohne Volltext — der Text kommt über documents:text / search_documents. */
   documents: Array<Omit<FetchedDocument, 'text'>>
+  notes: Note[]
 }
 
 export interface ProjectSummary extends Project {
@@ -523,6 +557,7 @@ export interface ProjectSummary extends Project {
   signed_count: number
   claim_count: number
   version_count: number
+  note_count: number
 }
 
 export interface ServerInfo {

@@ -103,7 +103,9 @@ export default function App() {
                     )}
                   </div>
                   <div className={`mt-0.5 font-mono text-[11px] ${active ? 'text-bg/70' : 'group-hover:text-bg/70 text-muted'}`}>
-                    {p.source_count} Quellen · {p.signed_count} frei · {p.mode === 'academic' ? 'akademisch' : 'business'}
+                    {p.kind === 'notebook'
+                      ? `Notebook · ${p.note_count} Notizen · ${p.source_count} Belege`
+                      : `${p.source_count} Quellen · ${p.signed_count} frei · ${p.mode === 'academic' ? 'akademisch' : 'business'}`}
                   </div>
                 </button>
                 <button
@@ -145,7 +147,7 @@ export default function App() {
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
             <p className="max-w-md text-center text-sm">
-              Wähle links ein Projekt. Die Research führst du im Agent-Chat — ohne zweite IDE.
+              Wähle links ein Projekt. Research läuft im Agent-Chat — Notebook über Quellen und Notizen.
             </p>
           </div>
         )}

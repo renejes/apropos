@@ -11,7 +11,7 @@ import { dirname } from 'path'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 13 // v13 Easy-Writing-Ordner am Projekt merken
+export const SCHEMA_VERSION = 14 // v14 Notebook-Modus: Projektart + bearbeitbare Markdown-Notizen
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS projects (
   mode         TEXT NOT NULL DEFAULT 'academic' CHECK (mode IN ('academic','business')),
   policy_preset TEXT,
   easy_writing_dir TEXT,
+  kind         TEXT NOT NULL DEFAULT 'research' CHECK (kind IN ('research','notebook')),
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
@@ -107,6 +108,20 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id);
+
+-- v14: bearbeitbare Markdown-Notizen (Notebook). citations_json hält Offset-Belege.
+CREATE TABLE IF NOT EXISTS notes (
+  id             TEXT PRIMARY KEY,
+  project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title          TEXT NOT NULL,
+  body_markdown  TEXT NOT NULL DEFAULT '',
+  file_name      TEXT NOT NULL,
+  origin         TEXT NOT NULL DEFAULT 'human' CHECK (origin IN ('human','chat','agent')),
+  citations_json TEXT NOT NULL DEFAULT '[]',
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id           TEXT PRIMARY KEY,
@@ -464,6 +479,8 @@ function migrate(db: DB): void {
       addColumnIfMissing(db, 'search_log', 'reflection_id', 'TEXT')
       // v13: verknüpfter Easy-Writing-Ordner für erneutes Schreiben ohne Picker.
       addColumnIfMissing(db, 'projects', 'easy_writing_dir', 'TEXT')
+      // v14: Research bleibt Default; bestehende Projekte sind Research-Projekte.
+      addColumnIfMissing(db, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'research' CHECK (kind IN ('research','notebook'))")
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

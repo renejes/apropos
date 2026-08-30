@@ -10,6 +10,7 @@ function project(): Project {
     mode: 'academic',
     policy_preset: null,
     easy_writing_dir: null,
+    kind: 'research',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
   }
@@ -98,6 +99,7 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     visualVersions: [],
     researchBrief: null,
     documents: [],
+    notes: [],
     ...over,
   }
 }

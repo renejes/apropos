@@ -17,6 +17,8 @@ import type {
   VisualGraph,
   VisualLayoutKind,
   VisualVersion,
+  Note,
+  ArtifactFile,
 } from '../shared/types'
 import type {
   AgentAuthStatus,
@@ -34,8 +36,12 @@ import type {
 /** Typisierte, schmale API-Fläche für den Renderer. */
 const api = {
   listProjects: (): Promise<ProjectSummary[]> => ipcRenderer.invoke('projects:list'),
-  createProject: (input: { title: string; research_question: string; mode: 'academic' | 'business' }): Promise<Project> =>
-    ipcRenderer.invoke('projects:create', input),
+  createProject: (input: {
+    title: string
+    research_question: string
+    mode: 'academic' | 'business'
+    kind?: 'research' | 'notebook'
+  }): Promise<Project> => ipcRenderer.invoke('projects:create', input),
   deleteProject: (projectId: string): Promise<{ deleted: boolean }> => ipcRenderer.invoke('projects:delete', projectId),
   getProjectState: (projectId: string): Promise<ProjectState> => ipcRenderer.invoke('projects:state', projectId),
   listEvents: (projectId: string): Promise<EventLogEntry[]> => ipcRenderer.invoke('projects:events', projectId),
@@ -171,6 +177,23 @@ const api = {
     return () => ipcRenderer.removeListener('agent:loginUrl', listener)
   },
   openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('open:external', url),
+  listNotes: (projectId: string): Promise<Note[]> => ipcRenderer.invoke('notes:list', projectId),
+  getNote: (noteId: string): Promise<Note | null> => ipcRenderer.invoke('notes:get', noteId),
+  createNote: (input: {
+    project_id: string
+    title: string
+    body_markdown: string
+    origin?: 'human' | 'chat' | 'agent'
+    citations?: unknown
+  }): Promise<Note> => ipcRenderer.invoke('notes:create', input),
+  updateNote: (input: { note_id: string; title?: string; body_markdown?: string; citations?: unknown }): Promise<Note> =>
+    ipcRenderer.invoke('notes:update', input),
+  deleteNote: (noteId: string): Promise<{ deleted: boolean }> => ipcRenderer.invoke('notes:delete', noteId),
+  ingestYoutube: (projectId: string, url: string): Promise<FetchedDocument> =>
+    ipcRenderer.invoke('notebook:youtube', projectId, url),
+  listArtifacts: (projectId: string): Promise<ArtifactFile[]> => ipcRenderer.invoke('notebook:artifacts', projectId),
+  readArtifact: (projectId: string, path: string): Promise<{ path: string; kind: ArtifactFile['kind']; text: string }> =>
+    ipcRenderer.invoke('notebook:artifact', projectId, path),
   onOpenManual: (cb: () => void): (() => void) => {
     const listener = () => cb()
     ipcRenderer.on('ui:openManual', listener)

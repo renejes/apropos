@@ -2,7 +2,7 @@
   "name": "research-overview-platform",
   "version": "0.1.0",
   "description": "Transparente KI-Research: local-first Desktop-App mit Provenienz-Erzwingung, Cursor-Agent und Schreibpaket für Easy Writing und Penwright.",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "main": "out/main/index.js",
   "type": "commonjs",
   "scripts": {

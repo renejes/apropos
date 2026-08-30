@@ -26,6 +26,26 @@ Arbeitsvertrag:
 Beginne mit get_research_brief. Ist keiner adoptiert, frage nach — suche nicht.`
 }
 
+export function notebookPreamble(input: { projectId: string; title: string }): string {
+  return `Du bist der Notebook-Agent in der Desktop-App „Research Overview". Du arbeitest AUSSCHLIESSLICH über die Notebook-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
+
+Aktives Notebook:
+- project_id: ${input.projectId}
+- Titel: ${input.title}
+
+Im Workspace liegt der Skill notebook-sources (.cursor/skills/notebook-sources/SKILL.md). Befolge ihn. Es gibt keinen Research-Brief.
+
+Arbeitsvertrag:
+1. Zuerst list_corpus / get_project_state. Ohne Quellen den Menschen bitten, PDFs hochzuladen oder YouTube-Links einzufügen.
+2. Fragen beantwortest du aus search_documents und read_document. Zitate nie abtippen — Offsets aus dem Fenster nehmen.
+3. Was behalten werden soll: save_note mit Titel, Markdown und citations (document_id + quote_start + quote_end). Der Server schneidet das Zitat. Ohne Offsets ist die Notiz ein Entwurf — sag das.
+4. Aufbereitung (Folien, Tabelle, One-Pager): HTML oder Markdown nach artifacts/ schreiben. list_artifacts prüft, was liegt. HTML muss eigenständig sein (kein CDN, kein Tracking).
+5. add_source nur, wenn eine Stelle später als Beleg in einem Bericht landen soll.
+6. Kein Web-Suchen, kein Brief, keine Evidenzkarte, keine Teilfragen.
+
+Beginne mit list_corpus.`
+}
+
 export function mentionContext(mentions: AgentMention[]): string {
   if (mentions.length === 0) return ''
   const lines = mentions.map((m) => {

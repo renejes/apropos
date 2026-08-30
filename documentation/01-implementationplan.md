@@ -1,21 +1,21 @@
 # 01 · Implementation-Plan
 
-> Agent-first Desktop-App: Cursor-SDK-Chat in der Anwendung, unveränderte Provenienz-Schicht, visuelle Lesart, gezielte Research (Brief vor Suche), Schreibhandoff.
+> Agent-first Desktop-App: Cursor-SDK-Chat in der Anwendung, zwei Projektarten (Research mit Provenienz-Vertrag, Notebook mit Quellen-Chat), visuelle Lesart, Schreibhandoff.
 
 |  |  |
 |---|---|
 | **Projekt** | Research Overview Platform |
 | **Dokument** | 01 — Implementation-Plan |
-| **Stand** | 2026-08-20 · v2.2 |
-| **Phase** | A, B, E–H gebaut · C offen · empirischer Test ausstehend → [03](03-next-steps.md) |
+| **Stand** | 2026-08-30 · v2.3 |
+| **Phase** | A, B, E–H, **I (Notebook)** gebaut · C offen · empirischer Test ausstehend → [03](03-next-steps.md) |
 
-**Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
+**Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [08 Notebook](08-notebook.md) · Archiv: [04 Feasibility](done/04-feasability.md) · [05 Markt-Research](done/05-market-research.md) · [06 Eigene Research-Engine](done/06-eigene-research-engine.md) · [07 KI-Clients](done/07-clients.md)
 
 ---
 
 ## 1. Vision in einem Satz
 
-Eine **local-first Desktop-App**, in der du mit deinem **Cursor-Abo** erst den **Blickwinkel und den Plan** einer Research erarbeitest, dann **gezielt** suchst (wenige passende Quellen, nicht viele), den Korpus auf der Karte aufbereitest und ein **Schreibpaket** an Easy Writing übergibst — während jede Quelle ein **prüfbares Artefakt** bleibt. Sign-off nur in der UI.
+Eine **local-first Desktop-App**, in der du mit deinem **Cursor-Abo** entweder **gezielt recherchierst** (Brief, passende Quellen, Karte, Schreibpaket) oder ein **Notebook** über PDFs und YouTube führst (Chat, bearbeitbare Notizen, HTML-Artefakte) — während jede Stelle, die als Zitat gelten soll, ein **prüfbares Artefakt** bleibt. Sign-off nur in der UI.
 
 Zwei Lieferformen, ein Korpus: **Kunden-/Eigen-Blogs** (Commodity ist der Text, wertvoll ist der Frame) und **wissenschaftliche Arbeiten** (Psychologie ab Oktober: Hausarbeiten, später Abschlussarbeiten).
 
@@ -30,6 +30,7 @@ Zwei Lieferformen, ein Korpus: **Kunden-/Eigen-Blogs** (Commodity ist der Text, 
 - MCP-HTTP auf `127.0.0.1:8790` für Fremdclients (Goose, Cursor-IDE, …)
 - Kein Werkzeug kann `human_signed` setzen
 - KI-Einträge sind Behauptungen mit Status, keine Wahrheit
+- Zwei Projektarten: Research (Brief, Gates) und Notebook (Quellen-Chat) — Research-Vertrag nicht aufweichen
 
 ### Neu (Entscheidung 2026-08-20) — ✅ gebaut
 
@@ -52,9 +53,9 @@ Die In-App-Ollama-Engine ist **gestrichen** (WebSearch über Ollama war unzuverl
  │  ELECTRON-APP                                                    │
  │                                                                  │
  │  ┌──────────────┐   ┌─────────────────────────────────────────┐ │
- │  │ Agent-Chat   │   │ Projekt: Übersicht / Quellen / Aussagen │ │
- │  │ (Cursor SDK) │   │ Berichte / Karte / Protokoll / Audit    │ │
- │  │ + Anhänge    │   │ Sign-off nur hier                       │ │
+ │  │ Agent-Chat   │   │ Research: Übersicht / Korpus / Quellen  │ │
+ │  │ (Cursor SDK) │   │ Aussagen / Karte / Berichte / Audit     │ │
+ │  │ + Anhänge    │   │ Notebook: Notiz-Tabs, Artefakt-Preview  │ │
  │  └──────┬───────┘   └──────────────────▲──────────────────────┘ │
  │         │  IPC Stream                  │ DB-Poll / Events        │
  │         ▼                              │                         │
@@ -81,7 +82,7 @@ Die In-App-Ollama-Engine ist **gestrichen** (WebSearch über Ollama war unzuverl
 |---|---|---|
 | Runtime | **local** (`local: { cwd }`), nicht Cloud-VM | ✅ |
 | Persistenz | `JsonlLocalAgentStore` im Projekt-Workspace — **kein** `sqlite3`-Native-Addon | ✅ |
-| Werkzeuge | `local.customTools` = alle MCP-Tools via bestehende `ToolBridge` (in-process) | ✅ |
+| Werkzeuge | `local.customTools` = MCP via `ToolBridge`; **Filter nach `projects.kind`** (`notebook-tools.ts`) | ✅ |
 | `cwd` | eigener Ordner `agent-workspaces/<projectId>/` unter User-Data | ✅ |
 | Inbox | `cwd/inbox/` — PDFs und Text, die der Mensch anhängt | ✅ |
 | Ambient Settings | `settingSources: []` | ✅ |
@@ -137,6 +138,7 @@ MCP-HTTP-Anleitung bleibt darunter (Fremdclient).
 | `toggle_mark` / `list_marks` | Projektsweites Arbeitsset |
 | `ask_narrative` | Nur markierte Punkte: durable / mixed / needs_research |
 | `draft_research_brief` / `adopt_research_brief` / `get_research_brief` | Brief vor Suche |
+| `save_note` / `list_notes` / `update_note` / `list_artifacts` | Notebook: Markdown-Notizen und Artefaktliste |
 | `export_bibliography` / `export_writing_pack` | `.bib` und Schreibpaket |
 
 Einstiege (Prompt + Spiegel-Werkzeug): `start_transparent_research` / `start_extend_research` / `start_discuss_research` / `start_verify_session`.
@@ -192,6 +194,7 @@ Optional später für Leute, die in der IDE bleiben. Sign-off niemals im iframe.
 | **F — Bibliografie** | DOI/Autoren/Jahr/Venue/Citekey, Crossref nachziehen, `.bib` + `[@key]` | ✅ |
 | **G — Schreibpaket** | Export aus Karten-Arbeit, JPEG, `do-not-claim` | ✅ |
 | **H — Semantik der Quellen** | Locator `[@key, p. 12]`, Quellentyp, Psych-Korpus, „Was darfst du sagen“ | ✅ |
+| **I — Notebook** | `kind`, Notizen, YouTube-Ingest, Tool-Filter, Artefakt-Preview; Research unverändert | ✅ |
 | **C** | SDK-Feinschliff (`disallowedTools` ohne `"mcp"` zu kappen) | **offen** |
 | **D** | Optional: MCP Apps iframe für IDE-Nutzer | nicht Alltag, ungebaut |
 
@@ -268,6 +271,10 @@ Backends: OpenAlex, Crossref, Europe PMC (kein arXiv als Default). PSYNDEX hat k
 
 Grün / Gelb / Rot in der Übersicht (`SayablePanel`). Kein neues Wahrheits-Flag.
 
+### 10.8 Notebook-Modus (Phase I) — ✅
+
+Zweite Projektart neben Research, nicht statt. Schema v14, Gates per `kind`, Agent-Whitelist, bearbeitbare Notizen, YouTube-Transkript, `artifacts/` + iframe. Vertrag und Dateikarte: [08](08-notebook.md).
+
 ---
 
 ## 11. Was wir nicht bauen
@@ -279,6 +286,7 @@ Grün / Gelb / Rot in der Übersicht (`SayablePanel`). Kein neues Wahrheits-Flag
 - Sign-off durch den Agenten
 - MCP-Apps-iframe als Alltag
 - Eingebaute Ollama-Engine
+- Open-Notebook-Fork / zweites Repo; Podcasts in v1
 
 ---
 
@@ -290,4 +298,4 @@ npm run abi:node && npm test
 npm run smoke
 ```
 
-Automatisierte Tests sind grün (Stand 2026-08-20: 200). **Ausstehend:** echter Lauf mit Cursor-Konto — siehe [03 Next Steps](03-next-steps.md).
+Automatisierte Tests sind grün (Stand 2026-08-30: 270). **Ausstehend:** echter Lauf mit Cursor-Konto — siehe [03 Next Steps](03-next-steps.md). Notebook-Verdrahtung: [08](08-notebook.md).

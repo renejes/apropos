@@ -45,16 +45,17 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     body: (
       <>
         <Lead>
-          Research Overview ist eine local-first Desktop-App für <strong>prüfbare KI-Research</strong>. Die KI recherchiert
-          im Fenster, der Server erzwingt Provenienz, du signierst — und übergibst ein Dossier an Easy Writing, statt einen
-          fertigen Artikel zu erzeugen.
+          Research Overview ist eine local-first Desktop-App. Du legst ein Projekt als{' '}
+          <strong>Research</strong> oder als <strong>Notebook</strong> an. Im Research-Modus recherchiert die KI im
+          Fenster, der Server erzwingt Provenienz, du signierst — und übergibst ein Dossier an Easy Writing. Im
+          Notebook-Modus fragst du den Agenten zu PDFs und YouTube und speicherst Antworten als bearbeitbare Markdown-Notizen.
         </Lead>
         <P>
           Deep-Research-Werkzeuge liefern oft Berichte mit Fußnoten, deren faktische Deckung schwankt. Hier ist jede Quelle
           ein Artefakt: Begründung, Extraktion, wörtlicher Beleg, Status. Ein Eintrag der KI ist nie Wahrheit, sondern eine{' '}
           <em>zu verifizierende Behauptung</em>.
         </P>
-        <H>Zwei Lieferformen, ein Korpus</H>
+        <H>Research — zwei Lieferformen, ein Korpus</H>
         <Ul>
           <li>
             <strong>Blogs / Kundenstücke:</strong> Blickwinkel und Frame. Wertvoll ist, was du behaupten darfst — nicht der
@@ -67,6 +68,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         </Ul>
         <P>
           Hochgeladene PDFs sind Seed-Quellen im selben Korpus. Sie bleiben im Projekt, unabhängig vom Chat.
+        </P>
+        <H>Notebook</H>
+        <P>
+          PDFs und YouTube-Links (nur mit Untertiteln) ablegen, im Chat fragen, die Antwort als Notiz speichern und die
+          Notiz in der Mitte als Tab öffnen — Markdown, von dir editierbar. HTML-Folien legt der Agent unter artifacts/ ab.
+          Ohne Offsets ist eine Notiz ein Entwurf; wörtliche Belege schneidet der Server.
         </P>
       </>
     ),
@@ -100,12 +107,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             <strong>benanntes Modell</strong> wählen — nicht Auto, sonst feuern Such-Hooks oft nicht.
           </li>
           <li>
-            Projekt anlegen (Titel, Forschungsfrage, Modus akademisch oder Business). PDFs kannst du sofort in den Korpus
-            legen — das braucht keinen Brief.
+            Projekt anlegen: zuerst <strong>Research</strong> oder <strong>Notebook</strong>. Bei Research Titel,
+            Forschungsfrage, Modus akademisch oder Business. PDFs kannst du in beiden Arten sofort in den Korpus legen.
           </li>
           <li>
-            Im Agent-Chat den <strong>Research-Brief</strong> erarbeiten. Du bestätigst; erst die Adoption macht den Plan
-            verbindlich. Ohne adoptierten Brief lehnen Suche und Netzabruf ab.
+            <strong>Research:</strong> Im Agent-Chat den Research-Brief erarbeiten. Du bestätigst; erst die Adoption macht
+            den Plan verbindlich. Ohne adoptierten Brief lehnen Suche und Netzabruf ab.
           </li>
           <li>
             Erst danach suchen: zuerst den Korpus, dann Literaturregister und WebSearch gegen den Plan. Nach jeder
@@ -126,8 +133,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
         </Ol>
         <Note>
-          Starter im leeren Chat: <strong>Research starten</strong>, <strong>Zusammenfassen</strong>,{' '}
-          <strong>Karte aufbereiten</strong>. Sie schicken eine vorformulierte Anweisung an den Agenten.
+          Starter im leeren Research-Chat: <strong>Research starten</strong>, <strong>Zusammenfassen</strong>,{' '}
+          <strong>Karte aufbereiten</strong>. Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
+          <strong>Als HTML aufbereiten</strong>. Chat-Antworten kannst du als Notiz speichern und in der Mitte bearbeiten.
         </Note>
       </>
     ),
@@ -147,10 +155,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             Zwischenablage) und <strong>Export</strong> (Dialog).
           </li>
           <li>
-            <strong>Links im Projekt:</strong> Agent-Chat (Live-Research).
+            <strong>Links im Projekt (Research):</strong> Agent-Chat. <strong>Notebook:</strong> Quellen, Notizen,
+            Artefakte; Chat und Notiz-Editor in der Mitte als Tabs.
           </li>
           <li>
-            <strong>Rechts:</strong> Tabs Übersicht, Korpus, Quellen, Aussagen, Karte, Berichte, Protokoll, Audit.
+            <strong>Rechts (nur Research):</strong> Tabs Übersicht, Korpus, Quellen, Aussagen, Karte, Berichte, Protokoll,
+            Audit.
           </li>
           <li>
             <strong>Menüleiste (macOS):</strong> Unter dem App-Namen und unter <strong>Manual</strong> öffnet „Manual“ dieses
@@ -167,14 +177,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       <>
         <H>Anlegen</H>
         <P>
-          Plus-Button in der Leiste. Titel (mindestens drei Zeichen), optionale Forschungsfrage, Modus{' '}
-          <strong>Akademisch</strong> oder <strong>Business / Marketing</strong>. Der Modus steuert die Erwartung an Zitate
-          und Frame, nicht die Werkzeuge.
+          Plus-Button in der Leiste. Zuerst <strong>Research</strong> oder <strong>Notebook</strong>. Titel (mindestens drei
+          Zeichen). Nur Research: Forschungsfrage und Modus <strong>Akademisch</strong> oder{' '}
+          <strong>Business / Marketing</strong>. Der Modus steuert die Erwartung an Zitate und Frame, nicht die Werkzeuge.
         </P>
         <H>Kennzahlen in der Liste</H>
         <P>
-          Jede Zeile zeigt Quellenanzahl, wie viele du bereits freigegeben hast, und den Modus. Eine Zahl in Amber sind
-          offene Reviews (pending).
+          Research-Zeilen zeigen Quellenanzahl, Freigaben und den Modus. Notebook-Zeilen zeigen Notizen und Belege. Eine
+          Zahl in Amber sind offene Reviews (pending) im Research-Modus.
         </P>
         <H>Löschen</H>
         <P>

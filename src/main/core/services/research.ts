@@ -190,6 +190,7 @@ function assertProject(repo: Repo, projectId: string): void {
  * Kein Env-Bypass: der Test muss rot werden, wenn diese Prüfung entfernt wird.
  */
 export function requireAdoptedBrief(repo: Repo, projectId: string): void {
+  if (repo.getProject(projectId)?.kind === 'notebook') return
   if (!repo.getAdoptedBrief(projectId)) {
     throw new ServiceError(
       'brief_required',
@@ -210,6 +211,7 @@ const REFLECT_HINT =
   'get_coverage_gaps ist nur eine Zählung, kein Auftrag zu suchen.'
 
 export function requireSearchReflection(repo: Repo, projectId: string): void {
+  if (repo.getProject(projectId)?.kind === 'notebook') return
   const pending = listPendingDiscoverySearches(repo, projectId)
   if (pending.length === 0) return
   const queries = [...new Set(pending.map((p) => p.query))]
@@ -238,6 +240,9 @@ export function evaluateSearchGate(
     projectId = resolveIngestProjectId(repo, explicitProjectId)
   } catch {
     return { allowed: true, project_id: null, pending_queries: [] }
+  }
+  if (repo.getProject(projectId)?.kind === 'notebook') {
+    return { allowed: true, project_id: projectId, pending_queries: [] }
   }
   const pending = listPendingDiscoverySearches(repo, projectId)
   if (pending.length === 0) return { allowed: true, project_id: projectId, pending_queries: [] }

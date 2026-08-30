@@ -13,6 +13,19 @@ import { formatUsageLine, mergeStreamText, shortToolName } from '../../../shared
 import { Badge, Button, Icon } from '../components/ui'
 import { ModelPicker, useCursorAccount } from '../components/CursorSettings'
 
+const NOTEBOOK_STARTERS = [
+  {
+    id: 'ask',
+    label: 'Quellen zusammenfassen',
+    text: 'Lies den Korpus mit list_corpus und search_documents. Fasse zusammen, was in den Quellen steht. Keine Fakten aus dem Gedächtnis. Biete danach an, die Zusammenfassung als Notiz mit Offsets zu speichern.',
+  },
+  {
+    id: 'slides',
+    label: 'Als HTML aufbereiten',
+    text: 'Erstelle aus den Quellen eine kurze HTML-Präsentation unter artifacts/slides.html. Eigenständig, kein CDN. Zitate nur aus read_document mit Offsets in einer Notiz daneben.',
+  },
+] as const
+
 const STARTERS = [
   {
     id: 'start',
@@ -167,10 +180,14 @@ export default function AgentChat({
   projectId,
   onRunEnd,
   onCorpusChange,
+  variant = 'research',
+  onSaveNote,
 }: {
   projectId: string
   onRunEnd: () => void
   onCorpusChange?: () => void
+  variant?: 'research' | 'notebook'
+  onSaveNote?: (text: string) => void
 }) {
   const { auth, models, settings, saveSettings, loginBrowser } = useCursorAccount()
   const [events, setEvents] = useState<AgentChatEvent[]>([])
@@ -308,6 +325,13 @@ export default function AgentChat({
   }, [mentionQuery, projectId])
 
   const items = useMemo(() => reduceEvents(events), [events])
+  const lastAssistantIdx = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]
+      if (it?.kind === 'assistant' && it.text) return i
+    }
+    return -1
+  }, [items])
   const runningTool = [...items].reverse().find((i) => i.kind === 'tool' && i.status === 'running')
   const hasAssistantText = items.some((i) => i.kind === 'assistant' && i.text)
   const stalling = running && quietSec >= STALL_AFTER_SEC
@@ -448,8 +472,8 @@ export default function AgentChat({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 text-sm text-muted">
           <p className="mb-3">
             {expired
-              ? 'Die Cursor-Anmeldung ist abgelaufen. Bitte erneut anmelden, damit der Research-Agent weiterlaufen kann.'
-              : 'Melde dich mit deinem Cursor-Konto an — der Browser öffnet cursor.com. Danach läuft die Research hier im Fenster, ohne zweite IDE.'}
+              ? 'Die Cursor-Anmeldung ist abgelaufen. Bitte erneut anmelden, damit der Agent weiterlaufen kann.'
+              : 'Melde dich mit deinem Cursor-Konto an — der Browser öffnet cursor.com. Danach läuft der Agent hier im Fenster, ohne zweite IDE.'}
           </p>
           <Button variant="primary" icon="login" onClick={() => void loginBrowser()}>
             Mit Cursor anmelden
@@ -462,11 +486,12 @@ export default function AgentChat({
             {items.length === 0 && (
               <div className="px-2 py-8 text-sm text-muted">
                 <p className="mb-3">
-                  Chat mit dem Research-Agenten. Er schreibt nur über die Provenienz-Werkzeuge; Sign-off bleibt rechts bei dir.
-                  Mit <span className="text-fg">@</span> hängst du Quellen, Inbox-Dateien oder Teilfragen an.
+                  {variant === 'notebook'
+                    ? 'Frag den Agenten zu den Quellen links. Antworten kannst du als bearbeitbare Markdown-Notiz speichern. Mit @ hängst du Dateien an.'
+                    : 'Chat mit dem Research-Agenten. Er schreibt nur über die Provenienz-Werkzeuge; Sign-off bleibt rechts bei dir. Mit @ hängst du Quellen, Inbox-Dateien oder Teilfragen an.'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {STARTERS.map((s) => (
+                  {(variant === 'notebook' ? NOTEBOOK_STARTERS : STARTERS).map((s) => (
                     <Button key={s.id} onClick={() => void send(s.text)}>
                       {s.label}
                     </Button>
@@ -476,7 +501,17 @@ export default function AgentChat({
             )}
             <div className="space-y-2">
               {items.map((item, i) => (
-                <ChatBubble key={`${sessions.activeId ?? 'chat'}:${i}`} item={item} busy={running && i === items.length - 1} elapsedSec={elapsedSec} />
+                <ChatBubble
+                  key={`${sessions.activeId ?? 'chat'}:${i}`}
+                  item={item}
+                  busy={running && i === items.length - 1}
+                  elapsedSec={elapsedSec}
+                  onSaveNote={
+                    variant === 'notebook' && !running && i === lastAssistantIdx && item.kind === 'assistant' && onSaveNote
+                      ? () => onSaveNote(item.text)
+                      : undefined
+                  }
+                />
               ))}
               {running && !hasAssistantText && (
                 <p className="text-xs text-muted">
@@ -535,7 +570,13 @@ export default function AgentChat({
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onComposerKey}
               rows={3}
-              placeholder={signedIn ? 'Nachricht an den Research-Agenten…  @ für Quellen' : 'Zuerst mit Cursor anmelden'}
+              placeholder={
+                signedIn
+                  ? variant === 'notebook'
+                    ? 'Frage zu den Quellen…  @ für Dateien'
+                    : 'Nachricht an den Research-Agenten…  @ für Quellen'
+                  : 'Zuerst mit Cursor anmelden'
+              }
               disabled={!signedIn || running}
               className="field min-h-[4.5rem] w-full resize-none text-sm leading-relaxed"
             />
@@ -658,7 +699,17 @@ function HistoryRow({
   )
 }
 
-function ChatBubble({ item, busy, elapsedSec }: { item: ChatItem; busy: boolean; elapsedSec: number }) {
+function ChatBubble({
+  item,
+  busy,
+  elapsedSec,
+  onSaveNote,
+}: {
+  item: ChatItem
+  busy: boolean
+  elapsedSec: number
+  onSaveNote?: () => void
+}) {
   switch (item.kind) {
     case 'user':
       return (
@@ -670,6 +721,13 @@ function ChatBubble({ item, busy, elapsedSec }: { item: ChatItem; busy: boolean;
       return item.text ? (
         <div className="mr-6 border border-line px-3 py-2 text-sm">
           <ChatMarkdown text={item.text} />
+          {onSaveNote && (
+            <div className="mt-2">
+              <Button variant="ghost" onClick={onSaveNote}>
+                Als Notiz speichern
+              </Button>
+            </div>
+          )}
         </div>
       ) : null
     case 'thinking':
