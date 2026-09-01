@@ -169,7 +169,7 @@ Dieselbe App muss laufen, sonst ist Port 8790 tot. Config: `.cursor/mcp.json`.
 
 Kein `"type"`-Feld. **Agent-Modus**, nicht Chat. Allowlist: `.cursor/permissions.json`. Arbeitsvertrag Research: [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc). Der WebSearch-Hook fragt `GET /ingest/search-gate`; ist die App tot, darf die Suche durch (Fail-open).
 
-Die MCP-Server-ID bleibt `research-overview`, damit bestehende Cursor-Configs weiterlaufen. Die lokale Datenbank liegt weiter unter Application Support `research-overview-platform`.
+Die MCP-Server-ID bleibt `research-overview`, damit bestehende Cursor-Configs weiterlaufen. Datenbank und Agent-Workspaces liegen unter Application Support / APPDATA `apropos`.
 
 stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen dieselbe SQLite (WAL).
 

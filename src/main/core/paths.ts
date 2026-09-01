@@ -1,5 +1,6 @@
 import { homedir } from 'os'
 import { join } from 'path'
+import { APP_DATA_DIR_NAME } from '../../shared/brand'
 
 /** Gemeinsames User-Data-Verzeichnis der App (DB, Agent-Workspaces, Settings). */
 export function appDataDir(): string {
@@ -10,8 +11,7 @@ export function appDataDir(): string {
       : process.platform === 'win32'
         ? (process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'))
         : (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
-  // Historischer Ordnername — nicht umbenennen, sonst liegt die lokale DB unsichtbar daneben.
-  return join(base, 'research-overview-platform')
+  return join(base, APP_DATA_DIR_NAME)
 }
 
 /**
