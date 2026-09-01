@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProjectSummary } from '../../shared/types'
+import { APP_NAME } from '../../shared/brand'
 import { Button, Icon } from './components/ui'
 import ProjectView from './views/ProjectView'
 import SettingsView from './views/SettingsView'
@@ -65,7 +66,7 @@ export default function App() {
     <div className="flex h-full bg-bg text-fg">
       <aside className="flex w-64 shrink-0 flex-col border-r border-line">
         <div className="border-b border-hairline px-4 py-3">
-          <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted">Research Overview</div>
+          <div className="font-mono text-[13px] tracking-[0.04em] text-fg">{APP_NAME}</div>
           <div className="text-sm">Transparente KI-Research</div>
         </div>
 

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import { join } from 'path'
+import { APP_NAME } from '../shared/brand'
 import { openDb } from './core/db'
 import { Repo } from './core/repo'
 import { defaultDbPath, DEFAULT_MCP_PORT } from './core/paths'
@@ -23,7 +24,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 1000,
     minHeight: 640,
-    title: 'Research Overview Platform',
+    title: APP_NAME,
     backgroundColor: '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -72,7 +73,7 @@ app.whenReady().then(async () => {
 
   registerIpc({ repo, dbPath, mcp: () => mcpServer, agent: host })
 
-  if (process.platform === 'darwin') app.setName('Research Overview')
+  if (process.platform === 'darwin') app.setName(APP_NAME)
   Menu.setApplicationMenu(buildAppMenu())
   createWindow()
   app.on('activate', () => {

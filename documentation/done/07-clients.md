@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 07 — KI-Clients anbinden |
 | **Stand** | 2026-08-19 · v1.1 |
 | **Grundlage** | Quellcode-Prüfung von 20 Clients (2026-07-30), Cursor-Onboarding 2026-08-19 |
@@ -41,7 +41,7 @@ Cursor spricht Streamable HTTP nativ. WebSearch darf entdecken (Hook → `POST /
 
 ### Einrichten
 
-1. Research Overview Platform starten (`npm start`), bis der Endpoint in den Einstellungen „läuft“ zeigt.
+1. apROPos starten (`npm start`), bis der Endpoint in den Einstellungen „läuft“ zeigt.
 2. MCP eintragen — im Repo liegt bereits [`.cursor/mcp.json`](../.cursor/mcp.json). Global: `~/.cursor/mcp.json`.
 
 ```json

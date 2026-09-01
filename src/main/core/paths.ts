@@ -10,6 +10,7 @@ export function appDataDir(): string {
       : process.platform === 'win32'
         ? (process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'))
         : (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
+  // Historischer Ordnername — nicht umbenennen, sonst liegt die lokale DB unsichtbar daneben.
   return join(base, 'research-overview-platform')
 }
 

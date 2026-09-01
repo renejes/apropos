@@ -19,7 +19,7 @@ import { ServiceError, requireAdoptedBrief, requireSearchReflection } from './re
  * Kontakt-Mail mitgeschickt wird. Konfigurierbar über ROP_CONTACT_EMAIL.
  */
 
-const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'research-overview-platform@localhost'
+const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'apropos@localhost'
 const UA = `ResearchOverviewPlatform/0.1 (+mailto:${CONTACT})`
 const TIMEOUT_MS = 12_000
 

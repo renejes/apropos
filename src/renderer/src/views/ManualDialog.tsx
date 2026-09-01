@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { APP_NAME } from '../../../shared/brand'
 import { Button } from '../components/ui'
 import { MANUAL_SECTIONS } from '../manual/sections'
 
@@ -37,7 +38,7 @@ export default function ManualDialog({ onClose }: { onClose: () => void }) {
             <div id={titleId} className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
               Manual
             </div>
-            <p className="mt-0.5 text-sm">Research Overview</p>
+            <p className="mt-0.5 text-sm">{APP_NAME}</p>
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto py-2">
             {MANUAL_SECTIONS.map((section) => (

@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 02 — Projekt-Status |
 | **Stand** | 2026-08-30 · v4.0 |
 | **Phase** | Research und Notebook gebaut · echter Modell-Lauf (Research) ausstehend |

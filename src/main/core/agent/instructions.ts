@@ -1,11 +1,12 @@
 import type { AgentMention } from '../../../shared/agent'
+import { APP_NAME } from '../../../shared/brand'
 
 export function sessionPreamble(input: {
   projectId: string
   title: string
   researchQuestion: string
 }): string {
-  return `Du bist der Research-Agent in der Desktop-App „Research Overview". Du arbeitest AUSSCHLIESSLICH über die Research-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
+  return `Du bist der Research-Agent in der Desktop-App „${APP_NAME}". Du arbeitest AUSSCHLIESSLICH über die Research-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
 
 Aktives Projekt:
 - project_id: ${input.projectId}
@@ -27,7 +28,7 @@ Beginne mit get_research_brief. Ist keiner adoptiert, frage nach — suche nicht
 }
 
 export function notebookPreamble(input: { projectId: string; title: string }): string {
-  return `Du bist der Notebook-Agent in der Desktop-App „Research Overview". Du arbeitest AUSSCHLIESSLICH über die Notebook-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
+  return `Du bist der Notebook-Agent in der Desktop-App „${APP_NAME}". Du arbeitest AUSSCHLIESSLICH über die Notebook-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
 
 Aktives Notebook:
 - project_id: ${input.projectId}

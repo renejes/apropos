@@ -45,7 +45,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     body: (
       <>
         <Lead>
-          Research Overview ist eine local-first Desktop-App. Du legst ein Projekt als{' '}
+          apROPos ist eine local-first Desktop-App. Du legst ein Projekt als{' '}
           <strong>Research</strong> oder als <strong>Notebook</strong> an. Im Research-Modus recherchiert die KI im
           Fenster, der Server erzwingt Provenienz, du signierst — und übergibst ein Dossier an Easy Writing. Im
           Notebook-Modus fragst du den Agenten zu PDFs und YouTube und speicherst Antworten als bearbeitbare Markdown-Notizen.
@@ -521,7 +521,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     body: (
       <>
         <Lead>
-          Research Overview recherchiert und prüft. Easy Writing schreibt. Penwright setzt. Drei Apps, eine klare Grenze:
+          apROPos recherchiert und prüft. Easy Writing schreibt. Penwright setzt. Drei Apps, eine klare Grenze:
           Satz und Zitierstil entstehen nicht in der Research-Datenbank.
         </Lead>
         <H>Warum getrennt</H>

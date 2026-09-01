@@ -1,6 +1,8 @@
-# Research Overview Platform
+# apROPos
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+**apROPos** — apropos Quellen. Research und Notebook, **ROP** in der Mitte.
 
 **Local-first Desktop-App: KI-Research, die du prüfen kannst — und ein Notebook über deine Quellen, dessen Notizen du selbst editierst.**
 
@@ -40,7 +42,7 @@ Nach der Research geht es so weiter:
 
 ```mermaid
 flowchart LR
-    R[Research Overview] -->|Easy Writing<br/>research.mdx · .bib · Karte| E[Easy Writing]
+    R[apROPos] -->|Easy Writing<br/>research.mdx · .bib · Karte| E[Easy Writing]
     E -->|MDX-Export<br/>ohne research.mdx| P[Penwright]
 ```
 
@@ -138,8 +140,8 @@ Die Oberfläche ist Familie zu Easy Writing: weiße Fläche, schwarze Linie, Inv
 Voraussetzungen: Node.js 20+, npm, ein [Cursor](https://cursor.com)-Konto (für den Agent-Chat).
 
 ```bash
-git clone https://github.com/renejes/research-overview-platform.git
-cd research-overview-platform
+git clone https://github.com/renejes/apropos.git
+cd apropos
 npm install
 
 npm test          # Unit-Tests (Node-ABI)
@@ -166,6 +168,8 @@ Dieselbe App muss laufen, sonst ist Port 8790 tot. Config: `.cursor/mcp.json`.
 ```
 
 Kein `"type"`-Feld. **Agent-Modus**, nicht Chat. Allowlist: `.cursor/permissions.json`. Arbeitsvertrag Research: [`.cursor/rules/transparent-research.mdc`](.cursor/rules/transparent-research.mdc). Der WebSearch-Hook fragt `GET /ingest/search-gate`; ist die App tot, darf die Suche durch (Fail-open).
+
+Die MCP-Server-ID bleibt `research-overview`, damit bestehende Cursor-Configs weiterlaufen. Die lokale Datenbank liegt weiter unter Application Support `research-overview-platform`.
 
 stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen dieselbe SQLite (WAL).
 
@@ -236,7 +240,7 @@ npm run smoke
 
 | App | Rolle | Lizenz |
 |---|---|---|
-| **Research Overview** (diese) | Research + Notebook, Provenienz, Sign-off, Schreibpaket | GPL-3.0-or-later |
+| **[apROPos](https://github.com/renejes/apropos)** (diese) | Research + Notebook, Provenienz, Sign-off, Schreibpaket | GPL-3.0-or-later |
 | **[Easy Writing](https://github.com/renejes/easy-writing)** | Schreiben in Markdown/MDX, Zitate, Fußnoten, Export | MIT |
 | **[Penwright](https://github.com/renejes/penwright)** | Setzen und Design in Typst, Live-Preview, Print-PDF | [PolyForm Strict](https://github.com/renejes/penwright#license) |
 

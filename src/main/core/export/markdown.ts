@@ -1,4 +1,5 @@
 import type { ProjectState, ReportVersion, Source } from '../../../shared/types'
+import { APP_NAME } from '../../../shared/brand'
 import { citeMarker, rewriteCiteMarkers } from '../services/biblio'
 import { groupSearchWaves, nextActionLabel } from '../../../shared/search-waves'
 
@@ -219,7 +220,7 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
   lines.push('')
   lines.push('---')
   lines.push(
-    '_Erzeugt von Research Overview Platform. Die zugrunde liegende SQLite-Datenbank enthält den vollständigen append-only Audit-Trail (`event_log`)._'
+    `_Erzeugt von ${APP_NAME}. Die zugrunde liegende SQLite-Datenbank enthält den vollständigen append-only Audit-Trail (\`event_log\`)._`
   )
   return lines.join('\n')
 }

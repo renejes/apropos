@@ -6,7 +6,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 06 — Eigene Research-Engine |
 | **Stand** | 2026-07-26 · v1.0 |
 | **Phase** | Entscheidungsvorlage (revidiert die Strategie-Festlegung vom 2026-07-25) |

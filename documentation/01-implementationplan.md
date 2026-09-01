@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 01 — Implementation-Plan |
 | **Stand** | 2026-08-30 · v2.3 |
 | **Phase** | A, B, E–H, **I (Notebook)** gebaut · C offen · empirischer Test ausstehend → [03](03-next-steps.md) |

@@ -1,6 +1,6 @@
 ---
 name: transparent-research
-description: Führt Deep Research mit erzwungener Live-Provenienz über die Research Overview Platform (MCP) durch. Nutzen, wann immer der Nutzer eine Recherche/Research/Quellenarbeit anfragt und der MCP-Server "research-overview" verbunden ist — jede gelesene Quelle wird IM MOMENT DES LESENS dokumentiert, jede Suche protokolliert, jeder Ausschluss begründet.
+description: Führt Deep Research mit erzwungener Live-Provenienz über apROPos (MCP) durch. Nutzen, wann immer der Nutzer eine Recherche/Research/Quellenarbeit anfragt und der MCP-Server "research-overview" verbunden ist — jede gelesene Quelle wird IM MOMENT DES LESENS dokumentiert, jede Suche protokolliert, jeder Ausschluss begründet.
 ---
 
 # Transparente Research (Live-Provenienz)

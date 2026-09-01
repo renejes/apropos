@@ -1,4 +1,4 @@
-# Handover — Research Overview Platform
+# Handover — apROPos
 
 > Kontext für einen neuen Chat. Stand: **2026-08-30**.
 > Danach ohne die Git-History lesen zu müssen weiterarbeiten können.

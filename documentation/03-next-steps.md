@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 03 — Next Steps |
 | **Stand** | 2026-08-30 · v3.1 |
 | **Phase** | Empirische Tests (Research) · Notebook gegen Unit-Tests grün |

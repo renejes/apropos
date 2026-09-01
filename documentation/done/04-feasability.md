@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 04 — Feasibility |
 | **Stand** | 2026-07-24 · v1.0 |
 | **Phase** | Konzept / Pre-Prototype (Greenfield) |

@@ -8,7 +8,7 @@ import { ServiceError } from './research'
  * nie aus [S3] abgeleitet. Metadaten kommen aus Crossref/OpenAlex, nicht vom Modell.
  */
 
-const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'research-overview-platform@localhost'
+const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'apropos@localhost'
 const UA = `ResearchOverviewPlatform/0.1 (+mailto:${CONTACT})`
 const TIMEOUT_MS = 8_000
 

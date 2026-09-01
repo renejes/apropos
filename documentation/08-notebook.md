@@ -4,7 +4,7 @@
 
 |  |  |
 |---|---|
-| **Projekt** | Research Overview Platform |
+| **Projekt** | apROPos |
 | **Dokument** | 08 — Notebook-Modus |
 | **Stand** | 2026-08-30 |
 | **Schema** | v14 (`projects.kind`, Tabelle `notes`) |

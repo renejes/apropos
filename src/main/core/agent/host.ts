@@ -25,6 +25,7 @@ import type {
   AgentSessionsSnapshot,
   AgentSettings,
 } from '../../../shared/agent'
+import { APP_NAME } from '../../../shared/brand'
 import {
   UNTITLED_CHAT,
   activateSession,
@@ -290,7 +291,7 @@ export class CursorAgentHost {
         openBrowser: (url) => openUrl(url),
         onLoginUrl,
         signal: ac.signal,
-        apiKeyName: 'Research Overview Platform',
+        apiKeyName: APP_NAME,
       })
       this.modelsCache = null
       return this.authStatus()
