@@ -25,6 +25,10 @@ Du maximierst nicht die Trefferzahl. Du findest **passende** Belege für EINEN g
 
 Genug = der Plan ist bedient, nicht das Internet. \`get_coverage_gaps\` ist die Arbeitsliste.
 
+## YOLO
+
+Steht in der Nutzernachricht „YOLO ist AN“: Schritte 2–4 bleiben (Intake, Entwurf, Bestätigung). Sobald der Brief **adoptiert** ist, keine Klärungsfragen mehr — weiter bei Schritt 5 bis Stopp-Regel oder Coverage. Nicht fragen, ob weitergesucht werden soll. Offsets, \`reflect_search\` und Sign-off bleiben.
+
 ## Nie
 
 - Beim ersten „Research starten“ sofort suchen.

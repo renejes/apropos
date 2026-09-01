@@ -75,11 +75,11 @@ export function ModelPicker({
       else if (p.id === 'fast' && allowed.includes('false')) paramValues[p.id] = 'false'
       else if (p.values[0]) paramValues[p.id] = p.values[0].value
     }
-    onChange({ modelId: id, paramValues })
+    onChange({ ...settings, modelId: id, paramValues })
   }
 
   const setParam = (id: string, value: string) => {
-    onChange({ modelId, paramValues: { ...settings.paramValues, [id]: value } })
+    onChange({ ...settings, modelId, paramValues: { ...settings.paramValues, [id]: value } })
   }
 
   return (
@@ -236,6 +236,21 @@ export default function CursorSettings() {
         <div>
           <SectionTitle>Modell und Modus</SectionTitle>
           <ModelPicker models={models} settings={settings} onChange={(next) => void saveSettings(next)} />
+          <label className="mt-4 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={settings.yolo}
+              onChange={(e) => void saveSettings({ ...settings, yolo: e.target.checked })}
+            />
+            <span>
+              <span className="text-fg">YOLO — nach dem Briefing ohne Nachfragen</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Research: erst das Briefing (Nachfragen, Bestätigung), danach Suche ohne weitere Rückfragen. Notebook: Notizen
+                nur über den Button unter der Antwort. Offsets, Such-Lage und Sign-off bleiben. Gilt für alle Projekte.
+              </span>
+            </span>
+          </label>
           {models.length === 0 && auth?.signedIn && (
             <p className="mt-2 text-xs text-muted">Modellliste leer — Anmeldung prüfen oder neu laden.</p>
           )}

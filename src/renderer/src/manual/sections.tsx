@@ -135,7 +135,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         <Note>
           Starter im leeren Research-Chat: <strong>Research starten</strong>, <strong>Zusammenfassen</strong>,{' '}
           <strong>Karte aufbereiten</strong>. Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
-          <strong>Als HTML aufbereiten</strong>. Chat-Antworten kannst du als Notiz speichern und in der Mitte bearbeiten.
+          <strong>Als HTML aufbereiten</strong>. Unter jeder Agenten-Antwort liegt <strong>Als Notiz speichern</strong> —
+          dann öffnet sich die Notiz in der Mitte zum Bearbeiten.
         </Note>
       </>
     ),
@@ -227,6 +228,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             <strong>Plan</strong> — erst nachdenken, weniger unmittelbare Tool-Aufrufe.
+          </li>
+          <li>
+            <strong>YOLO</strong> — nach dem Briefing ohne Nachfragen. Research: Intake und Bestätigung bleiben; sobald der
+            Brief steht, sucht der Agent ohne „soll ich weitermachen?“. Notebook: antworten; speichern nur über{' '}
+            <strong>Als Notiz speichern</strong> unter der Antwort. Offsets, Such-Lage und Sign-off bleiben. Schalter im
+            Composer-Menü und unter Einstellungen.
           </li>
           <li>Modell und Parameter (z. B. Fast) im selben Menü. Fast bleibt standardmäßig aus.</li>
           <li>
@@ -588,7 +595,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       <>
         <H>Cursor</H>
         <P>
-          Anmelden, abmelden, Modell wählen. Dasselbe Konto wie in der IDE. Der Alltagsweg braucht kein zweites Fenster.
+          Anmelden, abmelden, Modell wählen, YOLO ein- oder ausschalten. Dasselbe Konto wie in der IDE. Der Alltagsweg braucht
+          kein zweites Fenster.
         </P>
         <H>MCP-HTTP</H>
         <P>

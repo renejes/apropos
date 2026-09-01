@@ -94,6 +94,7 @@ documentation/08-notebook.md
 | Notebook-Agent sieht Research-Tools | Filter in `spawnAgent`, nicht den Bridge-Cache nach kind splitten |
 | YouTube leer | Keine Captions → Fehler, nicht speichern |
 | HTML-Preview unsicher | iframe ohne `allow-same-origin` |
+| YOLO zu locker | Briefing bleibt; YOLO erst nach Adoption. Notizen nur per Button |
 
 ```bash
 npm run typecheck

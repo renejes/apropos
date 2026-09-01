@@ -49,7 +49,7 @@ Typecheck und Unit-Tests sind grün. Smoke (`npm run smoke`) prüft den MCP-HTTP
 ## Alltagsweg — Research
 
 1. App starten (`npm start`). Einstellungen: Cursor anmelden (Systembrowser). **Benanntes Modell**, nicht Auto.
-2. Projekt anlegen → **Research**. PDFs sofort in den Korpus (kein Brief). Im Chat den Brief erarbeiten; nach Bestätigung `adopt_research_brief`.
+2. Projekt anlegen → **Research**. PDFs sofort in den Korpus (kein Brief). Im Chat den Brief erarbeiten; nach Bestätigung `adopt_research_brief`. **YOLO** (Composer-Menü): Briefing bleibt, danach Suche ohne Nachfragen — Offsets und Sign-off bleiben.
 3. Suche erst danach: Korpus, dann Literatur + WebSearch gegen den Plan. Nach jeder Welle `reflect_search`, **bevor** erneut gesucht wird.
 4. Berichtstext: `fetch_source` / `read_document` → `add_source` mit Offsets.
 5. Rechts: Übersicht, Korpus, Quellen (Sign-off), Aussagen, Karte, Berichte.
@@ -63,7 +63,7 @@ Fremdclients docken per **MCP-HTTP** `127.0.0.1:8790/mcp` an dieselbe SQLite. De
 
 1. Projekt anlegen → **Notebook**.
 2. PDFs ablegen und/oder YouTube-Links (nur Videos **mit Untertiteln** — sonst klarer Fehler).
-3. Im Chat fragen. Antwort als Notiz speichern oder der Agent ruft `save_note` mit Offsets.
+3. Im Chat fragen. Unter der Antwort **Als Notiz speichern** — dann in der Mitte bearbeiten. Der Agent speichert nicht von selbst.
 4. Notiz in der Mitte öffnen und Markdown editieren. Folien/Tabellen: Agent schreibt nach `artifacts/`, Vorschau im iframe.
 
 Ausführlich: [08](08-notebook.md).

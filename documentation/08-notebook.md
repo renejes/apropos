@@ -41,7 +41,7 @@ Projekte         │  Quellen (PDF, YouTube)      │  [Chat] [Notiz …] [HTML-
 ```
 
 - Quellen: Upload/Drop wie im Korpus-Tab; YouTube-URL → Transkript aus Untertiteln in `documents` (`origin: youtube`).
-- Chat: Cursor-SDK, Starter „Quellen zusammenfassen“ / „Als HTML aufbereiten“. Letzte Assistenten-Antwort: **Als Notiz speichern**.
+- Chat: Cursor-SDK, Starter „Quellen zusammenfassen“ / „Als HTML aufbereiten“. Unter **jeder** Assistenten-Antwort: **Als Notiz speichern**. Der Agent legt Notizen nicht von selbst an.
 - Notiz anklicken → Tab in der Mitte (wo sonst der Chat ist), Textarea, Speichern schreibt DB **und** `notes/<slug>-<id8>.md`.
 - Artefakte: der Agent schreibt HTML/Markdown/CSV nach `cwd/artifacts/`. Vorschau: iframe `sandbox="allow-scripts"` ohne `allow-same-origin` (kein zweites Slide-Framework).
 
@@ -69,7 +69,9 @@ Erfundene Offsets lehnt der Server ab (`citation_offset_invalid` / `citation_doc
 | `src/main/core/agent/notebook-tools.ts` | `toolsForKind` — Filter **pro Spawn**, nicht am ToolBridge-Cache |
 | `src/main/core/agent/notebook-skill.ts` | Skill-Text, geseedet nach `.cursor/skills/notebook-sources/` |
 | `src/main/core/agent/workspace.ts` | immer `inbox/`, `notes/`, `artifacts/`; beide Skills; optionales `.cursor/sandbox.json` (Netz deny) |
-| `src/main/core/agent/host.ts` | `send`: Preamble nach `kind`; `spawnAgent`: Tool-Filter + Name `research:` / `notebook:` |
+| `src/main/core/agent/host.ts` | `send`: Preamble nach `kind`; `spawnAgent`: Tool-Filter + Name `research:` / `notebook:`; YOLO-Direktive vor den Turn |
+
+YOLO (Composer-Menü / Einstellungen, `AgentSettings.yolo`): Research-Briefing bleibt (Intake, Bestätigung). Nach Adoption keine Nachfragen mehr während der Suche. Notebook: keine Auto-Notiz — Button unter der Antwort. **Nicht** betroffen: Offset-Schnitt, `reflect_search`, Sign-off.
 
 `ensureBridge()` listet **alle** MCP-Tools einmal. Research-Agent bekommt alles minus `save_note` / `list_notes` / `update_note` / `list_artifacts`. Notebook-Agent bekommt nur die Whitelist (Korpus, Lesen, Notizen, Inbox, `add_source`).
 

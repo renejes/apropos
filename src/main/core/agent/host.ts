@@ -37,7 +37,7 @@ import {
   type AgentSessionIndex,
 } from '../../../shared/agentSessions'
 import { mapSdkMessage } from './events'
-import { followUpPrefix, notebookPreamble, sessionPreamble } from './instructions'
+import { followUpPrefix, notebookPreamble, sessionPreamble, yoloDirective } from './instructions'
 import { toolsForKind } from './notebook-tools'
 import {
   apiKeySource,
@@ -330,13 +330,18 @@ export class CursorAgentHost {
 
   getSettings(): AgentSettings {
     const stored = loadAgentSettings()
-    return { modelId: stored.modelId, paramValues: stored.paramValues }
+    return { modelId: stored.modelId, paramValues: stored.paramValues, yolo: stored.yolo === true }
   }
 
   setSettings(next: AgentSettings): AgentSettings {
     const cur = loadAgentSettings()
     const modelId = next.modelId.trim() || cur.modelId
-    saveAgentSettings({ ...cur, modelId, paramValues: next.paramValues ?? {} })
+    saveAgentSettings({
+      ...cur,
+      modelId,
+      paramValues: next.paramValues ?? {},
+      yolo: typeof next.yolo === 'boolean' ? next.yolo : cur.yolo,
+    })
     return this.getSettings()
   }
 
@@ -498,6 +503,7 @@ export class CursorAgentHost {
     const attached = input.attached ?? []
     const mentions = input.mentions ?? []
     const mode = asMode(input.mode)
+    const yolo = input.yolo ?? this.getSettings().yolo
     const trimmed = input.text.trim()
     if (!trimmed && attached.length === 0 && mentions.length === 0) return { ok: false, error: 'Leere Nachricht.' }
     if (!(await this.hasAuth())) {
@@ -516,9 +522,15 @@ export class CursorAgentHost {
       this.touchActiveTitle(projectId, trimmed || attached[0] || mentions[0]?.label || '')
       session.running = true
       const notebook = project.kind === 'notebook'
+      const kind = notebook ? 'notebook' : 'research'
+      const briefAdopted = Boolean(this.repo.getAdoptedBrief(projectId))
+      const yoloBlock = yolo ? `${yoloDirective(kind, { briefAdopted })}\n\n` : ''
+      const preamble = notebook
+        ? notebookPreamble({ projectId, title: project.title })
+        : sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })
       const body = session.fresh
-        ? `${notebook ? notebookPreamble({ projectId, title: project.title }) : sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
-        : `${followUpPrefix(projectId, attached, mentions)}${trimmed}`
+        ? `${yoloBlock}${preamble}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
+        : `${yoloBlock}${followUpPrefix(projectId, attached, mentions)}${trimmed}`
       session.fresh = false
 
       const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))

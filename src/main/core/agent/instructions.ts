@@ -38,8 +38,8 @@ Im Workspace liegt der Skill notebook-sources (.cursor/skills/notebook-sources/S
 Arbeitsvertrag:
 1. Zuerst list_corpus / get_project_state. Ohne Quellen den Menschen bitten, PDFs hochzuladen oder YouTube-Links einzufügen.
 2. Fragen beantwortest du aus search_documents und read_document. Zitate nie abtippen — Offsets aus dem Fenster nehmen.
-3. Was behalten werden soll: save_note mit Titel, Markdown und citations (document_id + quote_start + quote_end). Der Server schneidet das Zitat. Ohne Offsets ist die Notiz ein Entwurf — sag das.
-4. Aufbereitung (Folien, Tabelle, One-Pager): HTML oder Markdown nach artifacts/ schreiben. list_artifacts prüft, was liegt. HTML muss eigenständig sein (kein CDN, kein Tracking).
+3. Speichere nicht von selbst. Unter jeder Antwort liegt der Button „Als Notiz speichern“ — das ist der Weg. save_note nur, wenn der Mensch ausdrücklich „speichere als Notiz“ schreibt.
+4. Aufbereitung (Folien, Tabelle, One-Pager) nur wenn ausdrücklich verlangt: HTML oder Markdown nach artifacts/. list_artifacts prüft, was liegt. HTML muss eigenständig sein (kein CDN, kein Tracking).
 5. add_source nur, wenn eine Stelle später als Beleg in einem Bericht landen soll.
 6. Kein Web-Suchen, kein Brief, keine Evidenzkarte, keine Teilfragen.
 
@@ -71,4 +71,31 @@ export function followUpPrefix(projectId: string, extraFiles: string[], mentions
       ? `\nNeu angehängt (inbox/): ${extraFiles.map((f) => `"${f}"`).join(', ')} — bei Bedarf ingest_local_file.`
       : ''
   return `[Projekt ${projectId}]${files}${mentionContext(mentions)}\n\n`
+}
+
+/**
+ * YOLO: nach dem Briefing nicht mehr nachfragen.
+ * Das Briefing selbst bleibt. Notizen speichert der Mensch per Button.
+ */
+export function yoloDirective(kind: 'research' | 'notebook', opts?: { briefAdopted?: boolean }): string {
+  switch (kind) {
+    case 'notebook':
+      return `YOLO ist AN. Beantworte die Frage aus dem Korpus, ohne Klärungsfragen und ohne Optionenlisten. Speichere NICHT von selbst (kein save_note, außer der Mensch schreibt ausdrücklich „speichere als Notiz“). Unter jeder Antwort liegt der Button „Als Notiz speichern“. Artefakte nur wenn ausdrücklich verlangt.`
+    case 'research': {
+      const lage = opts?.briefAdopted
+        ? 'Aktuell: Brief ist adoptiert — YOLO-Suche, keine Nachfragen mehr.'
+        : 'Aktuell: kein Brief adoptiert — zuerst das Briefing, dann auf Bestätigung warten.'
+      return `YOLO ist AN. Das ändert nicht das Briefing, nur die Suche danach.
+
+Ohne adoptierten Brief: Intake vollständig (Lieferform, Adressat, Ziel in einem Satz, 2–3 Frames, Einschluss/Ausschluss, Teilfragen, Stopp-Regel, Tabus). draft_research_brief. Den Plan zeigen. Auf ausdrückliche Bestätigung warten. Nicht selbst adoptieren, nicht suchen.
+
+Sobald der Brief adoptiert ist: keine Klärungsfragen mehr. Keine Optionenlisten, nicht fragen ob weitergesucht werden soll. plan_research und arbeiten bis Stopp-Regel oder Coverage. Entscheidungen aus dem Brief. Offsets und reflect_search bleiben. Sign-off nur der Mensch.
+
+${lage}`
+    }
+    default: {
+      const _never: never = kind
+      return _never
+    }
+  }
 }

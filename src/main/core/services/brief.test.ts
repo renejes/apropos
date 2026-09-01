@@ -119,6 +119,7 @@ describe('Research-Brief (Phase E)', () => {
     expect(skill).toMatch(/draft_research_brief/)
     expect(skill).toMatch(/reflect_search/)
     expect(skill).toMatch(/nicht suchen/i)
+    expect(skill).toMatch(/YOLO/)
   })
 
   it('dokumentiert die PSYNDEX-Lücke im Plan, wenn die Disziplin Psychologie ist', () => {

@@ -6,7 +6,7 @@ import type { AgentSettings } from '../../../shared/agent'
 const DEFAULT_MODEL = 'composer-2.5'
 
 export function defaultAgentSettings(): AgentSettings {
-  return { modelId: DEFAULT_MODEL, paramValues: { fast: 'false' } }
+  return { modelId: DEFAULT_MODEL, paramValues: { fast: 'false' }, yolo: false }
 }
 
 /** Nur Umgebung — kein gespeicherter Paste-Key. Das SDK liest denselben Wert selbst. */
@@ -30,6 +30,7 @@ export function loadAgentSettings(): StoredSettings {
     return {
       modelId: typeof raw.modelId === 'string' && raw.modelId ? raw.modelId : DEFAULT_MODEL,
       paramValues: raw.paramValues && typeof raw.paramValues === 'object' ? raw.paramValues : { fast: 'false' },
+      yolo: raw.yolo === true,
       agentIds: raw.agentIds && typeof raw.agentIds === 'object' ? raw.agentIds : {},
     }
   } catch {

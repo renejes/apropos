@@ -9,7 +9,7 @@ import { ServiceError, ingestLocalFile, listProjectInbox, linkClaim, planResearc
 import { adoptMinimalBrief } from '../services/brief'
 import { describeEvidenceMap } from '../services/visual'
 import { mapSdkMessage } from './events'
-import { sessionPreamble, followUpPrefix, mentionContext, notebookPreamble } from './instructions'
+import { sessionPreamble, followUpPrefix, mentionContext, notebookPreamble, yoloDirective } from './instructions'
 import { defaultAgentSettings, loadAgentSettings, normalizeParamValues, saveAgentSettings } from './settings'
 import { localInboxUrl, projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './workspace'
 
@@ -60,8 +60,9 @@ describe('Agent-Settings', () => {
     if (dataDir) rmSync(dataDir, { recursive: true, force: true })
   })
 
-  it('defaulted Fast auf aus', () => {
+  it('defaulted Fast auf aus und YOLO auf aus', () => {
     expect(defaultAgentSettings().paramValues.fast).toBe('false')
+    expect(defaultAgentSettings().yolo).toBe(false)
   })
 
   it('normalisiert Parameter: Fast bleibt false, Unbekanntes fällt auf den ersten Wert', () => {
@@ -79,11 +80,29 @@ describe('Agent-Settings', () => {
   it('behält gemerkte Agent-IDs beim Speichern der Modellwahl', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'rop-data-'))
     process.env.ROP_DATA_DIR = dataDir
-    saveAgentSettings({ modelId: 'composer-2.5', paramValues: { fast: 'false' }, agentIds: { p1: 'ag-1' } })
+    saveAgentSettings({ modelId: 'composer-2.5', paramValues: { fast: 'false' }, yolo: false, agentIds: { p1: 'ag-1' } })
     const cur = loadAgentSettings()
     saveAgentSettings({ ...cur, modelId: 'gpt-5' })
     expect(loadAgentSettings().agentIds?.p1).toBe('ag-1')
     expect(loadAgentSettings().modelId).toBe('gpt-5')
+  })
+
+  it('behält YOLO beim Speichern der Modellwahl', () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rop-data-'))
+    process.env.ROP_DATA_DIR = dataDir
+    saveAgentSettings({ modelId: 'composer-2.5', paramValues: { fast: 'false' }, yolo: true, agentIds: {} })
+    expect(loadAgentSettings().yolo).toBe(true)
+    const cur = loadAgentSettings()
+    saveAgentSettings({ ...cur, modelId: 'gpt-5' })
+    expect(loadAgentSettings().yolo).toBe(true)
+    expect(loadAgentSettings().modelId).toBe('gpt-5')
+  })
+
+  it('liest fehlendes YOLO-Feld als aus', () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rop-data-'))
+    process.env.ROP_DATA_DIR = dataDir
+    writeFileSync(join(dataDir, 'agent-settings.json'), JSON.stringify({ modelId: 'composer-2.5', paramValues: {} }), 'utf-8')
+    expect(loadAgentSettings().yolo).toBe(false)
   })
 })
 
@@ -238,13 +257,32 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
     expect(followUpPrefix('proj-1', ['note.txt'], [{ kind: 'source', id: 'src-1', label: 'smith2024' }])).toContain('@-Erwähnungen')
   })
 
-  it('Notebook-Preamble verlangt Korpus und Notizen, keinen Brief', () => {
+  it('Notebook-Preamble verlangt Korpus und den Speicher-Button, keinen Brief', () => {
     const text = notebookPreamble({ projectId: 'nb-1', title: 'Seminar' })
     expect(text).toContain('nb-1')
-    expect(text).toContain('save_note')
+    expect(text).toContain('Als Notiz speichern')
     expect(text).toContain('list_corpus')
     expect(text).toContain('artifacts/')
+    expect(text).toMatch(/save_note nur/i)
     expect(text).not.toContain('draft_research_brief')
+  })
+
+  it('YOLO-Direktive: Briefing bleibt, Suche ohne Nachfragen, Notizen per Button', () => {
+    const before = yoloDirective('research', { briefAdopted: false })
+    expect(before).toContain('YOLO ist AN')
+    expect(before).toMatch(/draft_research_brief/)
+    expect(before).toMatch(/Bestätigung/)
+    expect(before).toMatch(/Nicht selbst adoptieren/)
+    expect(before).toMatch(/kein Brief adoptiert/)
+    expect(before).not.toMatch(/sofort adopt/)
+    const after = yoloDirective('research', { briefAdopted: true })
+    expect(after).toMatch(/Brief ist adoptiert/)
+    expect(after).toMatch(/Offsets/)
+    expect(after).toMatch(/Sign-off/)
+    const notebook = yoloDirective('notebook')
+    expect(notebook).toContain('Als Notiz speichern')
+    expect(notebook).toMatch(/NICHT von selbst/)
+    expect(notebook).toContain('YOLO ist AN')
   })
 
   it('mappt Usage-Events auf Token-Zahlen', () => {

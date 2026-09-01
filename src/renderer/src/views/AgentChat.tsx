@@ -17,12 +17,12 @@ const NOTEBOOK_STARTERS = [
   {
     id: 'ask',
     label: 'Quellen zusammenfassen',
-    text: 'Lies den Korpus mit list_corpus und search_documents. Fasse zusammen, was in den Quellen steht. Keine Fakten aus dem Gedächtnis. Biete danach an, die Zusammenfassung als Notiz mit Offsets zu speichern.',
+    text: 'Lies den Korpus mit list_corpus und search_documents. Fasse zusammen, was in den Quellen steht. Keine Fakten aus dem Gedächtnis.',
   },
   {
     id: 'slides',
     label: 'Als HTML aufbereiten',
-    text: 'Erstelle aus den Quellen eine kurze HTML-Präsentation unter artifacts/slides.html. Eigenständig, kein CDN. Zitate nur aus read_document mit Offsets in einer Notiz daneben.',
+    text: 'Erstelle aus den Quellen eine kurze HTML-Präsentation unter artifacts/slides.html. Eigenständig, kein CDN. Zitate nur aus read_document.',
   },
 ] as const
 
@@ -355,13 +355,19 @@ export default function AgentChat({
       setPendingMentions([])
       setRunning(true)
       bumpActivity()
-      const result = await window.api.agentSend(projectId, { text: trimmed, attached, mentions, mode })
+      const result = await window.api.agentSend(projectId, {
+        text: trimmed,
+        attached,
+        mentions,
+        mode,
+        yolo: settings?.yolo,
+      })
       if (!result.ok && result.error) setSendError(result.error)
       if (!result.ok) setRunning(false)
       const snap = await window.api.agentSessions(projectId)
       setSessions(snap.sessions)
     },
-    [auth?.expired, auth?.signedIn, mode, pendingFiles, pendingMentions, projectId, running]
+    [auth?.expired, auth?.signedIn, mode, pendingFiles, pendingMentions, projectId, running, settings?.yolo]
   )
 
   const attach = async () => {
@@ -406,7 +412,9 @@ export default function AgentChat({
     }
   }
 
-  const modeLabel = mode === 'plan' ? 'Plan' : 'Agent'
+  const yoloOn = settings?.yolo === true
+  const modeLabel = mode === 'plan' ? 'Plan' : yoloOn ? 'YOLO' : 'Agent'
+  const starters = variant === 'notebook' ? NOTEBOOK_STARTERS : STARTERS
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
@@ -417,6 +425,7 @@ export default function AgentChat({
         ) : (
           <Badge tone="amber">{expired ? 'abgelaufen' : 'nicht angemeldet'}</Badge>
         )}
+        {yoloOn && <Badge tone="amber">YOLO</Badge>}
         <span className="ml-auto" />
         {signedIn && !expired && (
           <>
@@ -487,11 +496,11 @@ export default function AgentChat({
               <div className="px-2 py-8 text-sm text-muted">
                 <p className="mb-3">
                   {variant === 'notebook'
-                    ? 'Frag den Agenten zu den Quellen links. Antworten kannst du als bearbeitbare Markdown-Notiz speichern. Mit @ hängst du Dateien an.'
+                    ? 'Frag den Agenten zu den Quellen links. Unter jeder Antwort: „Als Notiz speichern“ — dann kannst du sie in der Mitte bearbeiten. Mit @ hängst du Dateien an.'
                     : 'Chat mit dem Research-Agenten. Er schreibt nur über die Provenienz-Werkzeuge; Sign-off bleibt rechts bei dir. Mit @ hängst du Quellen, Inbox-Dateien oder Teilfragen an.'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {(variant === 'notebook' ? NOTEBOOK_STARTERS : STARTERS).map((s) => (
+                  {starters.map((s) => (
                     <Button key={s.id} onClick={() => void send(s.text)}>
                       {s.label}
                     </Button>
@@ -507,7 +516,11 @@ export default function AgentChat({
                   busy={running && i === items.length - 1}
                   elapsedSec={elapsedSec}
                   onSaveNote={
-                    variant === 'notebook' && !running && i === lastAssistantIdx && item.kind === 'assistant' && onSaveNote
+                    variant === 'notebook' &&
+                    item.kind === 'assistant' &&
+                    item.text &&
+                    onSaveNote &&
+                    !(running && i === lastAssistantIdx)
                       ? () => onSaveNote(item.text)
                       : undefined
                   }
@@ -605,6 +618,23 @@ export default function AgentChat({
                         <option value="agent">Agent — Tools ausführen</option>
                         <option value="plan">Plan — erst nachdenken</option>
                       </select>
+                    </label>
+                    <label className="mb-3 flex items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={yoloOn}
+                        onChange={(e) => {
+                          if (!settings) return
+                          void saveSettings({ ...settings, yolo: e.target.checked })
+                        }}
+                      />
+                      <span>
+                        <span className="text-fg">YOLO — nach dem Briefing ohne Nachfragen</span>
+                        <span className="mt-0.5 block text-muted">
+                          Research: Intake bleibt, danach Suche aus dem Brief. Notebook: antworten, Speichern nur per Button.
+                        </span>
+                      </span>
                     </label>
                     <ModelPicker models={models} settings={settings} onChange={(next: AgentSettings) => void saveSettings(next)} />
                     {usageLine && <p className="mt-2 font-mono text-xs text-muted">{usageLine}</p>}
@@ -723,7 +753,7 @@ function ChatBubble({
           <ChatMarkdown text={item.text} />
           {onSaveNote && (
             <div className="mt-2">
-              <Button variant="ghost" onClick={onSaveNote}>
+              <Button variant="default" icon="edit_note" onClick={onSaveNote}>
                 Als Notiz speichern
               </Button>
             </div>

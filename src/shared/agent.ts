@@ -38,6 +38,12 @@ export interface AgentSettings {
   modelId: string
   /** z. B. { fast: "false", reasoning_effort: "medium" } — nur IDs, die das Modell kennt. */
   paramValues: Record<string, string>
+  /**
+   * YOLO: nach adoptiertem Brief keine Klärungsfragen mehr.
+   * Das Briefing selbst bleibt; Offsets, Such-Lage und Sign-off bleiben Pflicht.
+   * Notebook: keine Auswirkung aufs Speichern — das macht der Button unter der Antwort.
+   */
+  yolo: boolean
 }
 
 export type AgentMode = 'agent' | 'plan'
@@ -77,6 +83,8 @@ export interface AgentSendInput {
   attached?: string[]
   mode?: AgentMode
   mentions?: AgentMention[]
+  /** Überschreibt die gespeicherte YOLO-Einstellung für diesen Turn. */
+  yolo?: boolean
 }
 
 export interface AgentSendResult {
