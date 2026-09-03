@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { mkdirSync } from 'fs'
 import { dirname } from 'path'
+import type { JournalMode } from '../../shared/types'
 
 /**
  * SQLite ist die Source of Truth (documentation/01, Abschnitt "Datenmodell").
@@ -11,7 +12,7 @@ import { dirname } from 'path'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 14 // v14 Notebook-Modus: Projektart + bearbeitbare Markdown-Notizen
+export const SCHEMA_VERSION = 15 // v15 Notebook liest Research-Korpus (linked_research_id)
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS projects (
   policy_preset TEXT,
   easy_writing_dir TEXT,
   kind         TEXT NOT NULL DEFAULT 'research' CHECK (kind IN ('research','notebook')),
+  linked_research_id TEXT REFERENCES projects(id),
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
@@ -230,7 +232,7 @@ CREATE TABLE IF NOT EXISTS documents (
   -- 'open' = abgerufen, aber noch nicht dokumentiert (blockiert weitere Abrufe)
   status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','used','excluded')),
   -- v11: Seed-Korpus (Upload) vs. Discovery (Netz). Uploads starten als 'used' und zählen nicht ins Pending-Gate.
-  origin       TEXT NOT NULL DEFAULT 'fetched' CHECK (origin IN ('fetched','upload')),
+  origin       TEXT NOT NULL DEFAULT 'fetched' CHECK (origin IN ('fetched','upload','youtube')),
   filename     TEXT,
   page_starts_json TEXT
 );
@@ -416,14 +418,48 @@ CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
 END;
 `
 
-export function openDb(dbPath: string): DB {
+export function openDb(dbPath: string, opts?: { journalMode?: JournalMode }): DB {
   if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true })
   const db = new Database(dbPath)
-  db.pragma('journal_mode = WAL') // Multi-Prozess (App + stdio-Server) auf derselben Datei
+  applyJournalMode(db, opts?.journalMode ?? 'wal')
   db.pragma('foreign_keys = ON')
   db.pragma('busy_timeout = 5000')
   migrate(db)
   return db
+}
+
+/**
+ * WAL ist der Default (App + stdio auf derselben Datei, lokaler Platte).
+ * In Cloud-Sync-Ordnern (Dropbox/Drive) WAL-Dateien zerstören die DB —
+ * dort DELETE nach Checkpoint.
+ */
+export function applyJournalMode(db: DB, mode: JournalMode): void {
+  switch (mode) {
+    case 'delete':
+      try {
+        db.pragma('wal_checkpoint(TRUNCATE)')
+      } catch {
+        /* noch kein WAL */
+      }
+      db.pragma('journal_mode = DELETE')
+      break
+    case 'wal':
+      db.pragma('journal_mode = WAL')
+      break
+    default: {
+      const _never: never = mode
+      return _never
+    }
+  }
+}
+
+export function checkpointAndClose(db: DB): void {
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)')
+  } catch {
+    /* egal */
+  }
+  db.close()
 }
 
 /**
@@ -481,6 +517,9 @@ function migrate(db: DB): void {
       addColumnIfMissing(db, 'projects', 'easy_writing_dir', 'TEXT')
       // v14: Research bleibt Default; bestehende Projekte sind Research-Projekte.
       addColumnIfMissing(db, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'research' CHECK (kind IN ('research','notebook'))")
+      // v15: Notebook liest den Korpus eines Research-Projekts, besitzt ihn nicht.
+      addColumnIfMissing(db, 'projects', 'linked_research_id', 'TEXT REFERENCES projects(id)')
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_linked_research ON projects(linked_research_id)`)
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

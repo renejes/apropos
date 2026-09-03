@@ -186,6 +186,36 @@ function assertProject(repo: Repo, projectId: string): void {
 }
 
 /**
+ * Welches Projekt den Korpus besitzt. Notebook mit Link → Research-ID.
+ * Unverknüpftes Notebook und Research → die eigene ID.
+ */
+export function resolveCorpusProjectId(repo: Repo, projectId: string): string {
+  assertProject(repo, projectId)
+  const project = repo.getProject(projectId)!
+  if (project.kind === 'notebook' && project.linked_research_id) return project.linked_research_id
+  return projectId
+}
+
+/** Ingest/Fetch/Add-Source/Exclude gegen den Research-Korpus im Notebook ablehnen. */
+export function assertCorpusWritable(repo: Repo, projectId: string): void {
+  assertProject(repo, projectId)
+  const project = repo.getProject(projectId)!
+  if (project.kind === 'notebook' && project.linked_research_id) {
+    const research = repo.getProject(project.linked_research_id)
+    const name = research?.title ?? 'Research'
+    throw new ServiceError(
+      'corpus_owned_by_research',
+      'Quellen im Research-Projekt anlegen, nicht hier.',
+      `Öffne das Research-Projekt „${name}“ und lege die Quelle dort an. Danach erscheint sie in diesem Notebook.`
+    )
+  }
+}
+
+export function documentBelongsToCorpus(repo: Repo, projectId: string, documentProjectId: string): boolean {
+  return documentProjectId === resolveCorpusProjectId(repo, projectId)
+}
+
+/**
  * Suche und Abruf erst nach adoptiertem Brief — sonst Deep Research ohne Blickwinkel.
  * Kein Env-Bypass: der Test muss rot werden, wenn diese Prüfung entfernt wird.
  */
@@ -398,6 +428,7 @@ export interface FetchDocumentResult {
 export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string): Promise<FetchDocumentResult> {
   const input = parseOrThrow(fetchInputSchema, rawInput, 'fetch_invalid')
   assertProject(repo, input.project_id)
+  assertCorpusWritable(repo, input.project_id)
   requireAdoptedBrief(repo, input.project_id)
 
   // Bereits abgerufen? Dann kein zweiter Netzabruf — Fenster aus dem Gespeicherten liefern.
@@ -538,6 +569,7 @@ export function listProjectInbox(repo: Repo, rawInput: unknown): { files: InboxF
 export async function ingestLocalFile(repo: Repo, rawInput: unknown, actor: string): Promise<FetchDocumentResult> {
   const input = parseOrThrow(ingestLocalSchema, rawInput, 'ingest_invalid')
   assertProject(repo, input.project_id)
+  assertCorpusWritable(repo, input.project_id)
   requireAdoptedBrief(repo, input.project_id)
 
   const ext = extname(input.filename).toLowerCase()
@@ -643,6 +675,7 @@ export async function ingestUploadedFiles(
   actor: string
 ): Promise<CorpusIngestResult> {
   assertProject(repo, projectId)
+  assertCorpusWritable(repo, projectId)
   const ws = workspaceFor(projectId)
   const documents: CorpusIngestResult['documents'] = []
   const errors: CorpusIngestResult['errors'] = []
@@ -715,8 +748,9 @@ export function readDocumentWindow(repo: Repo, rawInput: unknown): FetchDocument
   const input = parseOrThrow(readDocumentSchema, rawInput, 'read_invalid')
   assertProject(repo, input.project_id)
   requireAdoptedBrief(repo, input.project_id)
+  const corpusId = resolveCorpusProjectId(repo, input.project_id)
   const doc = repo.getDocument(input.document_id)
-  if (!doc || doc.project_id !== input.project_id) {
+  if (!doc || doc.project_id !== corpusId) {
     throw new ServiceError(
       'document_missing',
       'Dokument nicht gefunden.',
@@ -747,7 +781,8 @@ export function searchProjectDocuments(
   assertProject(repo, input.project_id)
   requireAdoptedBrief(repo, input.project_id)
   requireSearchReflection(repo, input.project_id)
-  const hits = repo.searchDocuments(input.project_id, input.query)
+  const corpusId = resolveCorpusProjectId(repo, input.project_id)
+  const hits = repo.searchDocuments(corpusId, input.query)
   repo.addSearchLog({
     project_id: input.project_id,
     query: input.query,
@@ -773,7 +808,8 @@ export function listProjectCorpus(
 ): { documents: Array<Omit<FetchedDocument, 'text'>>; next_action: string } {
   const input = parseOrThrow(inboxListSchema, rawInput, 'corpus_invalid')
   assertProject(repo, input.project_id)
-  const documents = repo.listDocuments(input.project_id).filter((d) => d.status !== 'excluded')
+  const corpusId = resolveCorpusProjectId(repo, input.project_id)
+  const documents = repo.listDocuments(corpusId).filter((d) => d.status !== 'excluded')
   const uploads = documents.filter((d) => d.origin === 'upload').length
   return {
     documents,
@@ -820,6 +856,7 @@ export interface RecordSourceResult {
 export async function recordSource(repo: Repo, rawInput: unknown, actor: string): Promise<RecordSourceResult> {
   const input = parseOrThrow(sourceInputSchema, rawInput, 'source_invalid')
   assertProject(repo, input.project_id)
+  assertCorpusWritable(repo, input.project_id)
 
   // Leerstring ist keine Zuordnung — sonst schlägt der Fremdschlüssel roh zu und die
   // Quelle geht verloren, statt sauber als "nicht zugeordnet" zu landen.
@@ -1082,6 +1119,7 @@ export function ingestSearch(repo: Repo, rawInput: unknown, actor: string): Sear
 export function recordExclusion(repo: Repo, rawInput: unknown, actor: string): ExcludedSource {
   const input = parseOrThrow(exclusionInputSchema, rawInput, 'exclusion_invalid')
   assertProject(repo, input.project_id)
+  assertCorpusWritable(repo, input.project_id)
   const entry = repo.addExcludedSource({
     project_id: input.project_id,
     url: input.url,

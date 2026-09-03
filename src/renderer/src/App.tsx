@@ -14,6 +14,7 @@ export default function App() {
   const [showNew, setShowNew] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [mcpRunning, setMcpRunning] = useState<boolean | null>(null)
   const [showManual, setShowManual] = useState(false)
 
@@ -41,6 +42,7 @@ export default function App() {
   const confirmDelete = async () => {
     if (!deleteTarget) return
     setDeleteBusy(true)
+    setDeleteError(null)
     const id = deleteTarget.id
     const fallbackId = projects.find((p) => p.id !== id)?.id ?? null
     setSelectedId((cur) => (cur === id ? fallbackId : cur))
@@ -54,7 +56,8 @@ export default function App() {
         return list[0]?.id ?? null
       })
       if (!deleted) setSelectedId(id)
-    } catch {
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
       await refresh()
       setSelectedId(id)
     } finally {
@@ -144,7 +147,7 @@ export default function App() {
         {view === 'settings' ? (
           <SettingsView onSeeded={refresh} />
         ) : selectedId ? (
-          <ProjectView key={selectedId} projectId={selectedId} onChanged={refresh} />
+          <ProjectView key={selectedId} projectId={selectedId} onChanged={refresh} onOpenProject={(id) => setSelectedId(id)} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
             <p className="max-w-md text-center text-sm">
@@ -172,7 +175,10 @@ export default function App() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-fg/30 p-4"
           onClick={() => {
-            if (!deleteBusy) setDeleteTarget(null)
+            if (!deleteBusy) {
+              setDeleteTarget(null)
+              setDeleteError(null)
+            }
           }}
         >
           <div
@@ -192,8 +198,9 @@ export default function App() {
               „{deleteTarget.title}“ wird unwiderruflich entfernt — Quellen, Korpus, Chats und der Agent-Workspace. Ein
               Easy-Writing-Ordner auf der Platte bleibt.
             </p>
+            {deleteError && <p className="mt-3 text-sm text-bad">{deleteError}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <Button disabled={deleteBusy} onClick={() => setDeleteTarget(null)}>
+              <Button disabled={deleteBusy} onClick={() => { setDeleteTarget(null); setDeleteError(null) }}>
                 Abbrechen
               </Button>
               <Button variant="danger" disabled={deleteBusy} onClick={() => void confirmDelete()}>

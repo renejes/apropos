@@ -9,13 +9,25 @@ import { exportBibliography } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
-import { computeCoverage, ingestUploadedFiles } from './core/services/research'
+import { computeCoverage, ingestUploadedFiles, ServiceError, resolveCorpusProjectId, assertCorpusWritable } from './core/services/research'
+import {
+  createProject,
+  deleteProject,
+  loadProjectState,
+  createNotebookFromResearch,
+  linkNotebookToResearch,
+} from './core/services/projects'
+import { inspectDocumentOpen, readDocumentPdfBytes, resolveDocumentDiskPath } from './core/services/reader'
 import { createNote, deleteNote, updateNote } from './core/services/notes'
 import { ingestYoutubeUrl } from './core/services/youtube'
 import { listArtifacts, readArtifact } from './core/services/artifacts'
 import { getVisualVersion, prepareView, toggleMark, describeEvidenceMap } from './core/services/visual'
-import { projectWorkspace, removeProjectWorkspace, resolveInboxFile } from './core/agent/workspace'
-import type { ServerInfo } from '../shared/types'
+import {
+  describeDataRoot,
+  inspectDataRoot,
+  saveRootSettings,
+} from './core/data-root'
+import type { DataRootInfo, ServerInfo } from '../shared/types'
 import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
 
@@ -28,6 +40,17 @@ interface IpcDeps {
   dbPath: string
   mcp: () => RunningHttpServer | null
   agent: CursorAgentHost
+  lock?: { hostname: string; startedAt: string } | null
+  changeDataRoot?: (input: {
+    toRoot: string
+    mode: 'copy' | 'use-existing'
+    cloudSynced: boolean
+  }) => Promise<{ ok: true } | { ok: false; error: string }>
+}
+
+function ipcError(err: unknown): Error {
+  if (err instanceof ServiceError) return new Error(`FEHLER [${err.code}]: ${err.message} ${err.hint}`)
+  return err instanceof Error ? err : new Error(String(err))
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -37,20 +60,51 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('projects:list', () => repo.listProjects())
   ipcMain.handle(
     'projects:create',
-    (_e, input: { title: string; research_question: string; mode: 'academic' | 'business'; kind?: 'research' | 'notebook' }) =>
-      repo.createProject({ ...input, policy_preset: null, actor: HUMAN })
+    (
+      _e,
+      input: {
+        title: string
+        research_question: string
+        mode: 'academic' | 'business'
+        kind?: 'research' | 'notebook'
+        linked_research_id?: string | null
+      }
+    ) => {
+      try {
+        return createProject(repo, { ...input, policy_preset: null, actor: HUMAN })
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
   )
+  ipcMain.handle('projects:createNotebook', (_e, researchId: string) => {
+    try {
+      return createNotebookFromResearch(repo, researchId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('projects:linkResearch', (_e, notebookId: string, researchId: string) => {
+    try {
+      return linkNotebookToResearch(repo, notebookId, researchId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
   ipcMain.handle('projects:delete', async (_e, projectId: string) => {
     try {
       await deps.agent.disposeProject(projectId)
     } catch {
       /* Session weg, Projekt trotzdem löschen */
     }
-    const deleted = repo.deleteProject(projectId, HUMAN)
-    if (deleted) removeProjectWorkspace(projectId)
-    return { deleted }
+    try {
+      const deleted = deleteProject(repo, projectId, HUMAN)
+      return { deleted }
+    } catch (err) {
+      throw ipcError(err)
+    }
   })
-  ipcMain.handle('projects:state', (_e, projectId: string) => repo.getProjectState(projectId))
+  ipcMain.handle('projects:state', (_e, projectId: string) => loadProjectState(repo, projectId))
   ipcMain.handle('projects:events', (_e, projectId: string) => repo.listEvents(projectId))
   ipcMain.handle('projects:search', (_e, projectId: string, query: string) => repo.searchSources(projectId, query))
 
@@ -89,7 +143,10 @@ export function registerIpc(deps: IpcDeps): void {
     repo.assignSourceToSubQuestion(sourceId, subQuestionId, HUMAN)
   )
 
-  ipcMain.handle('documents:list', (_e, projectId: string) => repo.listDocuments(projectId))
+  ipcMain.handle('documents:list', (_e, projectId: string) => {
+    const corpusId = resolveCorpusProjectId(repo, projectId)
+    return repo.listDocuments(corpusId)
+  })
 
   /**
    * Belegstelle im Originaltext — mit Kontext davor/danach.
@@ -120,19 +177,37 @@ export function registerIpc(deps: IpcDeps): void {
     return doc ?? null
   })
 
-  ipcMain.handle('documents:search', (_e, projectId: string, query: string) => repo.searchDocuments(projectId, query))
+  ipcMain.handle('documents:search', (_e, projectId: string, query: string) => {
+    const corpusId = resolveCorpusProjectId(repo, projectId)
+    return repo.searchDocuments(corpusId, query)
+  })
 
   ipcMain.handle('documents:openOriginal', async (_e, documentId: string) => {
-    const doc = repo.getDocument(documentId)
-    if (!doc?.filename) return false
+    const abs = resolveDocumentDiskPath(repo, documentId)
+    if (!abs) return false
+    const err = await shell.openPath(abs)
+    return err === ''
+  })
+
+  ipcMain.handle('documents:showInFolder', (_e, documentId: string) => {
+    const abs = resolveDocumentDiskPath(repo, documentId)
+    if (!abs) return false
+    shell.showItemInFolder(abs)
+    return true
+  })
+
+  ipcMain.handle('documents:inspect', (_e, documentId: string) => {
     try {
-      const abs = resolveInboxFile(projectWorkspace(doc.project_id), doc.filename)
-      if (!existsSync(abs)) return false
-      const err = await shell.openPath(abs)
-      return err === ''
-    } catch {
-      return false
+      return inspectDocumentOpen(repo, documentId)
+    } catch (err) {
+      throw ipcError(err)
     }
+  })
+
+  ipcMain.handle('documents:pdfBytes', (_e, documentId: string) => {
+    const buf = readDocumentPdfBytes(repo, documentId)
+    if (!buf) return null
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
   })
 
   const fileDialogOptions = {
@@ -145,6 +220,12 @@ export function registerIpc(deps: IpcDeps): void {
   }
 
   ipcMain.handle('corpus:upload', async (e, projectId: string) => {
+    try {
+      assertCorpusWritable(repo, projectId)
+    } catch (err) {
+      const msg = err instanceof ServiceError ? err.message : String(err)
+      return { filenames: [] as string[], documents: [], errors: [{ filename: '', message: msg }] }
+    }
     const win = BrowserWindow.fromWebContents(e.sender)
     const { canceled, filePaths } = win
       ? await dialog.showOpenDialog(win, fileDialogOptions)
@@ -156,6 +237,12 @@ export function registerIpc(deps: IpcDeps): void {
   })
 
   ipcMain.handle('corpus:import', async (_e, projectId: string, filePaths: string[]) => {
+    try {
+      assertCorpusWritable(repo, projectId)
+    } catch (err) {
+      const msg = err instanceof ServiceError ? err.message : String(err)
+      return { filenames: [] as string[], documents: [], errors: [{ filename: '', message: msg }] }
+    }
     const names = deps.agent.importFiles(projectId, Array.isArray(filePaths) ? filePaths : [])
     const ingested = await ingestUploadedFiles(repo, projectId, names, HUMAN)
     return { filenames: names, ...ingested }
@@ -266,6 +353,39 @@ export function registerIpc(deps: IpcDeps): void {
     ) => writeEasyWriting(repo, input, HUMAN)
   )
 
+  ipcMain.handle('data:info', (): DataRootInfo => {
+    return describeDataRoot({
+      lockHostname: deps.lock?.hostname ?? null,
+      lockStartedAt: deps.lock?.startedAt ?? null,
+    })
+  })
+
+  ipcMain.handle('data:setCloudSynced', (_e, cloudSynced: boolean) => {
+    const info = describeDataRoot()
+    saveRootSettings(info.root, { cloudSynced })
+    return describeDataRoot({
+      lockHostname: deps.lock?.hostname ?? null,
+      lockStartedAt: deps.lock?.startedAt ?? null,
+    })
+  })
+
+  ipcMain.handle(
+    'data:setRoot',
+    async (
+      _e,
+      input: { toRoot: string; mode: 'copy' | 'use-existing'; cloudSynced: boolean }
+    ): Promise<{ ok: true } | { ok: false; error: string; hasDb?: boolean }> => {
+      const dest = input.toRoot
+      if (!dest) return { ok: false, error: 'Kein Ordner gewählt.' }
+      const inspect = inspectDataRoot(dest)
+      if (input.mode === 'use-existing' && !inspect.hasDb) {
+        return { ok: false, error: 'In diesem Ordner liegt keine Datenbank.', hasDb: false }
+      }
+      if (!deps.changeDataRoot) return { ok: false, error: 'Datenordner kann gerade nicht gewechselt werden.' }
+      return deps.changeDataRoot(input)
+    }
+  )
+
   ipcMain.handle('server:info', (): ServerInfo => {
     const mcp = deps.mcp()
     return {
@@ -351,7 +471,13 @@ export function registerIpc(deps: IpcDeps): void {
     (_e, input: { note_id: string; title?: string; body_markdown?: string; citations?: unknown }) => updateNote(repo, input, HUMAN)
   )
   ipcMain.handle('notes:delete', (_e, noteId: string) => ({ deleted: deleteNote(repo, noteId, HUMAN) }))
-  ipcMain.handle('notebook:youtube', (_e, projectId: string, url: string) => ingestYoutubeUrl(repo, projectId, url, HUMAN))
+  ipcMain.handle('notebook:youtube', async (_e, projectId: string, url: string) => {
+    try {
+      return await ingestYoutubeUrl(repo, projectId, url, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
   ipcMain.handle('notebook:artifacts', (_e, projectId: string) => listArtifacts(projectId))
   ipcMain.handle('notebook:artifact', (_e, projectId: string, relativePath: string) => readArtifact(projectId, relativePath))
   ipcMain.handle('agent:attach', async (e, projectId: string) => {

@@ -1,13 +1,20 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, Menu, dialog, shell } from 'electron'
 import { join } from 'path'
 import { APP_NAME } from '../shared/brand'
-import { openDb } from './core/db'
+import { checkpointAndClose, openDb } from './core/db'
 import { Repo } from './core/repo'
-import { defaultDbPath, DEFAULT_MCP_PORT } from './core/paths'
+import { defaultDbPath, DEFAULT_MCP_PORT, appDataDir } from './core/paths'
 import { startMcpHttpServer, type RunningHttpServer } from './mcp/http'
 import { registerIpc } from './ipc'
 import { CursorAgentHost } from './core/agent/host'
 import { buildAppMenu } from './menu'
+import { acquireDataLock, releaseDataLock, type AcquireLockResult } from './core/data-lock'
+import {
+  journalModeForRoot,
+  relocateDataRoot,
+  saveRootSettings,
+  writeDataRootPointer,
+} from './core/data-root'
 
 /**
  * Electron Main: hostet DB, Repo und den eingebauten MCP-HTTP-Server
@@ -17,6 +24,8 @@ import { buildAppMenu } from './menu'
 let mcpServer: RunningHttpServer | null = null
 let dbHandle: ReturnType<typeof openDb> | null = null
 let agentHost: CursorAgentHost | null = null
+let dataRootHeld: string | null = null
+let lockHeld: { hostname: string; startedAt: string } | null = null
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -48,9 +57,46 @@ function createWindow(): void {
   }
 }
 
+function formatLockMessage(result: Extract<AcquireLockResult, { ok: false }>): string {
+  const { lock } = result
+  return (
+    `Die Datenbank wird auf einem anderen Rechner genutzt.\n\n` +
+    `Rechner: ${lock.hostname}\n` +
+    `Seit: ${lock.startedAt || 'unbekannt'}\n` +
+    `App-Version: ${lock.appVersion || 'unbekannt'}\n\n` +
+    `Nicht auf zwei Rechnern gleichzeitig öffnen. Erst die App dort beenden, Sync abwarten, dann hier starten.\n\n` +
+    `„Lock ignorieren“ nur nach einem Absturz, wenn der andere Rechner die App sicher nicht mehr offen hat.`
+  )
+}
+
 app.whenReady().then(async () => {
+  const root = appDataDir()
+  let acquired = acquireDataLock(root, { appVersion: app.getVersion() })
+  if (!acquired.ok) {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'Datenordner belegt',
+      message: 'Dieser Datenordner ist auf einem anderen Rechner geöffnet.',
+      detail: formatLockMessage(acquired),
+      buttons: ['Beenden', 'Lock ignorieren'],
+      defaultId: 0,
+      cancelId: 0,
+    })
+    if (response !== 1) {
+      app.exit(0)
+      return
+    }
+    acquired = acquireDataLock(root, { appVersion: app.getVersion(), force: true })
+    if (!acquired.ok) {
+      app.exit(1)
+      return
+    }
+  }
+  dataRootHeld = root
+  lockHeld = { hostname: acquired.lock.hostname, startedAt: acquired.lock.startedAt }
+
   const dbPath = defaultDbPath()
-  const db = openDb(dbPath)
+  const db = openDb(dbPath, { journalMode: journalModeForRoot(root) })
   dbHandle = db
   const repo = new Repo(db)
   const host = new CursorAgentHost(repo)
@@ -71,7 +117,33 @@ app.whenReady().then(async () => {
     console.error('[research-overview] MCP server failed to start:', err)
   }
 
-  registerIpc({ repo, dbPath, mcp: () => mcpServer, agent: host })
+  registerIpc({
+    repo,
+    dbPath,
+    mcp: () => mcpServer,
+    agent: host,
+    lock: lockHeld,
+    changeDataRoot: async (input) => {
+      const from = appDataDir()
+      const to = input.toRoot
+      try {
+        if (dbHandle) {
+          checkpointAndClose(dbHandle)
+          dbHandle = null
+        }
+        if (input.mode === 'copy') relocateDataRoot(from, to, 'copy')
+        if (dataRootHeld) releaseDataLock(dataRootHeld)
+        dataRootHeld = null
+        writeDataRootPointer(to)
+        if (input.cloudSynced) saveRootSettings(to, { cloudSynced: true })
+        app.relaunch()
+        app.exit(0)
+        return { ok: true as const }
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  })
 
   if (process.platform === 'darwin') app.setName(APP_NAME)
   Menu.setApplicationMenu(buildAppMenu())
@@ -104,7 +176,12 @@ app.on('will-quit', (event) => {
       /* egal */
     }
     try {
-      dbHandle?.close()
+      if (dbHandle) checkpointAndClose(dbHandle)
+    } catch {
+      /* egal */
+    }
+    try {
+      if (dataRootHeld) releaseDataLock(dataRootHeld)
     } catch {
       /* egal */
     }

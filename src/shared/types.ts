@@ -28,6 +28,11 @@ export interface Project {
   policy_preset: string | null
   /** Absoluter Pfad zum Easy-Writing-Ordner nach dem ersten Export; sonst null. */
   easy_writing_dir: string | null
+  /**
+   * Nur Notebook: lebendige Kopplung an ein Research-Projekt.
+   * Der Korpus wird dort gelesen, nicht kopiert. Research: immer null.
+   */
+  linked_research_id: string | null
   created_at: string
   updated_at: string
 }
@@ -549,6 +554,8 @@ export interface ProjectState {
   /** Korpus ohne Volltext — der Text kommt über documents:text / search_documents. */
   documents: Array<Omit<FetchedDocument, 'text'>>
   notes: Note[]
+  /** Gesetzt, wenn ein Notebook den Korpus eines Research-Projekts liest. */
+  linked_research: { id: string; title: string } | null
 }
 
 export interface ProjectSummary extends Project {
@@ -573,6 +580,40 @@ export interface ServerInfo {
   }
   /** Absoluter Pfad zum Claude-Code-Provenienz-Gate (Hook-Script), falls vorhanden. */
   hookScriptPath: string | null
+}
+
+export type JournalMode = 'wal' | 'delete'
+
+export interface DataLock {
+  hostname: string
+  pid: number
+  startedAt: string
+  appVersion: string
+}
+
+export interface DataRootInfo {
+  root: string
+  dbPath: string
+  defaultRoot: string
+  envOverride: boolean
+  cloudSynced: boolean
+  cloudPathDetected: boolean
+  journalMode: JournalMode
+  lockHostname: string | null
+  lockStartedAt: string | null
+}
+
+/** Wie eine Quelle im eingebetteten Leser geöffnet wird — kein Markup. */
+export type DocumentOpenKind = 'pdf' | 'html' | 'youtube' | 'text' | 'missing'
+
+export interface DocumentOpenInfo {
+  document_id: string
+  kind: DocumentOpenKind
+  filename: string | null
+  url: string
+  file_exists: boolean
+  origin: DocumentOrigin
+  page_starts: number[] | null
 }
 
 /** Ergebnis eines deterministischen Re-Verify-Laufs (Ebene 1). */

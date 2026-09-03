@@ -399,7 +399,7 @@ function QuoteInContext({
           className="ml-3 inline-flex items-center gap-1 text-xs underline"
         >
           <Icon name="menu_book" className="!text-[16px]" />
-          Im Korpus öffnen
+          Im PDF zeigen
         </button>
       )}
       {open && (

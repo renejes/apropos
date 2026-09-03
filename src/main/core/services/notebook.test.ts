@@ -53,7 +53,7 @@ describe('Notebook: Gates, Notizen, Artefakte', () => {
     return p
   }
 
-  it('steht auf Schema v14', () => {
+  it('steht auf Schema v15', () => {
     db = openDb(':memory:')
     expect(db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
   })

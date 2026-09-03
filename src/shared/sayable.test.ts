@@ -11,6 +11,7 @@ function project(): Project {
     policy_preset: null,
     easy_writing_dir: null,
     kind: 'research',
+    linked_research_id: null,
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
   }
@@ -101,6 +102,7 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     documents: [],
     notes: [],
     ...over,
+    linked_research: over.linked_research ?? null,
   }
 }
 

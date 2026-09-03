@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | apROPos |
 | **Dokument** | 08 — Notebook-Modus |
-| **Stand** | 2026-08-30 |
-| **Schema** | v14 (`projects.kind`, Tabelle `notes`) |
+| **Stand** | 2026-09-03 |
+| **Schema** | v15 (`linked_research_id`: Notebook liest Research-Korpus) |
 
 **Dokument-Set:** [01](01-implementationplan.md) · [02](02-project-status.md) · [03](03-next-steps.md) · [08 diese Datei](08-notebook.md) · [HANDOVER](../HANDOVER.md)
 
@@ -24,10 +24,30 @@ Beim Anlegen wählt der Mensch **Research** oder **Notebook**. Das ist `projects
 | Agent-Preamble | `sessionPreamble` + Skill `focused-research` | `notebookPreamble` + Skill `notebook-sources` |
 | MCP-Werkzeuge am Agenten | alle außer Notebook-only | Whitelist in `notebook-tools.ts` |
 | UI | `ProjectView`: Chat links, Tabs rechts | `NotebookView`: Quellen/Notizen/Artefakte links, Chat+Notiz-Tabs Mitte |
-| Zitat im Bericht | immer Offset (`add_source`) | dasselbe, **wenn** etwas als Beleg landen soll |
+| Zitat im Bericht | immer Offset (`add_source`) | unverknüpft: Offset via `add_source`; verknüpft: Belege nur im Research |
 | Notizen | Tabelle existiert, UI nutzt sie nicht | Markdown, bearbeitbar, Datei unter `notes/` |
 
-Research-Verhalten **nicht** umbauen, um Notebook zu bedienen. Gates in `services/research.ts` kennen `kind === 'notebook'` und kehren früh zurück. Der Offset-Pfad (`add_source`, `document_id` + Spannen) bleibt für beide.
+Research-Verhalten **nicht** umbauen, um Notebook zu bedienen. Gates in `services/research.ts` kennen `kind === 'notebook'` und kehren früh zurück. Der Offset-Pfad (`add_source`, `document_id` + Spannen) bleibt für unverknüpfte Notebooks. Verknüpftes Notebook: Korpus nur lesen.
+
+---
+
+## 1b. Lebender Korpus (Notebook aus Research)
+
+Ein Notebook kann jederzeit an ein Research gekoppelt werden (`projects.linked_research_id`). Das Notebook **liest** den Research-Korpus, es **besitzt** ihn nicht. Kein Snapshot, kein Kopieren der `documents`-Zeilen.
+
+| Sache | Wo sie lebt |
+|---|---|
+| `documents`, Sources, Claims, Karte, Sign-off, Brief, Citekeys, `.bib` | nur Research |
+| Notizen, `notes/`, `artifacts/` | nur Notebook |
+
+- Neue PDFs im Research erscheinen im Notebook ohne Import-Klick.
+- Ingest/Fetch/Add-Source/Exclude im verknüpften Notebook: `corpus_owned_by_research` („Quellen im Research-Projekt anlegen, nicht hier.“).
+- Research löschen, solange Notebooks hängen: `research_has_notebooks`.
+- Klassisches Notebook ohne Link bleibt (eigener Korpus).
+- Nachträglich verknüpfen: nur wenn das Notebook noch keine eigenen Dokumente hat.
+- UI: Research → „Notebook aus diesem Projekt“. Notebook: Banner „Korpus aus Research X“ + „Research öffnen“.
+- MCP: `create_project.linked_research_id` oder `link_notebook_to_research`.
+- PDF-Leser: Datei liegt physisch im Research-Workspace/`inbox`.
 
 ---
 
@@ -40,7 +60,7 @@ Projekte         │  Quellen (PDF, YouTube)      │  [Chat] [Notiz …] [HTML-
                  │  Artefakte (artifacts/)      │
 ```
 
-- Quellen: Upload/Drop wie im Korpus-Tab; YouTube-URL → Transkript aus Untertiteln in `documents` (`origin: youtube`).
+- Quellen: unverknüpft Upload/Drop und YouTube; verknüpft nur Anzeige + PDF-Leser (Quellen im Research anlegen).
 - Chat: Cursor-SDK, Starter „Quellen zusammenfassen“ / „Als HTML aufbereiten“. Unter **jeder** Assistenten-Antwort: **Als Notiz speichern**. Der Agent legt Notizen nicht von selbst an.
 - Notiz anklicken → Tab in der Mitte (wo sonst der Chat ist), Textarea, Speichern schreibt DB **und** `notes/<slug>-<id8>.md`.
 - Artefakte: der Agent schreibt HTML/Markdown/CSV nach `cwd/artifacts/`. Vorschau: iframe `sandbox="allow-scripts"` ohne `allow-same-origin` (kein zweites Slide-Framework).
@@ -83,22 +103,25 @@ Cursor-Prozess-Sandbox (`local.sandboxOptions`) ist optional; die Produkt-Sandbo
 
 ## 5. Daten und IPC
 
-**Schema v14**
+**Schema v15**
 
 - `projects.kind` `CHECK (kind IN ('research','notebook'))` DEFAULT `'research'`
+- `projects.linked_research_id` TEXT NULL REFERENCES `projects(id)` — nur Notebook, Ziel muss `kind=research` sein
 - `notes`: `title`, `body_markdown`, `file_name`, `origin` (`human`\|`chat`\|`agent`), `citations_json`
 
 **Services** (Enforcement hier, nicht im IPC-Handler)
 
-- `services/notes.ts` — CRUD + Datei spiegeln + Offset-Prüfung
+- `services/notes.ts` — CRUD + Datei spiegeln + Offset-Prüfung (document_id aus dem Korpus, auch Research bei Link)
+- `services/projects.ts` — Anlegen, `linked_research_id`, Löschen mit `research_has_notebooks`
+- `services/reader.ts` — PDF-Datei am Dokument, fehlende Datei, kein Markup
 - `services/youtube.ts` — Video-ID, oEmbed-Titel, Captions (Watch-Page / Player-API → timedtext). Ohne Untertitel: Fehler, nicht leere Zeile
 - `services/artifacts.ts` — listen / lesen, kein Escape aus `artifacts/`
 
-**IPC / Preload:** `notes:*`, `notebook:youtube`, `notebook:artifacts`, `notebook:artifact`. `createProject` akzeptiert `kind`.
+**IPC / Preload:** `notes:*`, `notebook:youtube`, `notebook:artifacts`, `notebook:artifact`, `projects:createNotebook`, `projects:linkResearch`, `documents:inspect` / `pdfBytes`. `createProject` akzeptiert `kind` und optional `linked_research_id`.
 
-**MCP:** `save_note`, `list_notes`, `update_note`, `list_artifacts`. `create_project` hat optionales `kind`.
+**MCP:** `save_note`, `list_notes`, `update_note`, `list_artifacts`. `create_project` hat optionales `kind` und `linked_research_id`. `link_notebook_to_research` für bestehende leere Notebooks.
 
-**Gates:** `requireAdoptedBrief`, `requireSearchReflection`, `evaluateSearchGate` — bei Notebook no-op. `ingestUploadedFiles` war schon ohne Brief.
+**Gates:** `requireAdoptedBrief`, `requireSearchReflection`, `evaluateSearchGate` — bei Notebook no-op. `ingestUploadedFiles` war schon ohne Brief. Korpus-Schreiben im verknüpften Notebook: `assertCorpusWritable`.
 
 ---
 
@@ -107,17 +130,21 @@ Cursor-Prozess-Sandbox (`local.sandboxOptions`) ist optional; die Produkt-Sandbo
 | Datei | Änderung |
 |---|---|
 | `NewProjectDialog.tsx` | zuerst Research vs Notebook; Frage/Modus nur bei Research |
-| `ProjectView.tsx` | `kind === 'notebook'` → `NotebookView` |
-| `NotebookView.tsx` | Layout, YouTube, Notiz-Editor, Artefakt-Preview |
+| `ProjectView.tsx` | `kind === 'notebook'` → `NotebookView`; „Notebook aus diesem Projekt“ |
+| `NotebookView.tsx` | Layout, YouTube, Notiz-Editor, Artefakt-Preview, Korpus-Banner, PDF-Leser |
+| `DocumentReader.tsx` | Eingebetteter PDF-Leser (pdf.js), Text/YouTube/fehlende Datei |
 | `AgentChat.tsx` | `variant`, `onSaveNote`, andere Starter/Platzhalter |
 | `App.tsx` | Sidebar-Zeile unterscheidet Notebook |
-| `CorpusTab.tsx` | Origin-Badge `youtube` |
+| `CorpusTab.tsx` | Origin-Badge `youtube`; Leser |
+| `SettingsView.tsx` | Datenordner, Sync-Hinweis |
 
 ---
 
 ## 7. Tests und Fallstricke
 
 `src/main/core/services/notebook.test.ts`: YouTube-Parsing, Notebook ohne Brief darf `search_documents`/`read_document`, Research ohne Brief bleibt gesperrt, Notiz-Datei + serverseitiges Zitat, Artefakt-Pfad, Tool-Filter.
+
+`linked-notebook.test.ts`: unlinked bleibt leer; Link sieht Research-Dokumente; Ingest im Notebook → Fehler; Notiz im Notebook-Workspace; Research löschen mit Link → Fehler.
 
 Nicht tun:
 
@@ -135,3 +162,5 @@ Nicht tun:
 - Volles Slide-Framework (Reveal, Marp)
 - Live-Sync der Notiz während der Agent noch schreibt
 - YouTube ohne Untertitel (Whisper o. ä.)
+- Eigenes Extra-PDF nur im verknüpften Notebook (sonst zwei Korpora)
+- Snapshot des Research-Korpus; Zotero; PDF-Annotationen

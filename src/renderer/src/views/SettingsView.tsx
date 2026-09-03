@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ServerInfo } from '../../../shared/types'
+import type { DataRootInfo, ServerInfo } from '../../../shared/types'
 import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
 import CursorSettings from '../components/CursorSettings'
@@ -162,6 +162,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
         </Card>
       )}
 
+      <DataRootCard />
+
       <Card className="p-5">
         <SectionTitle>Datenbank</SectionTitle>
         <CodeRow label="Pfad" value={info.dbPath} onCopy={copy} copied={copied} />
@@ -201,6 +203,80 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       </div>
       </div>
     </div>
+  )
+}
+
+function DataRootCard() {
+  const [root, setRoot] = useState<DataRootInfo | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.api.dataRootInfo().then(setRoot)
+  }, [])
+
+  if (!root) return null
+
+  const pick = async () => {
+    const dir = await window.api.pickDirectory('Datenordner für apROPos')
+    if (!dir) return
+    if (dir === root.root) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const cloud = root.cloudSynced || root.cloudPathDetected
+      const existing = await window.api.setDataRoot({ toRoot: dir, mode: 'use-existing', cloudSynced: cloud })
+      if (existing.ok) {
+        setMsg('App startet neu …')
+        return
+      }
+      const copied = await window.api.setDataRoot({ toRoot: dir, mode: 'copy', cloudSynced: cloud })
+      if (!copied.ok) {
+        setMsg(copied.error)
+        return
+      }
+      setMsg('Daten übernommen — App startet neu …')
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <SectionTitle>Datenordner und Sync</SectionTitle>
+      <p className="mb-3 text-sm leading-relaxed text-muted">
+        Alles, was du zum Weiterarbeiten brauchst (Datenbank, Projektordner), liegt in diesem Ordner. Du kannst einen Ordner in
+        Dropbox, Google Drive for Desktop, iCloud oder lokal wählen — die App spricht kein Cloud-API, nur das Dateisystem.
+        Nicht auf zwei Rechnern gleichzeitig öffnen. Erst die App beenden, Sync abwarten, dann auf dem anderen Rechner starten.
+      </p>
+      <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">Ordner</p>
+      <code className="block truncate bg-wash px-3 py-2 font-mono text-xs">{root.root}</code>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button icon="folder_open" disabled={busy || root.envOverride} onClick={() => void pick()}>
+          Ordner wählen
+        </Button>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={root.cloudSynced}
+            onChange={(e) => {
+              void window.api.setDataCloudSynced(e.target.checked).then(setRoot)
+            }}
+          />
+          Dieser Ordner wird synchronisiert
+        </label>
+      </div>
+      {root.envOverride && (
+        <p className="mt-2 text-xs text-muted">Der Ordner kommt aus der Umgebung <span className="font-mono">ROP_DATA_DIR</span>.</p>
+      )}
+      <p className="mt-2 text-xs text-muted">
+        Journal: {root.journalMode === 'delete' ? 'DELETE (Cloud-sicher)' : 'WAL (lokal)'}.
+        {root.lockHostname ? ` Geöffnet auf ${root.lockHostname}.` : ''}
+      </p>
+      {msg && <p className="mt-2 text-xs text-muted">{msg}</p>}
+    </Card>
   )
 }
 

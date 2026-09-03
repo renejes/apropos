@@ -27,13 +27,16 @@ Arbeitsvertrag:
 Beginne mit get_research_brief. Ist keiner adoptiert, frage nach — suche nicht.`
 }
 
-export function notebookPreamble(input: { projectId: string; title: string }): string {
+export function notebookPreamble(input: { projectId: string; title: string; linkedResearchTitle?: string | null }): string {
+  const linked = input.linkedResearchTitle
+    ? `\nDer Korpus kommt aus dem Research-Projekt „${input.linkedResearchTitle}“ — nur lesen. Neue Quellen dort anlegen, nicht hier (ingest_local_file und add_source werden abgelehnt).\n`
+    : ''
   return `Du bist der Notebook-Agent in der Desktop-App „${APP_NAME}". Du arbeitest AUSSCHLIESSLICH über die Notebook-MCP-Werkzeuge (custom-user-tools). Keine Dateien der Anwendung selbst ändern.
 
 Aktives Notebook:
 - project_id: ${input.projectId}
 - Titel: ${input.title}
-
+${linked}
 Im Workspace liegt der Skill notebook-sources (.cursor/skills/notebook-sources/SKILL.md). Befolge ihn. Es gibt keinen Research-Brief.
 
 Arbeitsvertrag:

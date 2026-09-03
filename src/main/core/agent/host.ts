@@ -526,8 +526,9 @@ export class CursorAgentHost {
       const kind = notebook ? 'notebook' : 'research'
       const briefAdopted = Boolean(this.repo.getAdoptedBrief(projectId))
       const yoloBlock = yolo ? `${yoloDirective(kind, { briefAdopted })}\n\n` : ''
+      const linked = project.linked_research_id ? this.repo.getProject(project.linked_research_id) : null
       const preamble = notebook
-        ? notebookPreamble({ projectId, title: project.title })
+        ? notebookPreamble({ projectId, title: project.title, linkedResearchTitle: linked?.title ?? null })
         : sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })
       const body = session.fresh
         ? `${yoloBlock}${preamble}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
