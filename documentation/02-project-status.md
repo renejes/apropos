@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | apROPos |
 | **Dokument** | 02 — Projekt-Status |
-| **Stand** | 2026-08-30 · v4.0 |
-| **Phase** | Research und Notebook gebaut · echter Modell-Lauf (Research) ausstehend |
+| **Stand** | 2026-09-03 · v5.0 |
+| **Phase** | Research und Notebook gebaut · PDF-Leser, Kopplung, Datenordner · echter Modell-Lauf (Research) ausstehend |
 
 **Dokument-Set:** [01 Implementationplan](01-implementationplan.md) · [02 Projekt-Status](02-project-status.md) · [03 Next Steps](03-next-steps.md) · [08 Notebook](08-notebook.md) · [HANDOVER](../HANDOVER.md) · Archiv: [04](done/04-feasability.md) · [05](done/05-market-research.md) · [06](done/06-eigene-research-engine.md) · [07](done/07-clients.md)
 
@@ -36,8 +36,8 @@ Zwei Lieferformen im Research-Modus, ein Korpus: Blogs (Frame) und wissenschaftl
 
 | | |
 |---|---|
-| Schema | **v14** (`kind`, `notes`; zuvor v13 `easy_writing_dir`) |
-| Tests | **270** (Vitest) |
+| Schema | **v15** (`linked_research_id`; zuvor v14 `kind`/`notes`, v13 `easy_writing_dir`) |
+| Tests | **288** (Vitest) |
 | MCP-SDK | `@modelcontextprotocol/sdk` **1.30** |
 | Agent | `@cursor/sdk` **1.0.28**, Runtime `local` |
 | Lizenz | **GPL-3.0-or-later** (Copyright René Jesser; Dual-Lizenz als alleiniger Rechteinhaber möglich) |
@@ -129,7 +129,7 @@ Electron
   Renderer    Chat (SDK-Stream) │ Research-Tabs  ODER  NotebookView
   Main        CursorAgentHost ── customTools (gefiltert nach kind) ── ToolBridge
               HTTP-MCP 127.0.0.1:8790
-              research.ts / notes.ts / youtube.ts / artifacts.ts  →  SQLite WAL + FTS5
+              research.ts / notes.ts / youtube.ts / artifacts.ts  →  SQLite (WAL lokal / DELETE im Sync-Ordner) + FTS5
 ```
 
 `ResearchEngine` + `FakeProvider` sind **Testharness**, kein Nutzer-Modus. Ollama-Engine in der App ist entfernt.
@@ -147,7 +147,7 @@ Chrome wie Easy Writing: Linie, Invert, Farbe nur für Bedeutung.
 | Research-Tabs | Übersicht, Korpus, Quellen, Aussagen, Karte, Berichte, Protokoll, Audit |
 | Notebook | Quellen, Notizen, Artefakte; Chat/Notiz/HTML in der Mitte |
 | Export | nur Research: Provenienz oder Easy Writing |
-| Einstellungen | Cursor-Login, Modell, MCP-URL, Demo-Seed |
+| Einstellungen | Cursor-Login, Modell, MCP-URL, Demo-Seed, **Datenordner** (Dropbox/Drive als Pfad, Lock, kein gleichzeitiges Öffnen) |
 
 ---
 
@@ -164,7 +164,7 @@ Schreibweg: [Easy Writing](https://github.com/renejes/easy-writing), Satz option
 
 ## Was belegt ist — und was nicht
 
-**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate (Research), Coverage-Gate, Pending-Gate, Sign-off nur UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus, Such-Lage, Easy-Writing-Ordner, Biblio/Citekey, Sayable, Chat-Sessions, Projekt-Löschen, **Notebook:** `kind`, Notizen+Datei, YouTube-ID-Parsing, Gates aus, Tool-Filter, Artefakt-Pfad. 270 Tests.
+**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate (Research), Coverage-Gate, Pending-Gate, Sign-off nur UI, Rebinding-Schutz, PDF-Offsets, Seed-Korpus, Such-Lage, Easy-Writing-Ordner, Biblio/Citekey, Sayable, Chat-Sessions, Projekt-Löschen, **Notebook:** `kind`, Notizen+Datei, YouTube-ID-Parsing, Gates aus, Tool-Filter, Artefakt-Pfad, **v15:** lebender Korpus (`linked_research_id`), Ingest-Ablehnung, Research-Lösch-Guard, Lock/Journal, Offset→Seite.
 
 **Nicht belegt:** Ob ein echtes Cursor-Modell den Research-Vertrag hält (Brief, Lage, richtige Offsets). Ob der Notebook-Agent Notizen mit Offsets speichert statt Freitext. Die Maschine ist gegen Fixtures verifiziert, nicht gegen eine echte Recherche.
 
@@ -182,6 +182,9 @@ Nächster Schritt Research: [03](03-next-steps.md). Notebook-Vertrag: [08](08-no
 | Zwei Arten | Research unverändert; Notebook daneben, nicht statt |
 | Such-Lage | nur Research; Query vom Modell |
 | Schreibweg | Easy-Writing-Ordner, nicht Zotero; kein Artikelgenerator |
+| Korpus | Research besitzt ihn; Notebook darf ihn lesen (`linked_research_id`) |
+| PDF | Lesen (pdf.js), nicht markieren |
+| Datenordner | Nutzerpfad; Dropbox/Drive nur Dateisystem; Lock + DELETE-Journal |
 | Oberfläche | Familie zu Easy Writing |
 | Ollama in der App | entfernt |
 | Lizenz | GPL-3.0-or-later; Verkauf später über Dual-Lizenz möglich, solange alleiniger Copyright-Inhaber |

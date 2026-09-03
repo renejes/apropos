@@ -19,6 +19,8 @@ import type {
   VisualVersion,
   Note,
   ArtifactFile,
+  DataRootInfo,
+  DocumentOpenInfo,
 } from '../shared/types'
 import type {
   AgentAuthStatus,
@@ -41,7 +43,11 @@ const api = {
     research_question: string
     mode: 'academic' | 'business'
     kind?: 'research' | 'notebook'
+    linked_research_id?: string | null
   }): Promise<Project> => ipcRenderer.invoke('projects:create', input),
+  createNotebookFromResearch: (researchId: string): Promise<Project> => ipcRenderer.invoke('projects:createNotebook', researchId),
+  linkNotebookToResearch: (notebookId: string, researchId: string): Promise<Project> =>
+    ipcRenderer.invoke('projects:linkResearch', notebookId, researchId),
   deleteProject: (projectId: string): Promise<{ deleted: boolean }> => ipcRenderer.invoke('projects:delete', projectId),
   getProjectState: (projectId: string): Promise<ProjectState> => ipcRenderer.invoke('projects:state', projectId),
   listEvents: (projectId: string): Promise<EventLogEntry[]> => ipcRenderer.invoke('projects:events', projectId),
@@ -79,6 +85,9 @@ const api = {
   searchDocuments: (projectId: string, query: string): Promise<DocumentSearchHit[]> =>
     ipcRenderer.invoke('documents:search', projectId, query),
   openOriginalDocument: (documentId: string): Promise<boolean> => ipcRenderer.invoke('documents:openOriginal', documentId),
+  showDocumentInFolder: (documentId: string): Promise<boolean> => ipcRenderer.invoke('documents:showInFolder', documentId),
+  inspectDocument: (documentId: string): Promise<DocumentOpenInfo> => ipcRenderer.invoke('documents:inspect', documentId),
+  readDocumentPdf: (documentId: string): Promise<ArrayBuffer | null> => ipcRenderer.invoke('documents:pdfBytes', documentId),
   uploadCorpus: (
     projectId: string
   ): Promise<{
@@ -140,6 +149,11 @@ const api = {
     target: 'new' | 'existing'
   }> => ipcRenderer.invoke('export:easyWriting', input),
   pickDirectory: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pickDirectory', title),
+  dataRootInfo: (): Promise<DataRootInfo> => ipcRenderer.invoke('data:info'),
+  setDataCloudSynced: (cloudSynced: boolean): Promise<DataRootInfo> => ipcRenderer.invoke('data:setCloudSynced', cloudSynced),
+  setDataRoot: (
+    input: { toRoot: string; mode: 'copy' | 'use-existing'; cloudSynced: boolean }
+  ): Promise<{ ok: true } | { ok: false; error: string; hasDb?: boolean }> => ipcRenderer.invoke('data:setRoot', input),
 
   serverInfo: (): Promise<ServerInfo> => ipcRenderer.invoke('server:info'),
   seedDemo: (): Promise<string> => ipcRenderer.invoke('demo:seed'),

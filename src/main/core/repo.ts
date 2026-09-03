@@ -105,18 +105,20 @@ export class Repo {
     mode: ProjectMode
     policy_preset?: string | null
     kind?: ProjectKind
+    linked_research_id?: string | null
     actor: string
   }): Project {
     const id = randomUUID()
     const ts = nowIso()
     const kind: ProjectKind = input.kind === 'notebook' ? 'notebook' : 'research'
+    const linked = kind === 'notebook' ? (input.linked_research_id ?? null) : null
     this.db
       .prepare(
-        `INSERT INTO projects (id, title, research_question, mode, policy_preset, kind, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO projects (id, title, research_question, mode, policy_preset, kind, linked_research_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.title, input.research_question, input.mode, input.policy_preset ?? null, kind, ts, ts)
-    this.logEvent(id, input.actor, 'project.created', { title: input.title, mode: input.mode, kind })
+      .run(id, input.title, input.research_question, input.mode, input.policy_preset ?? null, kind, linked, ts, ts)
+    this.logEvent(id, input.actor, 'project.created', { title: input.title, mode: input.mode, kind, linked_research_id: linked })
     return this.getProject(id)!
   }
 
@@ -135,6 +137,21 @@ export class Repo {
       .prepare(`UPDATE projects SET easy_writing_dir = ?, updated_at = ? WHERE id = ?`)
       .run(dir, nowIso(), projectId)
     this.logEvent(projectId, actor, 'project.easy_writing_dir', { dir })
+  }
+
+  setLinkedResearchId(notebookId: string, researchId: string | null, actor: string): void {
+    if (!this.getProject(notebookId)) return
+    this.db
+      .prepare(`UPDATE projects SET linked_research_id = ?, updated_at = ? WHERE id = ?`)
+      .run(researchId, nowIso(), notebookId)
+    this.logEvent(notebookId, actor, 'project.linked_research', { linked_research_id: researchId })
+  }
+
+  listNotebooksLinkedTo(researchId: string): Project[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM projects WHERE linked_research_id = ? ORDER BY updated_at DESC`)
+      .all(researchId) as ProjectRow[]
+    return rows.map(mapProject)
   }
 
   deleteProject(projectId: string, actor: string): boolean {
@@ -1394,6 +1411,7 @@ export class Repo {
       researchBrief: this.getAdoptedBrief(projectId) ?? this.getLatestBrief(projectId) ?? null,
       documents: this.listDocuments(projectId),
       notes: this.listNotes(projectId),
+      linked_research: null,
     }
   }
 
@@ -1532,6 +1550,7 @@ interface ProjectRow {
   research_question: string
   mode: ProjectMode
   kind?: string | null
+  linked_research_id?: string | null
   policy_preset: string | null
   easy_writing_dir: string | null
   created_at: string
@@ -1572,6 +1591,7 @@ function mapProject(row: ProjectRow): Project {
     kind: mapProjectKind(row.kind),
     policy_preset: row.policy_preset,
     easy_writing_dir: row.easy_writing_dir,
+    linked_research_id: row.linked_research_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }

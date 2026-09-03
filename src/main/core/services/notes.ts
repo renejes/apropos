@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Repo } from '../repo'
 import { projectWorkspace } from '../agent/workspace'
-import { ServiceError } from './research'
+import { ServiceError, documentBelongsToCorpus } from './research'
 import type { Note, NoteCitation, NoteOrigin } from '../../../shared/types'
 
 function assertProject(repo: Repo, projectId: string): void {
@@ -64,11 +64,11 @@ export function groundCitations(repo: Repo, projectId: string, raw: unknown): No
       )
     }
     const doc = repo.getDocument(documentId)
-    if (!doc || doc.project_id !== projectId) {
+    if (!doc || !documentBelongsToCorpus(repo, projectId, doc.project_id)) {
       throw new ServiceError(
         'citation_document_missing',
         `Dokument ${documentId} liegt nicht in diesem Projekt.`,
-        'Rufe list_corpus oder search_documents auf und nimm eine document_id aus diesem Notebook.'
+        'Rufe list_corpus oder search_documents auf und nimm eine document_id aus dem Korpus dieses Notebooks.'
       )
     }
     if (start < 0 || end > doc.char_len || start >= end) {

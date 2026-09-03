@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useState, type DragEvent, type ReactNode } from 'react'
-import type { ArtifactFile, FetchedDocument, Note, ProjectState } from '../../../shared/types'
+import type { ArtifactFile, FetchedDocument, Note, ProjectState, ProjectSummary } from '../../../shared/types'
 import { Badge, Button, EmptyState } from '../components/ui'
 import AgentChat from './AgentChat'
+import DocumentReader from './DocumentReader'
 
-type CenterTab = { kind: 'chat' } | { kind: 'note'; id: string } | { kind: 'artifact'; path: string }
+type CenterTab =
+  | { kind: 'chat' }
+  | { kind: 'note'; id: string }
+  | { kind: 'artifact'; path: string }
+  | { kind: 'document'; id: string; start?: number; end?: number }
 
 export default function NotebookView({
   projectId,
   state,
   onReload,
+  onOpenProject,
 }: {
   projectId: string
   state: ProjectState
   onReload: () => void
+  onOpenProject?: (id: string) => void
 }) {
   const [center, setCenter] = useState<CenterTab>({ kind: 'chat' })
   const [youtubeUrl, setYoutubeUrl] = useState('')
@@ -22,6 +29,9 @@ export default function NotebookView({
   const [artifacts, setArtifacts] = useState<ArtifactFile[]>([])
   const docs = state.documents.filter((d) => d.status !== 'excluded')
   const notes = state.notes
+  const linked = state.linked_research
+  const corpusLocked = Boolean(linked)
+  const [researchList, setResearchList] = useState<ProjectSummary[]>([])
 
   const refreshArtifacts = useCallback(() => {
     void window.api.listArtifacts(projectId).then(setArtifacts)
@@ -32,6 +42,11 @@ export default function NotebookView({
     const t = setInterval(refreshArtifacts, 4000)
     return () => clearInterval(t)
   }, [refreshArtifacts])
+
+  useEffect(() => {
+    if (linked || docs.length > 0) return
+    void window.api.listProjects().then((list) => setResearchList(list.filter((p) => p.kind === 'research')))
+  }, [linked, docs.length])
 
   const upload = async (importer: () => Promise<{ filenames: string[]; errors: Array<{ filename: string; message: string }> }>) => {
     setBusy(true)
@@ -77,10 +92,30 @@ export default function NotebookView({
       .map((f) => (f as File & { path?: string }).path)
       .filter((p): p is string => typeof p === 'string' && p.length > 0)
     if (paths.length === 0) return
+    if (corpusLocked) {
+      setNotice('Quellen im Research-Projekt anlegen, nicht hier.')
+      return
+    }
     void upload(() => window.api.importCorpus(projectId, paths))
   }
 
   const openNote = notes.find((n) => center.kind === 'note' && n.id === center.id) ?? null
+  const openDocMeta = docs.find((d) => center.kind === 'document' && d.id === center.id) ?? null
+  const [openDocFull, setOpenDocFull] = useState<FetchedDocument | null>(null)
+
+  useEffect(() => {
+    if (center.kind !== 'document') {
+      setOpenDocFull(null)
+      return
+    }
+    let alive = true
+    void window.api.getDocument(center.id).then((doc) => {
+      if (alive) setOpenDocFull(doc)
+    })
+    return () => {
+      alive = false
+    }
+  }, [center])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -90,6 +125,15 @@ export default function NotebookView({
           <Badge tone="violet">Notebook</Badge>
         </div>
         <p className="mt-1 text-sm text-muted">Quellen links, Chat und Notizen in der Mitte. Alles Markdown.</p>
+        {linked && (
+          <p className="mt-2 text-xs text-muted">
+            Korpus aus Research „{linked.title}“.{' '}
+            <button type="button" className="underline" onClick={() => onOpenProject?.(linked.id)}>
+              Research öffnen
+            </button>
+            . Quellen nur dort anlegen.
+          </p>
+        )}
       </header>
 
       <div
@@ -105,37 +149,75 @@ export default function NotebookView({
           <section className="border-b border-hairline p-3">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted">Quellen</h2>
-              <Button
-                variant="ghost"
-                icon="upload_file"
-                title="PDF hochladen"
-                disabled={busy}
-                onClick={() => void upload(() => window.api.uploadCorpus(projectId))}
-              />
+              {!corpusLocked && (
+                <Button
+                  variant="ghost"
+                  icon="upload_file"
+                  title="PDF hochladen"
+                  disabled={busy}
+                  onClick={() => void upload(() => window.api.uploadCorpus(projectId))}
+                />
+              )}
             </div>
-            <div className="flex gap-1">
-              <input
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void addYoutube()
-                }}
-                placeholder="YouTube-Link"
-                className="field min-w-0 flex-1 text-xs"
-                disabled={busy}
-              />
-              <Button variant="ghost" disabled={busy || !youtubeUrl.trim()} onClick={() => void addYoutube()}>
-                +
-              </Button>
-            </div>
+            {!corpusLocked && (
+              <div className="flex gap-1">
+                <input
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void addYoutube()
+                  }}
+                  placeholder="YouTube-Link"
+                  className="field min-w-0 flex-1 text-xs"
+                  disabled={busy}
+                />
+                <Button variant="ghost" disabled={busy || !youtubeUrl.trim()} onClick={() => void addYoutube()}>
+                  +
+                </Button>
+              </div>
+            )}
+            {!corpusLocked && !linked && docs.length === 0 && researchList.length > 0 && (
+              <div className="mt-2">
+                <p className="mb-1 text-[11px] text-muted">Oder mit Research verknüpfen:</p>
+                <select
+                  className="field w-full text-xs"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const id = e.target.value
+                    if (!id) return
+                    void window.api
+                      .linkNotebookToResearch(projectId, id)
+                      .then(() => onReload())
+                      .catch((err: unknown) => setNotice(err instanceof Error ? err.message : String(err)))
+                  }}
+                >
+                  <option value="">Research wählen …</option>
+                  {researchList.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {notice && <p className="mt-2 text-[11px] text-muted">{notice}</p>}
             <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
               {docs.length === 0 ? (
-                <li className="text-xs text-muted">PDFs hierher ziehen oder YouTube-Link einfügen.</li>
+                <li className="text-xs text-muted">
+                  {corpusLocked ? 'Noch keine Dokumente im verknüpften Research.' : 'PDFs hierher ziehen oder YouTube-Link einfügen.'}
+                </li>
               ) : (
                 docs.map((d) => (
-                  <li key={d.id} className="truncate text-xs">
-                    <OriginLabel origin={d.origin} /> {d.title || d.filename || d.url}
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      className={`w-full truncate px-1 py-0.5 text-left text-xs ${
+                        center.kind === 'document' && center.id === d.id ? 'bg-fg text-bg' : 'hover:bg-fg hover:text-bg'
+                      }`}
+                      onClick={() => setCenter({ kind: 'document', id: d.id })}
+                    >
+                      <OriginLabel origin={d.origin} /> {d.title || d.filename || d.url}
+                    </button>
                   </li>
                 ))
               )}
@@ -220,6 +302,20 @@ export default function NotebookView({
                 </span>
               </TabButton>
             )}
+            {center.kind === 'document' && openDocMeta && (
+              <TabButton active onClick={() => undefined}>
+                {(openDocMeta.title || openDocMeta.filename || 'Quelle').slice(0, 28)}
+                <span
+                  className="ml-1 opacity-60"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCenter({ kind: 'chat' })
+                  }}
+                >
+                  ×
+                </span>
+              </TabButton>
+            )}
             {center.kind === 'artifact' && (
               <TabButton active onClick={() => undefined}>
                 {center.path}
@@ -256,6 +352,14 @@ export default function NotebookView({
                 setCenter({ kind: 'chat' })
                 void onReload()
               }}
+              onOpenDocument={(documentId, start, end) => setCenter({ kind: 'document', id: documentId, start, end })}
+            />
+          )}
+          {center.kind === 'document' && openDocMeta && openDocFull && (
+            <DocumentReader
+              meta={openDocMeta}
+              doc={openDocFull}
+              range={center.start != null && center.end != null ? { start: center.start, end: center.end } : null}
             />
           )}
           {center.kind === 'artifact' && (
@@ -305,7 +409,17 @@ function titleFromMarkdown(text: string): string {
   return (line ?? 'Notiz').trim().slice(0, 80)
 }
 
-function NoteEditor({ note, onSaved, onDeleted }: { note: Note; onSaved: () => void; onDeleted: () => void }) {
+function NoteEditor({
+  note,
+  onSaved,
+  onDeleted,
+  onOpenDocument,
+}: {
+  note: Note
+  onSaved: () => void
+  onDeleted: () => void
+  onOpenDocument?: (documentId: string, start?: number, end?: number) => void
+}) {
   const [title, setTitle] = useState(note.title)
   const [body, setBody] = useState(note.body_markdown)
   const [busy, setBusy] = useState(false)
@@ -358,7 +472,12 @@ function NoteEditor({ note, onSaved, onDeleted }: { note: Note; onSaved: () => v
         <ul className="max-h-28 overflow-y-auto border-t border-hairline px-4 py-2 text-xs text-muted">
           {note.citations.map((c, i) => (
             <li key={`${c.document_id}-${c.quote_start}-${i}`} className="mb-1">
-              <span className="font-mono">{c.quote_start}–{c.quote_end}</span> · {c.quote.slice(0, 120)}
+              <span className="font-mono">{c.quote_start}–{c.quote_end}</span> · {c.quote.slice(0, 120)}{' '}
+              {onOpenDocument && (
+                <button type="button" className="underline" onClick={() => onOpenDocument(c.document_id, c.quote_start, c.quote_end)}>
+                  Im PDF zeigen
+                </button>
+              )}
             </li>
           ))}
         </ul>

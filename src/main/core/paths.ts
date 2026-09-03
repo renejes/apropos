@@ -1,22 +1,14 @@
-import { homedir } from 'os'
 import { join } from 'path'
-import { APP_DATA_DIR_NAME } from '../../shared/brand'
+import { resolvedDataRoot } from './data-root'
 
 /** Gemeinsames User-Data-Verzeichnis der App (DB, Agent-Workspaces, Settings). */
 export function appDataDir(): string {
-  if (process.env.ROP_DATA_DIR) return process.env.ROP_DATA_DIR
-  const base =
-    process.platform === 'darwin'
-      ? join(homedir(), 'Library', 'Application Support')
-      : process.platform === 'win32'
-        ? (process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'))
-        : (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
-  return join(base, APP_DATA_DIR_NAME)
+  return resolvedDataRoot()
 }
 
 /**
  * Standard-DB-Pfad — identisch für Electron-App und stdio-MCP-Server,
- * damit beide Prozesse (via WAL) auf derselben Source-of-Truth arbeiten.
+ * damit beide Prozesse auf derselben Source-of-Truth arbeiten.
  * Override per Env RESEARCH_DB_PATH (auch für Tests).
  */
 export function defaultDbPath(): string {

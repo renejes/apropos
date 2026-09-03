@@ -1,6 +1,6 @@
 # Handover — apROPos
 
-> Kontext für einen neuen Chat. Stand: **2026-08-30**.
+> Kontext für einen neuen Chat. Stand: **2026-09-03**.
 > Danach ohne die Git-History lesen zu müssen weiterarbeiten können.
 
 **Zuerst lesen:** [02 Status](documentation/02-project-status.md) · [08 Notebook](documentation/08-notebook.md) · bei Research-Läufen [03](documentation/03-next-steps.md).
@@ -17,8 +17,8 @@ Local-first **Electron-App**. Die KI (Cursor-Abo, `@cursor/sdk`) arbeitet **in d
 
 **Zwei Projektarten** (`projects.kind`):
 
-- **Research** — Brief, Offset-Zitate, Lücken, Karte, Easy-Writing-Export. Vertrag unverändert.
-- **Notebook** — PDF + YouTube, Chat, bearbeitbare Markdown-Notizen, HTML unter `artifacts/`. Kein Brief.
+- **Research** — Brief, Offset-Zitate, Lücken, Karte, Sign-off, Easy-Writing-Export. Vertrag unverändert. Besitzt den Korpus.
+- **Notebook** — Chat, bearbeitbare Markdown-Notizen, HTML unter `artifacts/`. Kein Brief. Kann den Korpus eines Research **lesen** (`linked_research_id`), ohne ihn zu besitzen.
 
 Zielgruppe Research: akademisch *und* Business. Notebook: Quellenarbeit ohne Forschungs-Gate.
 
@@ -42,7 +42,7 @@ Weitere `fetch_source`, solange Pending-Dokumente offen (`ROP_MAX_PENDING`, Defa
 
 Teilfragen, `get_coverage_gaps` (Zählung), `next_round` (Sättigung), Bericht erst ohne blockierende Lücken.
 
-**Notebook:** Brief- und Lage-Gates sind no-op. Offset-Notizen (`services/notes.ts`) und `add_source` gelten weiter. Nicht die Research-Gates „aufweichen“.
+**Notebook:** Brief- und Lage-Gates sind no-op. Offset-Notizen (`services/notes.ts`) gelten weiter. Research-Gates nicht „aufweichen“. Verknüpftes Notebook: Korpus nur lesen (`corpus_owned_by_research`).
 
 ---
 
@@ -55,28 +55,28 @@ Teilfragen, `get_coverage_gaps` (Zählung), `next_round` (Sättigung), Bericht e
 
 Eine Werkzeugdefinition (`mcp/server.ts`). Filter nur beim Spawn (`notebook-tools.ts`). Ollama-Engine in der App entfernt. `ResearchEngine` + `FakeProvider` = Testharness.
 
+`create_project` akzeptiert optionales `linked_research_id` (nur `kind=notebook`). Bestehendes leeres Notebook: `link_notebook_to_research`.
+
 ---
 
 ## 4. Stack und Landkarte
 
-**Electron · React 18 · Tailwind v4 · better-sqlite3 (WAL, FTS5) · `@cursor/sdk` 1.0.28 · MCP SDK 1.30 · Zod · Vitest**
+**Electron · React 18 · Tailwind v4 · better-sqlite3 (WAL lokal / DELETE im Sync-Ordner, FTS5) · `@cursor/sdk` 1.0.28 · MCP SDK 1.30 · Zod · Vitest · pdfjs-dist (Leser)**
 
-Schema **v14**. Tests **270**.
+Schema **v15**. Tests **288**.
 
 ```
 src/main/core/
-  db.ts, repo.ts
-  services/research.ts     Research-Enforcement
+  db.ts, repo.ts, paths.ts, data-root.ts, data-lock.ts
+  services/research.ts     Research-Enforcement + Korpus-Auflösung
+  services/projects.ts     Anlegen, Link, Löschen mit Notebook-Guard
   services/notes.ts        Notizen + Offset-Schnitt
+  services/reader.ts       Datei am Dokument (PDF ja/nein, fehlt)
   services/youtube.ts      Captions → Korpus
-  services/artifacts.ts    artifacts/ lesen (kein SDK-listArtifacts)
+  services/artifacts.ts    artifacts/ lesen
   agent/host.ts            Spawn, Preamble, Tool-Filter
-  agent/instructions.ts    sessionPreamble / notebookPreamble
-  agent/notebook-tools.ts  Whitelist
-  engine/                  Testharness
-src/main/mcp/server.ts     Tools inkl. save_note / list_artifacts
-src/renderer/.../NotebookView.tsx, NewProjectDialog.tsx, ProjectView.tsx
-documentation/08-notebook.md
+  agent/workspace.ts       inbox/ notes/ artifacts/ unter defaultAgentRoot
+src/renderer/.../DocumentReader.tsx, NotebookView.tsx, CorpusTab.tsx, SettingsView.tsx
 ```
 
 **Regel 1:** Neue Schreibpfade rufen Services, nie `repo.*` für Enforcement-Dinge.
@@ -95,6 +95,7 @@ documentation/08-notebook.md
 | YouTube leer | Keine Captions → Fehler, nicht speichern |
 | HTML-Preview unsicher | iframe ohne `allow-same-origin` |
 | YOLO zu locker | Briefing bleibt; YOLO erst nach Adoption. Notizen nur per Button |
+| SQLite + Dropbox | Journal DELETE + `lock.json`; nicht zwei Rechner gleichzeitig |
 
 ```bash
 npm run typecheck
@@ -106,11 +107,9 @@ npm run smoke
 
 ## 6. Nicht neu aufrollen
 
-Gestrichen: generischer Ollama-Chat, Auth/Tunnel, Abo-Modelle fremder Anbieter in der eigenen App, MCP Sampling/Roots, Zotero als Source of Truth, Open-Notebook-Fork, Podcasts in v1.
+Gestrichen: generischer Ollama-Chat, Auth/Tunnel, Abo-Modelle fremder Anbieter in der eigenen App, MCP Sampling/Roots, Zotero als Source of Truth, Open-Notebook-Fork, Podcasts in v1, PDF-Annotationen, zweiter Katalog, Cloud-API/OAuth, gleichzeitiges Arbeiten.
 
 Bewusst: WebSearch darf **entdecken**, Bericht nur aus `documents`. Suche über akademische APIs (DOI). Ein Extraktor, lokal. Easy Writing = `.bib` + `[@citekey]` aus dieser Plattform.
-
-Historische Fallen (DNS-Rebinding still, Migration BEGIN IMMEDIATE, Schema-Fehler vor Handler, Quota beendet den Lauf): [alte HANDOVER-Abschnitte 7–8 im Git] — kurz: grüne Tests zählen nur, wenn sie die Mutation treffen.
 
 ---
 
@@ -120,11 +119,24 @@ Historische Fallen (DNS-Rebinding still, Migration BEGIN IMMEDIATE, Schema-Fehle
 2. Notebook-Modell-Lauf **danach** (ob `save_note` mit Offsets kommt).
 3. Phase C (`disallowedTools`) blockiert Spike 1 nicht.
 
-BibTeX / Easy Writing / PDF-Ingest / WebSearch-Ingest sind **gebaut**, nicht der nächste Spike.
+PDF-Leser, Notebook↔Research-Kopplung, Datenordner/Sync sind **gebaut**, nicht der nächste Spike.
 
 ---
 
-## 8. Zusammenarbeit mit René
+## 8. Datenordner und Sync
+
+Einstellungen: **Datenordner wählen** (nativer Dialog). Der Ordner darf in Dropbox, Google Drive for Desktop, iCloud oder lokal liegen. Kein Cloud-API.
+
+- Pointer: `~/Library/Application Support/apropos/data-root.json` (OS-Default bleibt der Anker pro Rechner).
+- Inhalt des Roots: `research.db`, `agent-workspaces/`, `agent-settings.json`, `settings.json` (`cloudSynced`), `lock.json`.
+- Cloud-Pfad oder Häkchen „wird synchronisiert“ → `journal_mode=DELETE` (kein WAL auf Sync-Ordnern).
+- `lock.json` `{ hostname, pid, startedAt, appVersion }`. Anderer Host → App startet nicht schreibend; „Lock ignorieren“ nur nach Crash. Gleicher Host + toter PID: übernehmen. Beenden: Checkpoint, Close, Lock löschen.
+- Nicht zwei geöffnete Apps auf denselben Dateien. Erst Sync abwarten, dann den anderen Rechner starten.
+- `ROP_DATA_DIR` / `defaultAgentRoot` ehren den gewählten Root. `easy_writing_dir` bleibt ein Pfad pro Research, nicht zwingend unter dem Root.
+
+---
+
+## 9. Zusammenarbeit mit René
 
 Deutsch in UI und Kommentaren. Autonomie, dann gemeinsames Review. Belegte Aussagen. UI: hell, Tailwind, Material Symbols, keine Schatten, Farbe nur für Status.
 

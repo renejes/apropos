@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import type { Repo } from '../repo'
-import { ServiceError } from './research'
+import { ServiceError, assertCorpusWritable } from './research'
 import type { FetchedDocument } from '../../../shared/types'
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -165,6 +165,7 @@ export async function ingestYoutubeUrl(repo: Repo, projectId: string, urlOrId: s
   if (!project) {
     throw new ServiceError('project_missing', `Projekt ${projectId} existiert nicht.`, 'Wähle ein vorhandenes Notebook.')
   }
+  assertCorpusWritable(repo, projectId)
   const videoId = parseYoutubeVideoId(urlOrId)
   if (!videoId) {
     throw new ServiceError(

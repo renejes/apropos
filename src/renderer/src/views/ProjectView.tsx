@@ -26,7 +26,15 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id']
 
-export default function ProjectView({ projectId, onChanged }: { projectId: string; onChanged: () => void }) {
+export default function ProjectView({
+  projectId,
+  onChanged,
+  onOpenProject,
+}: {
+  projectId: string
+  onChanged: () => void
+  onOpenProject?: (id: string) => void
+}) {
   const [state, setState] = useState<ProjectState | null>(null)
   const [tab, setTab] = useState<TabId>('overview')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
@@ -60,7 +68,7 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
   }
 
   if (state.project.kind === 'notebook') {
-    return <NotebookView projectId={projectId} state={state} onReload={reload} />
+    return <NotebookView projectId={projectId} state={state} onReload={reload} onOpenProject={onOpenProject} />
   }
 
   const pendingCount = state.sources.filter((s) => s.review_status === 'pending').length
@@ -79,6 +87,21 @@ export default function ProjectView({ projectId, onChanged }: { projectId: strin
             {state.project.research_question && <p className="mt-1 truncate text-sm text-muted">{state.project.research_question}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <Button
+              onClick={async () => {
+                try {
+                  const nb = await window.api.createNotebookFromResearch(projectId)
+                  onChanged()
+                  onOpenProject?.(nb.id)
+                } catch (err) {
+                  setExportMsg(err instanceof Error ? err.message : String(err))
+                  setTimeout(() => setExportMsg(null), 5000)
+                }
+              }}
+              title="Notebook, das diesen Korpus liest"
+            >
+              Notebook aus diesem Projekt
+            </Button>
             <Button
               onClick={async () => {
                 await window.api.copyMarkdown(projectId, null)

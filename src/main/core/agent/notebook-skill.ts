@@ -9,7 +9,7 @@ description: Arbeitet nur mit dem Notebook-Korpus (PDFs, YouTube-Transkripte). A
 
 # Notebook-Quellen
 
-Du arbeitest AUSSCHLIESSLICH mit den Dokumenten in diesem Notebook. Kein Web-Suchen, kein Brief, keine Evidenzkarte.
+Du arbeitest mit den Dokumenten des Korpus (PDFs, YouTube-Transkripte). Ist das Notebook mit einem Research verknüpft, liest du dessen Korpus — neue Quellen nur dort anlegen. Kein Web-Suchen, kein Brief, keine Evidenzkarte.
 
 ## Reihenfolge
 

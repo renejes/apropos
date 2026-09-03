@@ -23,6 +23,11 @@ import {
   reflectSearch,
 } from '../core/services/research'
 import {
+  createProject,
+  linkNotebookToResearch,
+  loadProjectState,
+} from '../core/services/projects'
+import {
   askNarrative,
   describeEvidenceMap,
   getVisualVersion,
@@ -357,11 +362,57 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         mode: z.enum(['academic', 'business']).describe('academic = Zitier-Rigorosität; business = Markt-/Marketing-Research'),
         policy_preset: z.string().optional().describe('Optionales Policy-Preset, z. B. ICMJE, PRISMA, DFG'),
         kind: z.enum(['research', 'notebook']).optional().describe('research (Standard) oder notebook (Quellen-Chat ohne Brief)'),
+        linked_research_id: z
+          .string()
+          .optional()
+          .describe('Nur mit kind=notebook: Research-Projekt, dessen Korpus dieses Notebook liest'),
       },
     },
     async (args) => {
-      const project = repo.createProject({ ...args, policy_preset: args.policy_preset ?? null, actor: actor() })
-      return ok({ project_id: project.id, title: project.title, mode: project.mode, kind: project.kind })
+      try {
+        const project = createProject(repo, {
+          ...args,
+          policy_preset: args.policy_preset ?? null,
+          linked_research_id: args.linked_research_id ?? null,
+          actor: actor(),
+        })
+        return ok({
+          project_id: project.id,
+          title: project.title,
+          mode: project.mode,
+          kind: project.kind,
+          linked_research_id: project.linked_research_id,
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'link_notebook_to_research',
+    {
+      title: 'Notebook mit Research verknüpfen',
+      description:
+        'Koppelt ein leeres Notebook an ein Research-Projekt. Der Korpus wird dort gelesen, nicht kopiert. ' +
+        'Ablehnung, wenn das Notebook bereits eigene Dokumente hat. Neue Notebooks: create_project mit linked_research_id.',
+      inputSchema: {
+        notebook_id: z.string().describe('ID des Notebooks'),
+        research_id: z.string().describe('ID des Research-Projekts'),
+      },
+    },
+    async (args) => {
+      try {
+        const project = linkNotebookToResearch(repo, args.notebook_id, args.research_id, actor())
+        return ok({
+          project_id: project.id,
+          title: project.title,
+          linked_research_id: project.linked_research_id,
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
     }
   )
 
@@ -394,7 +445,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     },
     async ({ project_id, include }) => {
       try {
-        const state = repo.getProjectState(project_id)
+        const state = loadProjectState(repo, project_id)
         if (!include || include.length === 0) return ok(state)
         const filtered: Record<string, unknown> = { project: state.project }
         if (include.includes('sources')) filtered.sources = state.sources

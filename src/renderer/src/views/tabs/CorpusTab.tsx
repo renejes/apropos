@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DocumentSearchHit, FetchedDocument, ProjectState } from '../../../../shared/types'
-import { Badge, Button, EmptyState, Icon, fmtDate } from '../../components/ui'
-
-type DocMeta = Omit<FetchedDocument, 'text'>
+import { Button, EmptyState, Icon } from '../../components/ui'
+import DocumentReader, { OriginBadge } from '../DocumentReader'
 
 export type CorpusFocus = { documentId: string; start?: number; end?: number }
 
@@ -186,7 +185,7 @@ export default function CorpusTab({
           </div>
         )}
         {selected && full ? (
-          <Reader
+          <DocumentReader
             meta={selected}
             doc={full}
             range={range}
@@ -205,176 +204,5 @@ export default function CorpusTab({
         )}
       </section>
     </div>
-  )
-}
-
-function OriginBadge({ origin }: { origin: DocMeta['origin'] }) {
-  switch (origin) {
-    case 'upload':
-      return (
-        <Badge tone="violet" icon="upload_file">
-          Upload
-        </Badge>
-      )
-    case 'youtube':
-      return (
-        <Badge tone="red" icon="smart_display">
-          YouTube
-        </Badge>
-      )
-    case 'fetched':
-      return (
-        <Badge tone="sky" icon="public">
-          Netz
-        </Badge>
-      )
-    default: {
-      const _never: never = origin
-      return _never
-    }
-  }
-}
-
-function pageForOffset(starts: number[] | null, offset: number): number | null {
-  if (!starts || starts.length === 0) return null
-  let page = 0
-  for (let i = 0; i < starts.length; i++) {
-    if (starts[i]! <= offset) page = i
-    else break
-  }
-  return page + 1
-}
-
-function Reader({
-  meta,
-  doc,
-  range,
-  citedBy,
-}: {
-  meta: DocMeta
-  doc: FetchedDocument
-  range: { start: number; end: number } | null
-  citedBy: number
-}) {
-  const markRef = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    markRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [doc.id, range?.start, range?.end])
-
-  const jumpPage = useCallback(
-    (pageIndex: number) => {
-      const el = document.getElementById(`corpus-page-${pageIndex}`)
-      el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    },
-    []
-  )
-
-  const quotePage = range ? pageForOffset(doc.page_starts, range.start) : null
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b border-hairline bg-bg px-5 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">{doc.title || meta.filename || doc.url}</h2>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-              <OriginBadge origin={doc.origin} />
-              <span>Abgerufen {fmtDate(doc.fetched_at)}</span>
-              <span>{doc.char_len.toLocaleString('de-DE')} Zeichen</span>
-              {citedBy > 0 && <span>{citedBy} Beleg(e)</span>}
-              {quotePage != null && <span>Stelle auf S. {quotePage}</span>}
-            </div>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            {doc.filename && (
-              <Button icon="open_in_new" onClick={() => void window.api.openOriginalDocument(doc.id)}>
-                Original
-              </Button>
-            )}
-          </div>
-        </div>
-        {doc.page_starts && doc.page_starts.length > 1 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {doc.page_starts.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => jumpPage(i)}
-                className={`px-1.5 py-0.5 text-[11px] ${
-                  quotePage === i + 1 ? 'bg-warn-bg font-medium text-fg' : 'border border-hairline text-muted hover:bg-fg hover:text-bg'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-        )}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-        <article className="mx-auto max-w-3xl text-[15px] leading-relaxed text-fg">
-          <HighlightedBody text={doc.text} pageStarts={doc.page_starts} range={range} markRef={markRef} />
-        </article>
-      </div>
-    </div>
-  )
-}
-
-function HighlightedBody({
-  text,
-  pageStarts,
-  range,
-  markRef,
-}: {
-  text: string
-  pageStarts: number[] | null
-  range: { start: number; end: number } | null
-  markRef: MutableRefObject<HTMLElement | null>
-}) {
-  const starts = pageStarts && pageStarts.length > 0 ? pageStarts : [0]
-  const nodes: React.ReactNode[] = []
-  for (let i = 0; i < starts.length; i++) {
-    const from = starts[i]!
-    const to = i + 1 < starts.length ? starts[i + 1]! : text.length
-    const chunk = text.slice(from, to)
-    nodes.push(
-      <div key={i} id={`corpus-page-${i}`} className={i > 0 ? 'mt-8 border-t border-hairline pt-6' : ''}>
-        {starts.length > 1 && <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Seite {i + 1}</div>}
-        <HighlightedChunk text={chunk} absStart={from} range={range} markRef={markRef} />
-      </div>
-    )
-  }
-  return <>{nodes}</>
-}
-
-function HighlightedChunk({
-  text,
-  absStart,
-  range,
-  markRef,
-}: {
-  text: string
-  absStart: number
-  range: { start: number; end: number } | null
-  markRef: MutableRefObject<HTMLElement | null>
-}) {
-  if (!range) return <span className="whitespace-pre-wrap">{text}</span>
-  const localStart = range.start - absStart
-  const localEnd = range.end - absStart
-  if (localEnd <= 0 || localStart >= text.length) return <span className="whitespace-pre-wrap">{text}</span>
-  const a = Math.max(0, localStart)
-  const b = Math.min(text.length, localEnd)
-  return (
-    <span className="whitespace-pre-wrap">
-      {text.slice(0, a)}
-      <mark
-        ref={(el) => {
-          if (localStart >= 0 && localStart < text.length) markRef.current = el
-        }}
-        className="bg-warn-bg px-0.5 font-medium text-fg"
-      >
-        {text.slice(a, b)}
-      </mark>
-      {text.slice(b)}
-    </span>
   )
 }
