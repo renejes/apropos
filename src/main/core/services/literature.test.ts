@@ -52,6 +52,8 @@ describe('Literatursuche über offene Register', () => {
     openalex?: unknown
     crossref?: unknown
     europepmc?: unknown
+    semanticscholar?: unknown
+    openaire?: unknown
     arxivXml?: string
     fail?: string[]
     seen?: string[]
@@ -64,6 +66,8 @@ describe('Literatursuche über offene Register', () => {
       if (u.includes('api.openalex.org')) return json(h.openalex ?? { results: [] })
       if (u.includes('api.crossref.org')) return json(h.crossref ?? { message: { items: [] } })
       if (u.includes('ebi.ac.uk')) return json(h.europepmc ?? { resultList: { result: [] } })
+      if (u.includes('api.semanticscholar.org')) return json(h.semanticscholar ?? { data: [] })
+      if (u.includes('api.openaire.eu')) return json(h.openaire ?? { results: [] })
       if (u.includes('arxiv.org')) return { ok: true, status: 200, text: async () => h.arxivXml ?? '<feed></feed>', json: async () => ({}) }
       throw new Error('unerwartete URL: ' + u)
     })
@@ -82,6 +86,12 @@ describe('Literatursuche über offene Register', () => {
     expect(res.hits[0].oa_url).toBe('https://arxiv.org/pdf/1706.03762')
     expect(res.hits[0].url).toBe('https://papers.nips.cc/paper/7181')
     expect(res.hits[0].venue).toBe('NeurIPS')
+    const desk = repo.listScreeningCandidates(projectId)
+    expect(desk).toHaveLength(1)
+    expect(desk[0].doi).toBe('10.5555/3295222.3295349')
+    expect(desk[0].status).toBe('undecided')
+    expect(desk[0].found_via.sort()).toEqual(['crossref', 'openalex'])
+    expect(res.hint).toMatch(/Sichtungstisch/)
   })
 
   it('führt auch ohne DOI über den normalisierten Titel zusammen', async () => {
@@ -227,7 +237,7 @@ describe('Literatursuche über offene Register', () => {
     expect(res.hint).toMatch(/PSYNDEX/)
     expect(res.hint).toMatch(/pubpsych\.eu/)
     expect(res.hint).toMatch(/nicht scrapen/)
-    expect(res.backends_used.sort()).toEqual(['crossref', 'europepmc', 'openalex'])
+    expect(res.backends_used.sort()).toEqual(['crossref', 'europepmc', 'openaire', 'openalex', 'semanticscholar'])
     expect(res.backends_used).not.toContain('arxiv')
   })
 
@@ -260,5 +270,109 @@ describe('Literatursuche über offene Register', () => {
     await expect(search({ backends: ['openalex'] })).rejects.toBeInstanceOf(ServiceError)
     stubFetch({ openalex: { results: [openAlexWork()] } })
     await expect(search({ backends: ['openalex'] })).resolves.toMatchObject({ total: 1 })
+  })
+
+  it('mappt Semantic-Scholar-Treffer auf DOI, OA-PDF und Landing-Page', async () => {
+    stubFetch({
+      semanticscholar: {
+        data: [
+          {
+            title: 'Attention Is All You Need',
+            authors: [{ name: 'Ashish Vaswani' }],
+            year: 2017,
+            abstract: 'The dominant sequence transduction models.',
+            venue: 'NeurIPS',
+            citationCount: 100_000,
+            externalIds: { DOI: '10.5555/3295222.3295349' },
+            url: 'https://www.semanticscholar.org/paper/abc',
+            isOpenAccess: true,
+            openAccessPdf: { url: 'https://arxiv.org/pdf/1706.03762' },
+          },
+        ],
+      },
+    })
+    const res = await search({ backends: ['semanticscholar'] })
+    expect(res.total).toBe(1)
+    expect(res.hits[0]).toMatchObject({
+      doi: '10.5555/3295222.3295349',
+      oa_url: 'https://arxiv.org/pdf/1706.03762',
+      url: 'https://www.semanticscholar.org/paper/abc',
+      found_via: ['semanticscholar'],
+    })
+  })
+
+  it('setzt bei Semantic Scholar Jahr und Open-Access-Filter in die URL', async () => {
+    const seen: string[] = []
+    stubFetch({ seen })
+    await search({ backends: ['semanticscholar'], year_from: 2016, year_to: 2020, open_access_only: true })
+    const url = seen.find((u) => u.includes('api.semanticscholar.org')) ?? ''
+    expect(url).toMatch(/year=2016-2020/)
+    expect(url).toMatch(/openAccessPdf/)
+  })
+
+  it('sucht in OpenAIRE nach Publikationen und hängt Förderprojekte als graph_edges an', async () => {
+    stubFetch({
+      openaire: {
+        results: [
+          {
+            id: 'doi_dedup___::abc',
+            mainTitle: 'Array programming with NumPy',
+            publicationDate: '2020-09-17',
+            bestAccessRight: { label: 'OPEN' },
+            authors: [{ fullName: 'Charles R. Harris' }],
+            pids: [{ scheme: 'doi', value: '10.1038/s41586-020-2649-2' }],
+            container: { name: 'Nature' },
+            descriptions: ['NumPy is the fundamental package.'],
+            indicators: { citationImpact: { citationCount: 12000 } },
+            instances: [{ accessRight: { label: 'OPEN' }, urls: ['https://www.nature.com/articles/s41586-020-2649-2'] }],
+            projects: [
+              {
+                id: 'corda__h2020::9c0d547173f9900452154406385e9ec6',
+                code: '665919',
+                acronym: 'P-SPHERE',
+                title: 'Opening Sphere UAB-CEI to PostDoctoral Fellows',
+                funder: 'European Commission',
+              },
+            ],
+            organizations: [{ id: 'openorgs____::1', legalName: 'University of Pennsylvania', pids: [{ scheme: 'ROR', value: 'https://ror.org/00b30xv10' }] }],
+            links: [],
+          },
+        ],
+      },
+    })
+    const res = await search({ backends: ['openaire'] })
+    expect(res.hits[0].doi).toBe('10.1038/s41586-020-2649-2')
+    expect(res.hits[0].is_open_access).toBe(true)
+    expect(res.hits[0].oa_url).toBe('https://www.nature.com/articles/s41586-020-2649-2')
+    expect(res.hits[0].graph_edges?.map((e) => e.kind).sort()).toEqual(['organization', 'project'])
+    expect(res.hits[0].graph_edges?.find((e) => e.kind === 'project')?.label).toMatch(/P-SPHERE/)
+    expect(res.hits[0].graph_edges?.find((e) => e.kind === 'organization')?.url).toBe('https://ror.org/00b30xv10')
+    expect(res.hint).toMatch(/graph_edges/)
+  })
+
+  it('führt OpenAIRE-Kanten beim DOI-Merge mit OpenAlex zusammen', async () => {
+    stubFetch({
+      openalex: { results: [openAlexWork({ doi: 'https://doi.org/10.1038/s41586-020-2649-2' })] },
+      openaire: {
+        results: [
+          {
+            id: 'doi_dedup___::abc',
+            mainTitle: 'Array programming with NumPy',
+            pids: [{ scheme: 'doi', value: '10.1038/s41586-020-2649-2' }],
+            bestAccessRight: { label: 'OPEN' },
+            authors: [],
+            instances: [],
+            projects: [{ id: 'corda__h2020::x', acronym: 'MaX', title: 'Materials', funder: 'EC' }],
+            organizations: [],
+            links: [],
+          },
+        ],
+      },
+    })
+    const res = await search({ backends: ['openalex', 'openaire'] })
+    expect(res.total).toBe(1)
+    expect(res.hits[0].found_via.sort()).toEqual(['openaire', 'openalex'])
+    expect(res.hits[0].graph_edges?.some((e) => e.kind === 'project')).toBe(true)
+    expect(res.hits[0].oa_url).toBe('https://arxiv.org/pdf/1706.03762')
   })
 })

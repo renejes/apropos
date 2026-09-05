@@ -12,7 +12,7 @@ import type { JournalMode } from '../../shared/types'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 15 // v15 Notebook liest Research-Korpus (linked_research_id)
+export const SCHEMA_VERSION = 17 // v17 Screening-Tisch — Treffer sichten bevor Volltext
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -178,6 +178,38 @@ CREATE TABLE IF NOT EXISTS excluded_sources (
 );
 CREATE INDEX IF NOT EXISTS idx_excluded_project ON excluded_sources(project_id);
 
+-- v17: Screening-Tisch. Identifizierte Treffer (Register/Web), noch kein Volltext.
+-- status undecided/maybe = menschliche Sichtung; included → fetch_source/Capture;
+-- excluded → exclude_source. Der Tisch zählt nicht ins Pending-Gate.
+CREATE TABLE IF NOT EXISTS screening_candidates (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  doi             TEXT,
+  url             TEXT NOT NULL,
+  oa_url          TEXT,
+  title           TEXT NOT NULL,
+  authors_json    TEXT NOT NULL DEFAULT '[]',
+  year            INTEGER,
+  venue           TEXT,
+  abstract        TEXT,
+  cited_by_count  INTEGER,
+  is_open_access  INTEGER,
+  found_via_json  TEXT NOT NULL DEFAULT '[]',
+  query           TEXT,
+  search_log_id   TEXT REFERENCES search_log(id),
+  status          TEXT NOT NULL DEFAULT 'undecided'
+    CHECK (status IN ('undecided','maybe','included','excluded')),
+  decision_reason TEXT,
+  decided_at      TEXT,
+  decided_by      TEXT,
+  document_id     TEXT REFERENCES documents(id),
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screening_project_status ON screening_candidates(project_id, status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_doi ON screening_candidates(project_id, doi) WHERE doi IS NOT NULL AND doi != '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_url ON screening_candidates(project_id, url);
+
 -- Recherchetiefe (v3): Teilfragen sind das, wogegen Abdeckung gemessen wird.
 -- Ohne sie kann niemand — auch kein Modell — sagen, ob eine Recherche vollständig ist.
 CREATE TABLE IF NOT EXISTS sub_questions (
@@ -234,7 +266,9 @@ CREATE TABLE IF NOT EXISTS documents (
   -- v11: Seed-Korpus (Upload) vs. Discovery (Netz). Uploads starten als 'used' und zählen nicht ins Pending-Gate.
   origin       TEXT NOT NULL DEFAULT 'fetched' CHECK (origin IN ('fetched','upload','youtube')),
   filename     TEXT,
-  page_starts_json TEXT
+  page_starts_json TEXT,
+  -- v16: Paywall/Zugang — Stub bleibt status=open (Gate zählt mit). Text kommt vom Menschen.
+  capture_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(project_id, status);
@@ -520,6 +554,12 @@ function migrate(db: DB): void {
       // v15: Notebook liest den Korpus eines Research-Projekts, besitzt ihn nicht.
       addColumnIfMissing(db, 'projects', 'linked_research_id', 'TEXT REFERENCES projects(id)')
       db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_linked_research ON projects(linked_research_id)`)
+      // v16: Paywall-Capture. Kein neuer status-Wert — SQLite-CHECK auf status bleibt.
+      addColumnIfMissing(db, 'documents', 'capture_reason', 'TEXT')
+      // v17: Screening-Tisch (CREATE IF NOT EXISTS in SCHEMA). Indexe idempotent.
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_screening_project_status ON screening_candidates(project_id, status, created_at)`)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_doi ON screening_candidates(project_id, doi) WHERE doi IS NOT NULL AND doi != ''`)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_url ON screening_candidates(project_id, url)`)
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

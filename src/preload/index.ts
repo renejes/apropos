@@ -20,7 +20,10 @@ import type {
   Note,
   ArtifactFile,
   DataRootInfo,
+  ContactEmailInfo,
   DocumentOpenInfo,
+  ExcludedSource,
+  ScreeningCandidate,
 } from '../shared/types'
 import type {
   AgentAuthStatus,
@@ -55,6 +58,26 @@ const api = {
 
   signSource: (sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null): Promise<Source> =>
     ipcRenderer.invoke('sources:sign', sourceId, verdict, note),
+  addSourceFromReader: (input: {
+    projectId: string
+    documentId: string
+    quoteStart: number
+    quoteEnd: number
+    reason: string
+    extraction: string
+    contribution: string
+    subQuestionId: string | null
+  }): Promise<{ source: Source; status: string }> => ipcRenderer.invoke('sources:addFromReader', input),
+  excludeSourceFromReader: (input: {
+    projectId: string
+    documentId: string
+    reason: string
+  }): Promise<ExcludedSource> => ipcRenderer.invoke('sources:excludeFromReader', input),
+  includeScreening: (candidateId: string): Promise<{ candidate: ScreeningCandidate; fetch: { document_id: string; needs_capture?: boolean } }> =>
+    ipcRenderer.invoke('screening:include', candidateId),
+  excludeScreening: (candidateId: string, reason: string): Promise<ScreeningCandidate> =>
+    ipcRenderer.invoke('screening:exclude', candidateId, reason),
+  maybeScreening: (candidateId: string): Promise<ScreeningCandidate> => ipcRenderer.invoke('screening:maybe', candidateId),
 
   getCoverage: (projectId: string): Promise<CoverageReport> => ipcRenderer.invoke('coverage:get', projectId),
   describeMap: (
@@ -97,12 +120,15 @@ const api = {
   }> => ipcRenderer.invoke('corpus:upload', projectId),
   importCorpus: (
     projectId: string,
-    filePaths: string[]
+    filePaths: string[],
+    bindDocumentId?: string | null
   ): Promise<{
     filenames: string[]
     documents: Array<{ document_id: string; filename: string; char_len: number; url: string }>
     errors: Array<{ filename: string; message: string }>
-  }> => ipcRenderer.invoke('corpus:import', projectId, filePaths),
+  }> => ipcRenderer.invoke('corpus:import', projectId, filePaths, bindDocumentId),
+  revealInbox: (projectId: string): Promise<boolean> => ipcRenderer.invoke('corpus:revealInbox', projectId),
+  pickCorpusFiles: (): Promise<string[]> => ipcRenderer.invoke('corpus:pick'),
 
   addReportVersion: (
     projectId: string,
@@ -151,6 +177,11 @@ const api = {
   pickDirectory: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pickDirectory', title),
   dataRootInfo: (): Promise<DataRootInfo> => ipcRenderer.invoke('data:info'),
   setDataCloudSynced: (cloudSynced: boolean): Promise<DataRootInfo> => ipcRenderer.invoke('data:setCloudSynced', cloudSynced),
+  getContactEmail: (): Promise<ContactEmailInfo> => ipcRenderer.invoke('settings:contactEmail'),
+  setContactEmail: (
+    email: string
+  ): Promise<{ ok: true; info: ContactEmailInfo } | { ok: false; error: string; info: ContactEmailInfo }> =>
+    ipcRenderer.invoke('settings:setContactEmail', email),
   setDataRoot: (
     input: { toRoot: string; mode: 'copy' | 'use-existing'; cloudSynced: boolean }
   ): Promise<{ ok: true } | { ok: false; error: string; hasDb?: boolean }> => ipcRenderer.invoke('data:setRoot', input),

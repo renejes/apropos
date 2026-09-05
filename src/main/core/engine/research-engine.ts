@@ -181,9 +181,13 @@ const CONTRACT = `Du recherchierst über eine Plattform, die Provenienz ERZWINGT
 - Danach SOFORT add_source mit document_id + quote_start + quote_end. Der Server schneidet
   das Zitat selbst aus dem gespeicherten Text — du musst nichts abtippen, und ein falsch
   erinnertes Zitat ist ausgeschlossen. Gib immer die sub_question_id mit an.
-- Bei wissenschaftlichen Fragen ZUERST search_literature: liefert DOI, Autoren, Jahr und wo
-  vorhanden einen frei zugänglichen Volltext (oa_url) — genau der geht dann in fetch_source.
+  Paywall: fetch_source legt einen Capture-Auftrag an (needs_capture). Nicht verbatim_quote,
+  auf den Menschen warten, dann read_document.
+- Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE):
+  liefert DOI, Autoren, Jahr und wo vorhanden einen frei zugänglichen Volltext (oa_url).
+  Die Treffer liegen auf dem Sichtungstisch. wait_for_screening. Chat-Rein: include_screening. fetch_source auf offenen Karten ist gesperrt.
   Diese Suchen protokollieren sich selbst; log_search ist dafür nicht nötig.
+  Nach reflect_search darf WebSearch zusätzlich auch für Wissenschaft entdecken.
 - Nach jeder Suchwelle reflect_search, BEVOR du erneut suchst: covered, underrepresented
   (gegenüber Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query
   kommt aus dieser Lage. Lesen bleibt erlaubt. get_coverage_gaps ist eine Zählung, kein Suchauftrag.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { DataRootInfo, ServerInfo } from '../../../shared/types'
+import type { ContactEmailInfo, DataRootInfo, ServerInfo } from '../../../shared/types'
 import { CURSOR_PERMISSIONS_JSON, CURSOR_RULE_MDC, cursorMcpJson } from '../../../shared/cursor-onboarding'
 import { Badge, Button, Card, Icon, SectionTitle } from '../components/ui'
 import CursorSettings from '../components/CursorSettings'
@@ -50,6 +50,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       </div>
 
       <CursorSettings />
+
+      <ContactEmailCard />
 
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between">
@@ -203,6 +205,95 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
       </div>
       </div>
     </div>
+  )
+}
+
+function ContactEmailCard() {
+  const [info, setInfo] = useState<ContactEmailInfo | null>(null)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.api.getContactEmail().then((next) => {
+      setInfo(next)
+      setDraft(next.stored ?? '')
+    })
+  }, [])
+
+  if (!info) return null
+
+  const save = async () => {
+    setBusy(true)
+    setMsg(null)
+    setErr(null)
+    try {
+      const res = await window.api.setContactEmail(draft)
+      setInfo(res.info)
+      setDraft(res.info.stored ?? '')
+      if (!res.ok) {
+        setErr(res.error)
+        return
+      }
+      setMsg(res.info.stored ? 'Gespeichert.' : 'Leer — Fallback, bis du eine Adresse einträgst.')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <SectionTitle>Kontakt-Mail</SectionTitle>
+      <p className="mb-3 text-sm leading-relaxed text-muted">
+        OpenAlex, Crossref, OpenAIRE und Unpaywall erwarten eine erreichbare Adresse (Höflichkeit, kein Konto). Sie
+        geht nur an diese APIs, nicht in den Bericht.
+      </p>
+      <label className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted" htmlFor="contact-email">
+        E-Mail
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          id="contact-email"
+          type="email"
+          autoComplete="email"
+          className="field min-w-[16rem] flex-1 font-mono text-sm"
+          placeholder="name@domain.de"
+          value={draft}
+          disabled={busy || info.envLocked}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setMsg(null)
+            setErr(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void save()
+            }
+          }}
+        />
+        <Button disabled={busy || info.envLocked} onClick={() => void save()}>
+          Speichern
+        </Button>
+      </div>
+      {info.envLocked && (
+        <p className="mt-2 text-xs text-muted">
+          Wirksam ist <span className="font-mono">{info.value}</span> aus der Umgebung{' '}
+          <span className="font-mono">ROP_CONTACT_EMAIL</span>. Die gespeicherte Adresse gilt, sobald die Umgebung weg ist.
+        </p>
+      )}
+      {!info.envLocked && (
+        <p className="mt-2 text-xs text-muted">
+          Wirksam: <span className="font-mono">{info.value}</span>
+          {info.source === 'default' ? ' (Standard, bitte ersetzen).' : '.'}
+        </p>
+      )}
+      {err && <p className="mt-2 text-xs text-bad">{err}</p>}
+      {msg && <p className="mt-2 text-xs text-ok">{msg}</p>}
+    </Card>
   )
 }
 

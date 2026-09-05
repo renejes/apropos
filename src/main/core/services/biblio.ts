@@ -2,14 +2,12 @@ import type { Repo } from '../repo'
 import { extractDoi } from '../enforce/fetchers'
 import type { BibEntryType, Source, SourceKind } from '../../../shared/types'
 import { ServiceError } from './research'
+import { contactUserAgent, resolveContactEmail } from '../contact-email'
 
 /**
  * Bibliografische Identität — Citekeys sind stabil (nachnameJahrKurztitel),
  * nie aus [S3] abgeleitet. Metadaten kommen aus Crossref/OpenAlex, nicht vom Modell.
  */
-
-const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'apropos@localhost'
-const UA = `ResearchOverviewPlatform/0.1 (+mailto:${CONTACT})`
 const TIMEOUT_MS = 8_000
 
 const STOP = new Set([
@@ -109,7 +107,7 @@ async function getJson(url: string): Promise<unknown> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/json', 'user-agent': UA } })
+    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/json', 'user-agent': contactUserAgent() } })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.json()
   } finally {
@@ -121,7 +119,7 @@ export async function lookupDoi(doi: string): Promise<BiblioMeta | null> {
   const id = doi.replace(/^https?:\/\/doi.org\//i, '').trim().toLowerCase()
   if (!id.startsWith('10.')) return null
   try {
-    const data = (await getJson(`https://api.crossref.org/works/${encodeURIComponent(id)}?mailto=${encodeURIComponent(CONTACT)}`)) as {
+    const data = (await getJson(`https://api.crossref.org/works/${encodeURIComponent(id)}?mailto=${encodeURIComponent(resolveContactEmail())}`)) as {
       message?: Record<string, unknown>
     }
     const it = data.message
@@ -148,7 +146,7 @@ export async function lookupDoi(doi: string): Promise<BiblioMeta | null> {
   } catch {
     try {
       const data = (await getJson(
-        `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(id)}?mailto=${encodeURIComponent(CONTACT)}`
+        `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(id)}?mailto=${encodeURIComponent(resolveContactEmail())}`
       )) as Record<string, unknown>
       const authors = Array.isArray(data.authorships)
         ? (data.authorships as Array<{ author?: { display_name?: string } }>)

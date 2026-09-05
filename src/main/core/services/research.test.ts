@@ -152,6 +152,7 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(tables).toContain('search_reflections')
     const docCols = (migrated.pragma('table_info(documents)') as Array<{ name: string }>).map((c) => c.name)
     expect(docCols).toContain('origin')
+    expect(docCols).toContain('capture_reason')
     const searchCols = (migrated.pragma('table_info(search_log)') as Array<{ name: string }>).map((c) => c.name)
     expect(searchCols).toContain('reflection_id')
     const projectCols = (migrated.pragma('table_info(projects)') as Array<{ name: string }>).map((c) => c.name)
@@ -159,6 +160,7 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(projectCols).toContain('kind')
     expect(projectCols).toContain('linked_research_id')
     expect(tables).toContain('notes')
+    expect(tables).toContain('screening_candidates')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()
@@ -836,6 +838,11 @@ describe('Such-Ingest (Hook-Pfad)', () => {
     expect(entry.engine).toBe('cursor-websearch')
     expect(entry.results_found).toBe(3)
     expect(entry.note).toMatch(/arxiv\.org/)
+    const desk = repo.listScreeningCandidates(newer.id)
+    expect(desk).toHaveLength(1)
+    expect(desk[0].url).toMatch(/arxiv\.org/)
+    expect(desk[0].found_via).toEqual(['websearch'])
+    expect(desk[0].status).toBe('undecided')
   })
 
   it('respektiert eine explizite project_id und ROP_PROJECT_ID', () => {

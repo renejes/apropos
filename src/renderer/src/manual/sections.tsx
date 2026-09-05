@@ -124,7 +124,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             ab. Unpassendes verwerfen.
           </li>
           <li>
-            Rechts prüfen: Übersicht (Lücken, „Was darfst du sagen“, Suchdokumentation), Korpus, Quellen (Sign-off),
+            Rechts prüfen: Übersicht, Sichtung (Rein/Raus auf Treffer), Korpus, Quellen (Sign-off),
             Aussagen, Karte.
           </li>
           <li>
@@ -160,8 +160,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             Artefakte; Chat und Notiz-Editor in der Mitte als Tabs.
           </li>
           <li>
-            <strong>Rechts (nur Research):</strong> Tabs Übersicht, Korpus, Quellen, Aussagen, Karte, Berichte, Protokoll,
-            Audit.
+            <strong>Rechts (nur Research):</strong> Tabs Übersicht, Sichtung, Korpus, Quellen, Aussagen, Karte, Berichte,
+            Protokoll, Audit.
           </li>
           <li>
             <strong>Menüleiste (macOS):</strong> Unter dem App-Namen und unter <strong>Manual</strong> öffnet „Manual“ dieses
@@ -296,6 +296,45 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           Wellen mit Queries, Engine, Trefferzahl. Danach die Lage: Getroffen, Unterrepräsentiert, nächster Schritt
           (suchen / lesen / genug) und — wenn suchen — die nächste Query, die das Modell selbst formuliert hat. Amber-Kasten:
           Lage ausstehend, nächste Suche gesperrt. Unten: begründet ausgeschlossene URLs.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'sichtung',
+    title: 'Tab Sichtung',
+    body: (
+      <>
+        <Lead>
+          Die KI legt Treffer hin. Du sagst Rein, Raus oder Unsicher — und kannst vorher Ansehen. Erst Rein holt den
+          Volltext in den Korpus. Abstracts sind keine Quelle.
+        </Lead>
+        <H>Woher die Karten kommen</H>
+        <P>
+          Nach <Code>search_literature</Code> (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE) und nach
+          WebSearch-URLs. Dieselbe Arbeit erscheint einmal (DOI, sonst URL). Schon entschiedene Karten bleiben grau.
+        </P>
+        <H>Was du tust</H>
+        <Ul>
+          <li>
+            <strong>Rein</strong> — holt den Volltext (<Code>oa_url</Code> oder Landing-Page). Bei Paywall entsteht ein
+            Capture-Auftrag im Korpus; du legst die PDF nach.
+          </li>
+          <li>
+            <strong>Raus</strong> — schließt aus, mit Grund (mind. 10 Zeichen). Landet bei den ausgeschlossenen Quellen.
+          </li>
+          <li>
+            <strong>Unsicher</strong> — bleibt auf dem Tisch, Filter „Unsicher“.
+          </li>
+          <li>
+            <strong>Ansehen</strong> — öffnet die URL im Systembrowser, ohne zu holen.
+          </li>
+        </Ul>
+        <H>Was die KI darf</H>
+        <P>
+          Nicht alle Treffer abarbeiten, nicht aus Snippets belegen. Nach der Suche wartet die KI mit{' '}
+          <Code>wait_for_screening</Code>, bis du im Tab entscheidest. Sagst du im Chat Rein, ruft sie{' '}
+          <Code>include_screening</Code> auf. <Code>fetch_source</Code> auf offenen Karten lehnt der Server ab.
         </P>
       </>
     ),
@@ -608,6 +647,11 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           Die Einstellungen kopieren mcp.json, Allowlist und die Cursor-Rule (Arbeitsvertrag). WebSearch darf entdecken;
           Berichtsquellen nur per Fetch in die DB. Die App muss laufen, sonst ist der Port tot.
         </P>
+        <H>Kontakt-Mail</H>
+        <P>
+          Für OpenAlex, Crossref, OpenAIRE und Unpaywall. Du trägst sie hier ein; sie geht nur an diese APIs. Die Umgebung{' '}
+          <Code>ROP_CONTACT_EMAIL</Code> hat Vorrang, etwa in Skripten.
+        </P>
         <H>stdio / Claude Desktop</H>
         <P>Fallback-Config zum Kopieren, falls HTTP nicht passt. Alle Clients teilen dieselbe SQLite (WAL).</P>
         <H>Demo-Seed</H>
@@ -630,8 +674,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             <strong>Zitat:</strong> Fetch speichert HTML/PDF. <Code>add_source</Code> bekommt Offsets; der Server schneidet.
-            Zusätzlicher Text, der nicht zu den Offsets passt, wird abgewiesen. Scans/Paywall: alter Pfad ohne Dokument, plus
-            dein Sign-off.
+            Zusätzlicher Text, der nicht zu den Offsets passt, wird abgewiesen. Paywall: Capture-Auftrag im Korpus,
+            du legst die PDF nach (URL bleibt). Scans ohne Textschicht: alter Pfad ohne Dokument, plus dein Sign-off.
           </li>
           <li>
             <strong>Pending:</strong> Weitere Netzabrufe gesperrt, solange abgerufene Seiten nicht belegt oder excluded sind
@@ -669,7 +713,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             Text.
           </li>
           <li>
-            <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC. Danach <Code>reflect_search</Code>.
+            <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Treffer auf den
+            Sichtungstisch. Danach <Code>reflect_search</Code>.
+          </li>
+          <li>
+            <Code>list_screening</Code> / <Code>wait_for_screening</Code> / <Code>include_screening</Code> — offene
+            Karten; Rein holt den Volltext. <Code>fetch_source</Code> auf offenen Karten ist gesperrt.
           </li>
           <li>
             <Code>fetch_source</Code> / <Code>add_source</Code> / <Code>exclude_source</Code> — Belegen oder verwerfen.

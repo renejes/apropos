@@ -242,6 +242,8 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
     expect(text).toContain('reflect_search')
     expect(text).toContain('describe_evidence_map')
     expect(text).toContain('draft_research_brief')
+    expect(text).toContain('wait_for_screening')
+    expect(text).toContain('include_screening')
     expect(text).not.toMatch(/sofort search_literature/i)
   })
 

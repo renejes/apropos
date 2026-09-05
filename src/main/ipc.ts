@@ -1,5 +1,5 @@
 import { app, ipcMain, dialog, clipboard, BrowserWindow, shell } from 'electron'
-import { existsSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Repo } from './core/repo'
 import type { RunningHttpServer } from './mcp/http'
@@ -9,7 +9,8 @@ import { exportBibliography } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
-import { computeCoverage, ingestUploadedFiles, ServiceError, resolveCorpusProjectId, assertCorpusWritable } from './core/services/research'
+import { computeCoverage, ingestUploadedFiles, fulfillCaptureFromInbox, ServiceError, resolveCorpusProjectId, assertCorpusWritable, recordSource, recordExclusion } from './core/services/research'
+import { excludeScreeningCandidate, includeScreeningCandidate, maybeScreeningCandidate } from './core/services/screening'
 import {
   createProject,
   deleteProject,
@@ -18,6 +19,7 @@ import {
   linkNotebookToResearch,
 } from './core/services/projects'
 import { inspectDocumentOpen, readDocumentPdfBytes, resolveDocumentDiskPath } from './core/services/reader'
+import { projectWorkspace } from './core/agent/workspace'
 import { createNote, deleteNote, updateNote } from './core/services/notes'
 import { ingestYoutubeUrl } from './core/services/youtube'
 import { listArtifacts, readArtifact } from './core/services/artifacts'
@@ -27,7 +29,8 @@ import {
   inspectDataRoot,
   saveRootSettings,
 } from './core/data-root'
-import type { DataRootInfo, ServerInfo } from '../shared/types'
+import { describeContactEmail, setStoredContactEmail } from './core/contact-email'
+import type { ContactEmailInfo, DataRootInfo, ServerInfo } from '../shared/types'
 import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
 
@@ -236,7 +239,16 @@ export function registerIpc(deps: IpcDeps): void {
     return { filenames: names, ...ingested }
   })
 
-  ipcMain.handle('corpus:import', async (_e, projectId: string, filePaths: string[]) => {
+  ipcMain.handle('corpus:pick', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const { canceled, filePaths } = win
+      ? await dialog.showOpenDialog(win, fileDialogOptions)
+      : await dialog.showOpenDialog(fileDialogOptions)
+    if (canceled || filePaths.length === 0) return [] as string[]
+    return filePaths
+  })
+
+  ipcMain.handle('corpus:import', async (_e, projectId: string, filePaths: string[], bindDocumentId?: string | null) => {
     try {
       assertCorpusWritable(repo, projectId)
     } catch (err) {
@@ -244,8 +256,106 @@ export function registerIpc(deps: IpcDeps): void {
       return { filenames: [] as string[], documents: [], errors: [{ filename: '', message: msg }] }
     }
     const names = deps.agent.importFiles(projectId, Array.isArray(filePaths) ? filePaths : [])
-    const ingested = await ingestUploadedFiles(repo, projectId, names, HUMAN)
+    const ingested = bindDocumentId
+      ? await fulfillCaptureFromInbox(repo, projectId, bindDocumentId, names, HUMAN)
+      : await ingestUploadedFiles(repo, projectId, names, HUMAN)
     return { filenames: names, ...ingested }
+  })
+
+  ipcMain.handle('corpus:revealInbox', async (_e, projectId: string) => {
+    const inbox = join(projectWorkspace(projectId), 'inbox')
+    mkdirSync(inbox, { recursive: true })
+    const err = await shell.openPath(inbox)
+    return err === ''
+  })
+
+  ipcMain.handle(
+    'sources:addFromReader',
+    async (
+      _e,
+      input: {
+        projectId: string
+        documentId: string
+        quoteStart: number
+        quoteEnd: number
+        reason: string
+        extraction: string
+        contribution: string
+        subQuestionId: string | null
+      }
+    ) => {
+      try {
+        const doc = repo.getDocument(input.documentId)
+        if (!doc) throw new Error('Dokument nicht gefunden.')
+        const titleRaw = (doc.title || doc.filename || doc.url).trim()
+        const title = titleRaw.length >= 3 ? titleRaw : `Quelle ${doc.url}`.slice(0, 200)
+        return await recordSource(
+          repo,
+          {
+            project_id: input.projectId,
+            url: doc.url,
+            title,
+            retrieval_method: 'human_reader',
+            reason: input.reason,
+            extraction: input.extraction,
+            contribution: input.contribution,
+            document_id: doc.id,
+            quote_start: input.quoteStart,
+            quote_end: input.quoteEnd,
+            sub_question_id: input.subQuestionId,
+          },
+          HUMAN
+        )
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'sources:excludeFromReader',
+    (_e, input: { projectId: string; documentId: string; reason: string }) => {
+      try {
+        const doc = repo.getDocument(input.documentId)
+        if (!doc) throw new Error('Dokument nicht gefunden.')
+        return recordExclusion(
+          repo,
+          {
+            project_id: input.projectId,
+            url: doc.url,
+            title: doc.title ?? doc.filename ?? null,
+            reason: input.reason,
+          },
+          HUMAN
+        )
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle('screening:include', async (_e, candidateId: string) => {
+    try {
+      return await includeScreeningCandidate(repo, candidateId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+
+  ipcMain.handle('screening:exclude', (_e, candidateId: string, reason: string) => {
+    try {
+      return excludeScreeningCandidate(repo, candidateId, reason, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+
+  ipcMain.handle('screening:maybe', (_e, candidateId: string) => {
+    try {
+      return maybeScreeningCandidate(repo, candidateId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
   })
 
   // Menschliche Berichts-Überarbeitung: erzeugt eine NEUE unveränderliche Version
@@ -368,6 +478,9 @@ export function registerIpc(deps: IpcDeps): void {
       lockStartedAt: deps.lock?.startedAt ?? null,
     })
   })
+
+  ipcMain.handle('settings:contactEmail', (): ContactEmailInfo => describeContactEmail())
+  ipcMain.handle('settings:setContactEmail', (_e, email: string) => setStoredContactEmail(typeof email === 'string' ? email : ''))
 
   ipcMain.handle(
     'data:setRoot',

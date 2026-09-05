@@ -38,6 +38,7 @@ import {
   type AgentSessionIndex,
 } from '../../../shared/agentSessions'
 import { mapSdkMessage } from './events'
+import { parseDocumentFollow } from './follow-doc'
 import { followUpPrefix, notebookPreamble, sessionPreamble, yoloDirective } from './instructions'
 import { toolsForKind } from './notebook-tools'
 import {
@@ -165,7 +166,8 @@ export class CursorAgentHost {
 
   private emit(projectId: string, event: AgentChatEvent): void {
     const session = this.bound.get(projectId)
-    if (session && event.type !== 'usage') {
+    const persist = event.type !== 'usage' && event.type !== 'follow_doc'
+    if (session && persist) {
       session.history.push(event)
       if (event.type === 'user' || event.type === 'assistant' || event.type === 'run_end' || (event.type === 'tool' && event.status !== 'running')) {
         saveTranscript(session.cwd, session.sessionId, session.history)
@@ -673,6 +675,19 @@ export class CursorAgentHost {
         inputSchema: t.parameters as Record<string, SDKJsonValue>,
         execute: async (args) => {
           const result = await this.bridge.call(name, args as Record<string, unknown>)
+          const projectId = typeof (args as { project_id?: unknown }).project_id === 'string' ? (args as { project_id: string }).project_id : null
+          if (projectId && !result.isError) {
+            const follow = parseDocumentFollow(name, result.text)
+            if (follow) {
+              this.emit(projectId, {
+                type: 'follow_doc',
+                documentId: follow.documentId,
+                start: follow.start,
+                end: follow.end,
+                capture: follow.capture,
+              })
+            }
+          }
           return { content: [{ type: 'text' as const, text: result.text }], isError: result.isError }
         },
       }

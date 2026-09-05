@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ProjectState } from '../../../shared/types'
+import { type ProjectState, isCapturePending } from '../../../shared/types'
 import { Badge, Button } from '../components/ui'
 import AgentChat from './AgentChat'
 import NotebookView from './NotebookView'
 import OverviewTab from './tabs/OverviewTab'
+import ScreeningTab from './tabs/ScreeningTab'
 import CorpusTab from './tabs/CorpusTab'
 import SourcesTab from './tabs/SourcesTab'
 import ClaimsTab from './tabs/ClaimsTab'
@@ -15,6 +16,7 @@ import ExportDialog from './ExportDialog'
 
 const TABS = [
   { id: 'overview', label: 'Übersicht' },
+  { id: 'screening', label: 'Sichtung' },
   { id: 'corpus', label: 'Korpus' },
   { id: 'sources', label: 'Quellen' },
   { id: 'claims', label: 'Aussagen' },
@@ -73,6 +75,8 @@ export default function ProjectView({
 
   const pendingCount = state.sources.filter((s) => s.review_status === 'pending').length
   const corpusCount = state.documents.filter((d) => d.status !== 'excluded').length
+  const screeningOpen = state.screeningCandidates.filter((c) => c.status === 'undecided' || c.status === 'maybe').length
+  const openDocs = state.documents.filter((d) => d.status === 'open')
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -118,6 +122,23 @@ export default function ProjectView({
           </div>
         </div>
         {exportMsg && <div className="mt-2 text-xs text-ok">{exportMsg}</div>}
+        {openDocs.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">Offen</span>
+            {openDocs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                title={d.url}
+                onClick={() => openDocument(d.id)}
+                className="max-w-[220px] truncate border border-hairline px-2 py-0.5 text-xs text-fg hover:bg-fg hover:text-bg"
+              >
+                {isCapturePending(d) ? 'Capture · ' : ''}
+                {d.title || d.filename || d.url}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       {exportOpen && (
@@ -134,7 +155,19 @@ export default function ProjectView({
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-[42%] min-w-[300px] max-w-[560px] shrink-0 flex-col border-r border-line">
-          <AgentChat projectId={projectId} onRunEnd={() => void reload()} onCorpusChange={() => void reload()} />
+          <AgentChat
+            projectId={projectId}
+            onRunEnd={() => void reload()}
+            onCorpusChange={() => void reload()}
+            onFollowDoc={(follow) => {
+              void reload()
+              openDocument(
+                follow.documentId,
+                follow.start !== follow.end ? follow.start : undefined,
+                follow.start !== follow.end ? follow.end : undefined
+              )
+            }}
+          />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -149,6 +182,7 @@ export default function ProjectView({
                 }`}
               >
                 {t.label}
+                {t.id === 'screening' && screeningOpen > 0 && <Badge tone="amber">{screeningOpen}</Badge>}
                 {t.id === 'sources' && pendingCount > 0 && <Badge tone="amber">{pendingCount}</Badge>}
                 {t.id === 'corpus' && corpusCount > 0 && <Badge tone="slate">{corpusCount}</Badge>}
               </button>
@@ -156,6 +190,9 @@ export default function ProjectView({
           </nav>
           <div className={`min-h-0 flex-1 ${tab === 'corpus' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
             {tab === 'overview' && <OverviewTab state={state} onReload={reload} coverageKey={coverageKey} onOpenSource={openSource} />}
+            {tab === 'screening' && (
+              <ScreeningTab state={state} onReload={reload} onOpenDocument={(id) => openDocument(id)} />
+            )}
             {tab === 'corpus' && (
               <CorpusTab state={state} onReload={reload} focus={focusDoc} onFocusConsumed={() => setFocusDoc(null)} />
             )}

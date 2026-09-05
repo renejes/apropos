@@ -5,6 +5,8 @@ import type {
   ChatMessage,
   Claim,
   ExcludedSource,
+  ScreeningCandidate,
+  ScreeningStatus,
   SearchLogEntry,
   SearchReflection,
   SearchNextAction,
@@ -722,6 +724,177 @@ export class Repo {
       .all(projectId) as ExcludedSource[]
   }
 
+  // ---------- Screening-Tisch (Titel/Abstract vor Volltext) ----------
+  getScreeningCandidate(id: string): ScreeningCandidate | undefined {
+    const row = this.db.prepare(`SELECT * FROM screening_candidates WHERE id = ?`).get(id) as ScreeningRow | undefined
+    return row ? mapScreening(row) : undefined
+  }
+
+  listScreeningCandidates(projectId: string): ScreeningCandidate[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM screening_candidates WHERE project_id = ? ORDER BY created_at ASC`)
+      .all(projectId) as ScreeningRow[]
+    return rows.map(mapScreening)
+  }
+
+  findScreeningCandidate(
+    projectId: string,
+    input: { doi?: string | null; url?: string | null }
+  ): ScreeningCandidate | undefined {
+    const doi = input.doi?.trim() ? input.doi.trim().toLowerCase() : null
+    if (doi) {
+      const byDoi = this.db
+        .prepare(`SELECT * FROM screening_candidates WHERE project_id = ? AND doi = ?`)
+        .get(projectId, doi) as ScreeningRow | undefined
+      if (byDoi) return mapScreening(byDoi)
+    }
+    const url = input.url ? canonicalScreeningUrl(input.url) : null
+    if (url) {
+      const byUrl = this.db
+        .prepare(
+          `SELECT * FROM screening_candidates WHERE project_id = ? AND (url = ? OR oa_url = ? OR oa_url = ?)`
+        )
+        .get(projectId, url, url, input.url ?? url) as ScreeningRow | undefined
+      if (byUrl) return mapScreening(byUrl)
+    }
+    return undefined
+  }
+
+  upsertScreeningHits(
+    projectId: string,
+    hits: ScreeningHitInput[],
+    meta: { query: string; search_log_id: string | null; actor: string }
+  ): { inserted: number; merged: number } {
+    let inserted = 0
+    let merged = 0
+    const ts = nowIso()
+    for (const hit of hits) {
+      const identity = screeningIdentity(hit)
+      if (!identity) continue
+      const existing = this.findScreeningCandidate(projectId, { doi: identity.doi, url: identity.url })
+      const foundVia = uniqueStrings([...(existing?.found_via ?? []), ...hit.found_via])
+      if (existing) {
+        merged += 1
+        this.db
+          .prepare(
+            `UPDATE screening_candidates SET
+               doi = COALESCE(NULLIF(doi, ''), ?),
+               url = ?,
+               oa_url = COALESCE(oa_url, ?),
+               title = CASE WHEN length(title) >= length(?) THEN title ELSE ? END,
+               authors_json = CASE WHEN authors_json = '[]' THEN ? ELSE authors_json END,
+               year = COALESCE(year, ?),
+               venue = COALESCE(venue, ?),
+               abstract = COALESCE(abstract, ?),
+               cited_by_count = CASE WHEN cited_by_count IS NULL OR cited_by_count < COALESCE(?, -1) THEN COALESCE(?, cited_by_count) ELSE cited_by_count END,
+               is_open_access = COALESCE(is_open_access, ?),
+               found_via_json = ?,
+               query = COALESCE(query, ?),
+               search_log_id = COALESCE(search_log_id, ?),
+               updated_at = ?
+             WHERE id = ?`
+          )
+          .run(
+            identity.doi,
+            existing.url || identity.url,
+            hit.oa_url ?? null,
+            hit.title,
+            hit.title,
+            JSON.stringify(hit.authors),
+            hit.year ?? null,
+            hit.venue ?? null,
+            hit.abstract ?? null,
+            hit.cited_by_count ?? null,
+            hit.cited_by_count ?? null,
+            hit.is_open_access == null ? null : hit.is_open_access ? 1 : 0,
+            JSON.stringify(foundVia),
+            meta.query,
+            meta.search_log_id,
+            ts,
+            existing.id
+          )
+        continue
+      }
+      const id = randomUUID()
+      this.db
+        .prepare(
+          `INSERT INTO screening_candidates (
+             id, project_id, doi, url, oa_url, title, authors_json, year, venue, abstract,
+             cited_by_count, is_open_access, found_via_json, query, search_log_id, status,
+             created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'undecided', ?, ?)`
+        )
+        .run(
+          id,
+          projectId,
+          identity.doi,
+          identity.url,
+          hit.oa_url ?? null,
+          hit.title || identity.url,
+          JSON.stringify(hit.authors),
+          hit.year ?? null,
+          hit.venue ?? null,
+          hit.abstract ?? null,
+          hit.cited_by_count ?? null,
+          hit.is_open_access == null ? null : hit.is_open_access ? 1 : 0,
+          JSON.stringify(foundVia),
+          meta.query,
+          meta.search_log_id,
+          ts,
+          ts
+        )
+      inserted += 1
+    }
+    if (inserted + merged > 0) {
+      this.logEvent(projectId, meta.actor, 'screening.upserted', {
+        query: meta.query,
+        inserted,
+        merged,
+      })
+    }
+    return { inserted, merged }
+  }
+
+  setScreeningDecision(
+    id: string,
+    status: ScreeningStatus,
+    actor: string,
+    reason: string | null
+  ): ScreeningCandidate | undefined {
+    const existing = this.getScreeningCandidate(id)
+    if (!existing) return undefined
+    const ts = nowIso()
+    this.db
+      .prepare(
+        `UPDATE screening_candidates SET status = ?, decision_reason = ?, decided_at = ?, decided_by = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(status, reason, ts, actor, ts, id)
+    this.logEvent(existing.project_id, actor, 'screening.decided', { candidate_id: id, status, reason })
+    return this.getScreeningCandidate(id)
+  }
+
+  linkScreeningDocument(id: string, documentId: string, actor: string): void {
+    const existing = this.getScreeningCandidate(id)
+    if (!existing) return
+    this.db
+      .prepare(`UPDATE screening_candidates SET document_id = ?, status = 'included', updated_at = ? WHERE id = ?`)
+      .run(documentId, nowIso(), id)
+    this.logEvent(existing.project_id, actor, 'screening.fetched', { candidate_id: id, document_id: documentId })
+  }
+
+  markScreeningFetched(projectId: string, url: string, documentId: string, doi: string | null, actor: string): void {
+    const found = this.findScreeningCandidate(projectId, { doi, url })
+    if (!found) return
+    if (found.status === 'excluded') return
+    this.linkScreeningDocument(found.id, documentId, actor)
+  }
+
+  markScreeningExcluded(projectId: string, url: string, doi: string | null, actor: string, reason?: string | null): void {
+    const found = this.findScreeningCandidate(projectId, { doi, url })
+    if (!found || found.status === 'excluded') return
+    this.setScreeningDecision(found.id, 'excluded', actor, reason ?? found.decision_reason)
+  }
+
   // ---------- Dokumente (selbst abgerufener Quelltext) ----------
   addDocument(input: {
     project_id: string
@@ -735,15 +908,17 @@ export class Repo {
     filename?: string | null
     page_starts?: number[] | null
     status?: DocumentStatus
+    capture_reason?: string | null
   }): FetchedDocument {
     const id = randomUUID()
     const origin: DocumentOrigin = input.origin ?? 'fetched'
     const status: DocumentStatus = input.status ?? 'open'
     const pageJson = input.page_starts && input.page_starts.length > 0 ? JSON.stringify(input.page_starts) : null
+    const captureReason = input.capture_reason?.trim() ? input.capture_reason.trim() : null
     this.db
       .prepare(
-        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -759,15 +934,22 @@ export class Repo {
         status,
         origin,
         input.filename ?? null,
-        pageJson
+        pageJson,
+        captureReason
       )
-    this.logEvent(input.project_id, input.actor, origin === 'upload' ? 'document.uploaded' : 'document.fetched', {
-      document_id: id,
-      url: input.url,
-      char_len: input.text.length,
-      content_hash: input.content_hash,
-      origin,
-    })
+    this.logEvent(
+      input.project_id,
+      input.actor,
+      captureReason ? 'document.capture_requested' : origin === 'upload' ? 'document.uploaded' : 'document.fetched',
+      {
+        document_id: id,
+        url: input.url,
+        char_len: input.text.length,
+        content_hash: input.content_hash,
+        origin,
+        capture_reason: captureReason,
+      }
+    )
     return this.getDocument(id)!
   }
 
@@ -780,7 +962,7 @@ export class Repo {
   listDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
     const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason
          FROM documents WHERE project_id = ? ORDER BY fetched_at ASC`
       )
       .all(projectId) as DocumentRow[]
@@ -791,7 +973,7 @@ export class Repo {
   listOpenDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
     const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason
          FROM documents WHERE project_id = ? AND status = 'open' ORDER BY fetched_at ASC`
       )
       .all(projectId) as DocumentRow[]
@@ -803,6 +985,38 @@ export class Repo {
     if (!doc) return
     this.db.prepare(`UPDATE documents SET status = ? WHERE id = ?`).run(status, id)
     this.logEvent(doc.project_id, actor, 'document.status_changed', { document_id: id, status })
+  }
+
+  /**
+   * Volltext an einen Capture-Stub binden. URL, origin und status bleiben —
+   * der Gate-Slot ändert sich nicht, bis add_source oder exclude_source kommt.
+   */
+  fillDocumentContent(
+    id: string,
+    input: {
+      text: string
+      content_hash: string
+      filename: string | null
+      page_starts: number[] | null
+      actor: string
+    }
+  ): FetchedDocument | undefined {
+    const existing = this.getDocument(id)
+    if (!existing) return undefined
+    const pageJson = input.page_starts && input.page_starts.length > 0 ? JSON.stringify(input.page_starts) : null
+    this.db
+      .prepare(
+        `UPDATE documents SET text = ?, char_len = ?, content_hash = ?, filename = ?, page_starts_json = ?, capture_reason = NULL WHERE id = ?`
+      )
+      .run(input.text, input.text.length, input.content_hash, input.filename, pageJson, id)
+    this.logEvent(existing.project_id, input.actor, 'document.captured', {
+      document_id: id,
+      url: existing.url,
+      char_len: input.text.length,
+      content_hash: input.content_hash,
+      filename: input.filename,
+    })
+    return this.getDocument(id)
   }
 
   /** Offene Dokumente zu einer URL schließen (z. B. nach exclude_source). */
@@ -1404,6 +1618,7 @@ export class Repo {
       searchLog: this.listSearchLog(projectId),
       searchReflections: this.listSearchReflections(projectId),
       excludedSources: this.listExcludedSources(projectId),
+      screeningCandidates: this.listScreeningCandidates(projectId),
       subQuestions: this.listSubQuestions(projectId),
       rounds: this.listRounds(projectId),
       marks: this.listMarks(projectId),
@@ -1527,6 +1742,45 @@ function ftsQuery(raw: string): string {
     .join(' ')
 }
 
+export interface ScreeningHitInput {
+  title: string
+  authors: string[]
+  year: number | null
+  doi: string | null
+  url: string | null
+  oa_url: string | null
+  venue: string | null
+  abstract: string | null
+  cited_by_count: number | null
+  is_open_access: boolean | null
+  found_via: string[]
+}
+
+interface ScreeningRow {
+  id: string
+  project_id: string
+  doi: string | null
+  url: string
+  oa_url: string | null
+  title: string
+  authors_json: string
+  year: number | null
+  venue: string | null
+  abstract: string | null
+  cited_by_count: number | null
+  is_open_access: number | null
+  found_via_json: string
+  query: string | null
+  search_log_id: string | null
+  status: ScreeningStatus
+  decision_reason: string | null
+  decided_at: string | null
+  decided_by: string | null
+  document_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface DocumentRow {
   id: string
   project_id: string
@@ -1542,6 +1796,7 @@ interface DocumentRow {
   origin?: string | null
   filename?: string | null
   page_starts_json?: string | null
+  capture_reason?: string | null
 }
 
 interface ProjectRow {
@@ -1681,6 +1936,7 @@ function mapDocument(row: DocumentRow): FetchedDocument {
     origin: mapDocumentOrigin(row.origin),
     filename: row.filename ?? null,
     page_starts: parsePageStarts(row.page_starts_json),
+    capture_reason: row.capture_reason ?? null,
   }
 }
 
@@ -1700,6 +1956,71 @@ function mapDocumentMeta(row: DocumentRow): Omit<FetchedDocument, 'text'> {
     origin: mapped.origin,
     filename: mapped.filename,
     page_starts: mapped.page_starts,
+    capture_reason: mapped.capture_reason,
+  }
+}
+
+function parseJsonStrings(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((x): x is string => typeof x === 'string' && x.length > 0)
+  } catch {
+    return []
+  }
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return [...new Set(items.filter(Boolean))]
+}
+
+export function canonicalScreeningUrl(raw: string): string {
+  try {
+    const u = new URL(raw)
+    u.hash = ''
+    u.pathname = u.pathname.replace(/\/+$/, '') || '/'
+    for (const key of [...u.searchParams.keys()]) {
+      if (/^utm_/i.test(key) || key === 'fbclid' || key === 'ref') u.searchParams.delete(key)
+    }
+    u.hostname = u.hostname.toLowerCase()
+    return u.toString()
+  } catch {
+    return raw.trim()
+  }
+}
+
+function screeningIdentity(hit: ScreeningHitInput): { doi: string | null; url: string } | null {
+  const doi = hit.doi?.trim() ? hit.doi.trim().toLowerCase() : null
+  const rawUrl = hit.url?.trim() || (doi ? `https://doi.org/${doi}` : null)
+  if (!rawUrl) return null
+  return { doi, url: canonicalScreeningUrl(rawUrl) }
+}
+
+function mapScreening(row: ScreeningRow): ScreeningCandidate {
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    doi: row.doi,
+    url: row.url,
+    oa_url: row.oa_url,
+    title: row.title,
+    authors: parseJsonStrings(row.authors_json),
+    year: row.year,
+    venue: row.venue,
+    abstract: row.abstract,
+    cited_by_count: row.cited_by_count,
+    is_open_access: row.is_open_access == null ? null : row.is_open_access === 1,
+    found_via: parseJsonStrings(row.found_via_json),
+    query: row.query,
+    search_log_id: row.search_log_id,
+    status: row.status,
+    decision_reason: row.decision_reason,
+    decided_at: row.decided_at,
+    decided_by: row.decided_by,
+    document_id: row.document_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   }
 }
 

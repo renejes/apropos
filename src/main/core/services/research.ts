@@ -4,26 +4,28 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import { extname } from 'path'
 import type { Repo } from '../repo'
 import { verifySourceDeterministic } from '../enforce/verify'
-import { fetchSourceText } from '../enforce/fetchers'
+import { fetchSourceText, extractDoi } from '../enforce/fetchers'
+import { lookupBestOaUrl } from '../enforce/unpaywall'
 import { extractPdfText, isPdfMagic, MAX_PDF_BYTES } from '../enforce/pdf'
 import { htmlToText } from '../enforce/textmatch'
 import { listInboxFiles, localInboxUrl, projectWorkspace, registeredWorkspace, resolveInboxFile } from '../agent/workspace'
 import { enrichSourceBiblio } from './biblio'
-import type {
-  ClaimSourceLink,
-  CoverageGap,
-  CoverageReport,
-  ExcludedSource,
-  FetchedDocument,
-  ReportVersion,
-  ResearchRound,
-  RoundResult,
-  SearchLogEntry,
-  SearchNextAction,
-  SearchReflection,
-  Source,
-  SubQuestion,
-  DocumentSearchHit,
+import {
+  type ClaimSourceLink,
+  type CoverageGap,
+  type CoverageReport,
+  type ExcludedSource,
+  type FetchedDocument,
+  type ReportVersion,
+  type ResearchRound,
+  type RoundResult,
+  type SearchLogEntry,
+  type SearchNextAction,
+  type SearchReflection,
+  type Source,
+  type SubQuestion,
+  type DocumentSearchHit,
+  isCapturePending,
 } from '../../../shared/types'
 import { isFailedSearchAttempt } from '../../../shared/search-waves'
 
@@ -230,6 +232,30 @@ export function requireAdoptedBrief(repo: Repo, projectId: string): void {
   }
 }
 
+/**
+ * Treffer auf dem Sichtungstisch kommen nicht per fetch_source in den Korpus,
+ * solange sie offen oder ausgeschlossen sind. include_screening / UI-Rein zuerst.
+ * URLs, die nicht auf dem Tisch liegen (genannte Adresse, Upload), bleiben frei.
+ */
+export function requireScreeningAllowsFetch(repo: Repo, projectId: string, url: string): void {
+  if (repo.getProject(projectId)?.kind === 'notebook') return
+  const candidate = repo.findScreeningCandidate(projectId, { url, doi: extractDoi(url) })
+  if (!candidate) return
+  if (candidate.status === 'included') return
+  if (candidate.status === 'excluded') {
+    throw new ServiceError(
+      'screening_locked',
+      `Dieser Treffer ist ausgeschlossen (${candidate.id}, „${candidate.title}“).`,
+      'Eine ausgeschlossene Karte kommt nicht in den Korpus. Nimm eine included-Karte oder eine URL, die nicht auf dem Sichtungstisch liegt.'
+    )
+  }
+  throw new ServiceError(
+    'screening_required',
+    `Dieser Treffer liegt ungesichtet auf dem Sichtungstisch (${candidate.status}, id ${candidate.id}, „${candidate.title}“). fetch_source ist dafür gesperrt.`,
+    'Tab Sichtung: der Mensch sagt Rein/Raus. Du: wait_for_screening, bis Karten entschieden sind. Hat der Mensch im Chat Rein gesagt: include_screening mit dieser candidate_id und einem Grund. Nicht die ganze Welle includen.'
+  )
+}
+
 export function listPendingDiscoverySearches(repo: Repo, projectId: string): SearchLogEntry[] {
   return repo.listUnreflectedSearches(projectId).filter((entry) => !isFailedSearchAttempt(entry))
 }
@@ -413,6 +439,9 @@ export interface FetchDocumentResult {
   has_more: boolean
   open_documents: number
   hint: string
+  /** true: kein Volltext, Mensch muss die PDF nachlegen. Agent: nicht zitieren. */
+  needs_capture?: boolean
+  capture_reason?: string | null
 }
 
 /**
@@ -430,13 +459,21 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
   assertProject(repo, input.project_id)
   assertCorpusWritable(repo, input.project_id)
   requireAdoptedBrief(repo, input.project_id)
+  requireScreeningAllowsFetch(repo, input.project_id, input.url)
 
-  // Bereits abgerufen? Dann kein zweiter Netzabruf — Fenster aus dem Gespeicherten liefern.
-  const existing = repo
-    .listDocuments(input.project_id)
-    .find((d) => d.url === input.url && d.status !== 'excluded')
+  const doi = extractDoi(input.url)
+  const existing = findFetchedDocument(repo, input.project_id, input.url, doi)
   if (existing) {
-    return windowOf(repo.getDocument(existing.id)!, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true)
+    const cached = windowOf(
+      existing,
+      input.offset ?? 0,
+      input.limit ?? WINDOW_DEFAULT,
+      repo,
+      input.project_id,
+      true
+    )
+    repo.markScreeningFetched(input.project_id, input.url, existing.id, doi, actor)
+    return cached
   }
 
   // Gate: erst dokumentieren, dann weiterlesen.
@@ -453,12 +490,57 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
 
   const fetched = await fetchSourceText(input.url)
   if (!fetched.ok || !fetched.text.trim()) {
+    if (isAccessBlocked(fetched.status)) {
+      const oa = doi ? await lookupBestOaUrl(doi) : null
+      if (oa && oa.url !== input.url) {
+        const alreadyOa = findFetchedDocument(repo, input.project_id, oa.url, doi)
+        if (alreadyOa) {
+          repo.markScreeningFetched(input.project_id, input.url, alreadyOa.id, doi, actor)
+          return withUnpaywallHint(
+            windowOf(alreadyOa, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true),
+            oa
+          )
+        }
+        const oaFetched = await fetchSourceText(oa.url)
+        if (oaFetched.ok && oaFetched.text.trim()) {
+          const doc = repo.addDocument({
+            project_id: input.project_id,
+            url: oa.url,
+            text: oaFetched.text,
+            content_hash: oaFetched.snapshotHash ?? '',
+            purpose: input.purpose,
+            actor,
+            origin: 'fetched',
+            page_starts: oaFetched.pageStarts ?? null,
+          })
+          repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
+          repo.markScreeningFetched(input.project_id, oa.url, doc.id, doi, actor)
+          return withUnpaywallHint(
+            windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false),
+            oa
+          )
+        }
+      }
+      const doc = repo.addDocument({
+        project_id: input.project_id,
+        url: input.url,
+        text: '',
+        content_hash: createHash('sha256').update(`capture:${input.url}`).digest('hex'),
+        purpose: input.purpose,
+        actor,
+        origin: 'fetched',
+        capture_reason: fetched.note || `HTTP ${fetched.status}`,
+      })
+      repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
+      return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
+    }
     throw new ServiceError(
       'fetch_failed',
       `Quelle konnte nicht abgerufen werden: ${fetched.note}`,
-      'Prüfe die URL und rufe fetch_source erneut auf. PDFs mit Textschicht werden extrahiert; Bilder, Scans ohne Text und Paywalls nicht. ' +
-        'Gibt es keine HTML/PDF-Fassung, erfasse die Quelle mit add_source OHNE document_id und mit wörtlichem verbatim_quote — ' +
-        'sie geht dann in die menschliche Prüfung. Oder schließe sie mit exclude_source begründet aus.'
+      'Prüfe die URL und rufe fetch_source erneut auf. PDFs mit Textschicht werden extrahiert; Bilder und Scans ohne Text nicht. ' +
+        'Bei Paywall/Campus (401/403) legt fetch_source einen Capture-Auftrag an — das ist kein Fehler. ' +
+        'Scans ohne Textschicht: add_source OHNE document_id mit wörtlichem verbatim_quote, dann menschlicher Sign-off. ' +
+        'Oder schließe die Quelle mit exclude_source begründet aus.'
     )
   }
 
@@ -472,9 +554,44 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
     origin: 'fetched',
     page_starts: fetched.pageStarts ?? null,
   })
-
+  repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
   return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
 }
+
+function findFetchedDocument(
+  repo: Repo,
+  projectId: string,
+  url: string,
+  doi: string | null
+): FetchedDocument | undefined {
+  const docs = repo.listDocuments(projectId).filter((d) => d.status !== 'excluded')
+  const exact = docs.find((d) => d.url === url)
+  if (exact) return repo.getDocument(exact.id)
+  const viaScreen = repo.findScreeningCandidate(projectId, { url, doi })
+  if (viaScreen?.document_id) {
+    const linked = repo.getDocument(viaScreen.document_id)
+    if (linked && linked.status !== 'excluded') return linked
+  }
+  if (!doi) return undefined
+  const needle = doi.toLowerCase()
+  const byDoi = docs.find((d) => extractDoi(d.url)?.toLowerCase() === needle)
+  return byDoi ? repo.getDocument(byDoi.id) : undefined
+}
+
+function withUnpaywallHint(result: FetchDocumentResult, oa: { version: string | null; host_type: string | null }): FetchDocumentResult {
+  const where = [oa.version, oa.host_type].filter(Boolean).join(', ')
+  const extra =
+    `OA-Fassung über Unpaywall${where ? ` (${where})` : ''}. url ist die legale Volltext-URL, nicht die Verlagsseite. ` +
+    'add_source mit dieser document_id + Offsets. '
+  return { ...result, hint: extra + result.hint }
+}
+
+function isAccessBlocked(status: number | null): boolean {
+  return status === 401 || status === 403 || status === 402 || status === 451
+}
+
+const CAPTURE_HINT =
+  'ZUGANG GESPERRT — Capture-Auftrag. NICHT add_source mit verbatim_quote. Der Mensch legt die Volltext-PDF auf diesen Auftrag im Korpus-Tab (URL/DOI bleibt). Warte, dann read_document. Oder exclude_source, wenn die Quelle wegfällt.'
 
 function windowOf(
   doc: FetchedDocument,
@@ -484,17 +601,31 @@ function windowOf(
   projectId: string,
   cached: boolean
 ): FetchDocumentResult {
-  const start = Math.min(offset, doc.char_len)
-  const end = Math.min(start + limit, doc.char_len)
   const openCount = repo.listOpenDocuments(projectId).length
-  // Das Kontingent VOR dem Anschlag melden, nicht erst beim Fehlschlag: ein Modell,
-  // das weiß, dass dies sein letzter freier Abruf war, dokumentiert von selbst.
   const free = MAX_OPEN_DOCUMENTS - openCount
   const budget =
     free <= 0
       ? ' ACHTUNG: Dein Abruf-Kontingent ist damit aufgebraucht — der nächste Abruf (fetch_source oder ingest_local_file) wird ABGELEHNT, ' +
         'bis du die offenen Quellen mit add_source oder exclude_source dokumentiert hast.'
       : ` Noch ${free} Abruf(e) frei, bevor du dokumentieren musst.`
+
+  if (isCapturePending(doc)) {
+    return {
+      document_id: doc.id,
+      url: doc.url,
+      char_len: doc.char_len,
+      content_hash: doc.content_hash,
+      window: { offset: 0, length: 0, text: '' },
+      has_more: false,
+      open_documents: openCount,
+      needs_capture: true,
+      capture_reason: doc.capture_reason,
+      hint: (cached ? 'Bereits als Capture-Auftrag gespeichert — kein erneuter Netzabruf. ' : '') + CAPTURE_HINT + budget,
+    }
+  }
+
+  const start = Math.min(offset, doc.char_len)
+  const end = Math.min(start + limit, doc.char_len)
   return {
     document_id: doc.id,
     url: doc.url,
@@ -736,6 +867,88 @@ export async function ingestUploadedFiles(
   return { documents, errors }
 }
 
+/**
+ * PDF/Text auf einen Capture-Stub oder leeren Open-Treffer binden.
+ * URL und DOI bleiben; der Gate-Slot bleibt `open`, bis add_source oder exclude_source.
+ */
+export async function fulfillCaptureFromInbox(
+  repo: Repo,
+  projectId: string,
+  documentId: string,
+  filenames: string[],
+  actor: string
+): Promise<CorpusIngestResult> {
+  assertProject(repo, projectId)
+  assertCorpusWritable(repo, projectId)
+  const corpusId = resolveCorpusProjectId(repo, projectId)
+  const doc = repo.getDocument(documentId)
+  if (!doc || doc.project_id !== corpusId) {
+    return { documents: [], errors: [{ filename: '', message: 'Dokument nicht gefunden.' }] }
+  }
+  const bindable = isCapturePending(doc) || (doc.status === 'open' && doc.char_len === 0)
+  if (!bindable) {
+    return {
+      documents: [],
+      errors: [{ filename: '', message: 'Dieses Dokument hat schon Text. Neue Dateien ohne Bindung in den Korpus legen.' }],
+    }
+  }
+
+  const ws = workspaceFor(projectId)
+  const errors: CorpusIngestResult['errors'] = []
+  const documents: CorpusIngestResult['documents'] = []
+
+  for (const filename of filenames) {
+    const ext = extname(filename).toLowerCase()
+    if (!ALLOWED_INBOX_EXT.has(ext)) {
+      errors.push({ filename, message: `Dateityp "${ext || '(ohne Endung)'}" ist nicht erlaubt.` })
+      continue
+    }
+    let absPath: string
+    try {
+      absPath = resolveInboxFile(ws, filename)
+    } catch {
+      errors.push({ filename, message: 'Datei liegt nicht in der Inbox.' })
+      continue
+    }
+    if (!existsSync(absPath)) {
+      errors.push({ filename, message: 'Datei wurde in der Inbox nicht gefunden.' })
+      continue
+    }
+    const bytes = readFileSync(absPath)
+    if (bytes.length > MAX_PDF_BYTES) {
+      errors.push({ filename, message: `Datei ist größer als ${MAX_PDF_BYTES} Bytes.` })
+      continue
+    }
+    try {
+      const extracted = await extractInboxBytes(bytes, ext)
+      if (!extracted.text.trim()) {
+        errors.push({ filename, message: 'Kein Text lesbar (leere Datei oder Scan-PDF ohne Textschicht).' })
+        continue
+      }
+      const filled = repo.fillDocumentContent(documentId, {
+        text: extracted.text,
+        content_hash: createHash('sha256').update(bytes).digest('hex'),
+        filename,
+        page_starts: extracted.pageStarts,
+        actor,
+      })
+      if (!filled) {
+        errors.push({ filename, message: 'Dokument konnte nicht aktualisiert werden.' })
+        continue
+      }
+      documents.push({ document_id: filled.id, filename, char_len: filled.char_len, url: filled.url })
+      break
+    } catch (err) {
+      errors.push({ filename, message: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  if (documents.length === 0 && errors.length === 0) {
+    errors.push({ filename: '', message: 'Keine Datei gebunden.' })
+  }
+  return { documents, errors }
+}
+
 export const readDocumentSchema = z.object({
   project_id: z.string().min(1),
   document_id: z.string().min(1),
@@ -811,12 +1024,15 @@ export function listProjectCorpus(
   const corpusId = resolveCorpusProjectId(repo, input.project_id)
   const documents = repo.listDocuments(corpusId).filter((d) => d.status !== 'excluded')
   const uploads = documents.filter((d) => d.origin === 'upload').length
+  const captures = documents.filter((d) => isCapturePending(d)).length
   return {
     documents,
     next_action:
       documents.length === 0
         ? 'Der Korpus ist leer. Der Mensch lädt PDFs im Tab „Korpus“ hoch oder hängt sie im Chat an.'
-        : `${documents.length} Dokument(e), davon ${uploads} Upload(s). Suche mit search_documents, lies mit read_document, belege mit add_source.`,
+        : captures > 0
+          ? `${documents.length} Dokument(e), davon ${captures} Capture-Auftrag(e) ohne Volltext. NICHT verbatim_quote. Warte, bis der Mensch die PDF auf den Auftrag legt, dann read_document.`
+          : `${documents.length} Dokument(e), davon ${uploads} Upload(s). Suche mit search_documents, lies mit read_document, belege mit add_source.`,
   }
 }
 
@@ -902,6 +1118,13 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
         'document_project_mismatch',
         `Dokument ${input.document_id} gehört zu Projekt ${doc.project_id}, nicht zu ${input.project_id}.`,
         'Rufe die Quelle mit fetch_source im richtigen Projekt erneut ab und nimm die dabei zurückgegebene document_id.'
+      )
+    }
+    if (isCapturePending(doc)) {
+      throw new ServiceError(
+        'document_needs_capture',
+        'Dieses Dokument hat noch keinen Volltext — der Mensch muss die PDF nachlegen.',
+        'Warte auf den Capture im Korpus-Tab. Danach read_document und add_source mit Offsets. Nicht verbatim_quote verwenden.'
       )
     }
     const start = input.quote_start!
@@ -1103,7 +1326,7 @@ export function ingestSearch(repo: Repo, rawInput: unknown, actor: string): Sear
   const urls = (input.urls ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 20)
   const hitCount = input.hit_count ?? input.results_found ?? (urls.length > 0 ? urls.length : null)
   const noteParts = [input.note, urls.length > 0 ? `urls: ${urls.join(' ')}` : null].filter(Boolean)
-  return recordSearch(
+  const entry = recordSearch(
     repo,
     {
       project_id: projectId,
@@ -1114,6 +1337,35 @@ export function ingestSearch(repo: Repo, rawInput: unknown, actor: string): Sear
     },
     actor
   )
+  if (urls.length > 0) {
+    repo.upsertScreeningHits(
+      projectId,
+      urls.map((u) => {
+        let title = u
+        try {
+          const parsed = new URL(u)
+          title = parsed.hostname.replace(/^www\./, '') + parsed.pathname
+        } catch {
+          /* URL bleibt Titel */
+        }
+        return {
+          title,
+          authors: [],
+          year: null,
+          doi: extractDoi(u),
+          url: u,
+          oa_url: null,
+          venue: null,
+          abstract: null,
+          cited_by_count: null,
+          is_open_access: null,
+          found_via: ['websearch'],
+        }
+      }),
+      { query: input.query, search_log_id: entry.id, actor }
+    )
+  }
+  return entry
 }
 
 export function recordExclusion(repo: Repo, rawInput: unknown, actor: string): ExcludedSource {
@@ -1129,6 +1381,7 @@ export function recordExclusion(repo: Repo, rawInput: unknown, actor: string): E
   })
   // Ein begründeter Ausschluss erfüllt die Dokumentationspflicht für diese URL.
   repo.closeOpenDocumentsForUrl(input.project_id, input.url, 'excluded', actor)
+  repo.markScreeningExcluded(input.project_id, input.url, extractDoi(input.url), actor, input.reason)
   return entry
 }
 

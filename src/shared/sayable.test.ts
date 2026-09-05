@@ -94,6 +94,7 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     searchLog: [],
     searchReflections: [],
     excludedSources: [],
+    screeningCandidates: [],
     subQuestions: [],
     rounds: [],
     marks: [],

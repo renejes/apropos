@@ -37,11 +37,12 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
   ],
   research: [
     'search_literature',
+    'include_screening',
+    'wait_for_screening',
     'reflect_search',
     'fetch_source',
     'add_source',
     'exclude_source',
-    'log_search',
     'log_extraction',
     'assign_source',
     'flag_uncertainty',

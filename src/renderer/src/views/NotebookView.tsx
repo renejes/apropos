@@ -360,6 +360,9 @@ export default function NotebookView({
               meta={openDocMeta}
               doc={openDocFull}
               range={center.start != null && center.end != null ? { start: center.start, end: center.end } : null}
+              projectId={projectId}
+              subQuestions={state.subQuestions}
+              onChanged={() => void onReload()}
             />
           )}
           {center.kind === 'artifact' && (

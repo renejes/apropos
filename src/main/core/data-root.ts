@@ -24,6 +24,7 @@ interface DataRootPointer {
 
 interface RootSettingsFile {
   cloudSynced?: boolean
+  contactEmail?: string | null
 }
 
 /** OS-Default, unabhängig von ROP_DATA_DIR und vom gewählten Datenordner. */
@@ -88,7 +89,11 @@ export function loadRootSettings(root: string): RootSettingsFile {
   if (!existsSync(file)) return {}
   try {
     const raw = JSON.parse(readFileSync(file, 'utf-8')) as Partial<RootSettingsFile>
-    return { cloudSynced: raw.cloudSynced === true }
+    const email = typeof raw.contactEmail === 'string' ? raw.contactEmail.trim() : ''
+    return {
+      cloudSynced: raw.cloudSynced === true,
+      contactEmail: email || null,
+    }
   } catch {
     return {}
   }

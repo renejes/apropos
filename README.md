@@ -67,10 +67,13 @@ Teilfragen aus dem Brief
 Suche  (Korpus, dann Literaturregister + WebSearch)
         │
         ▼
+Sichtungstisch  (du: Rein / Raus / Unsicher)
+        │
+        ▼
 Lage nach jeder Welle  (reflect_search)
         │
         ▼
-fetch_source / read_document → add_source  oder  exclude_source
+wait_for_screening / include_screening → add_source
         │
         ▼
 Server misst Lücken  — „ich bin fertig“ zählt nicht
@@ -85,6 +88,7 @@ Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen
 |---|---|
 | **Unfälschbare Zitate** | Der Server speichert den Text und schneidet das Zitat an Zeichenpositionen. Das Modell tippt nichts ab. |
 | **Seed-Korpus** | Hochgeladene PDFs zuerst durchsuchen, dann belegen. |
+| **Sichtungstisch** | Die KI legt Treffer hin. Du sagst Rein, Raus oder Unsicher — erst dann kommt der Volltext in den Korpus. |
 | **Such-Lage** | Nach jeder Welle: was getroffen ist, was fehlt, was als Nächstes passiert. |
 | **Messbare Tiefe** | Teilfragen, Lückenliste, Sättigung pro Runde. |
 | **Was darfst du sagen** | Grün = signiert und Quote ok. Gelb = belegt, unsigniert. Rot = Widerspruch, Flag, Lücke, Tabu. |
@@ -185,7 +189,8 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `save_note` / `list_notes` / `update_note` | Notebook-Notizen (Offsets schneidet der Server) |
 | `list_artifacts` | Dateien unter `artifacts/` |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
-| `search_literature` | OpenAlex, Crossref, Europe PMC |
+| `search_literature` | OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE — Treffer auf den Sichtungstisch |
+| `list_screening` / `wait_for_screening` / `include_screening` | Offene Karten lesen, auf den Menschen warten, Chat-Rein; `fetch_source` auf offenen Karten gesperrt |
 | `reflect_search` | Lage nach einer Suchwelle |
 | `export_easy_writing` / `export_writing_pack` | Easy-Writing-Ordner bzw. Markdown-Schreibpaket |
 

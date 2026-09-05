@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { DocumentSearchHit, FetchedDocument, ProjectState } from '../../../../shared/types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { type DocumentSearchHit, type FetchedDocument, type ProjectState, isCapturePending } from '../../../../shared/types'
 import { Button, EmptyState, Icon } from '../../components/ui'
 import DocumentReader, { OriginBadge } from '../DocumentReader'
 
@@ -27,13 +27,27 @@ export default function CorpusTab({
   const [busy, setBusy] = useState(false)
   const [dropOver, setDropOver] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [agentNudge, setAgentNudge] = useState<CorpusFocus | null>(null)
+  const lastUserPickAt = useRef(0)
 
   useEffect(() => {
     if (!focus?.documentId) return
+    const userReadingOther =
+      lastUserPickAt.current > 0 &&
+      Date.now() - lastUserPickAt.current < 20_000 &&
+      selectedId != null &&
+      selectedId !== focus.documentId
+    if (userReadingOther) {
+      setAgentNudge(focus)
+      onFocusConsumed?.()
+      return
+    }
     setSelectedId(focus.documentId)
-    if (focus.start != null && focus.end != null) setRange({ start: focus.start, end: focus.end })
+    if (focus.start != null && focus.end != null && focus.start !== focus.end) setRange({ start: focus.start, end: focus.end })
+    else setRange(null)
+    setAgentNudge(null)
     onFocusConsumed?.()
-  }, [focus, onFocusConsumed])
+  }, [focus, onFocusConsumed, selectedId])
 
   useEffect(() => {
     const q = query.trim()
@@ -106,9 +120,17 @@ export default function CorpusTab({
         <div className="border-b border-hairline p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Korpus</h2>
-            <Button variant="primary" icon="upload_file" disabled={busy} onClick={() => void upload(() => window.api.uploadCorpus(state.project.id))}>
-              Hochladen
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                icon="folder_open"
+                disabled={busy}
+                title="Inbox-Ordner"
+                onClick={() => void window.api.revealInbox(state.project.id)}
+              />
+              <Button variant="primary" icon="upload_file" disabled={busy} onClick={() => void upload(() => window.api.uploadCorpus(state.project.id))}>
+                Hochladen
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <Icon name="search" className="icon-sm absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
@@ -120,6 +142,21 @@ export default function CorpusTab({
             />
           </div>
           {notice && <p className="mt-2 text-[11px] text-muted">{notice}</p>}
+          {agentNudge && (
+            <button
+              type="button"
+              className="mt-2 w-full px-2 py-1.5 text-left text-[11px] text-fg ring-1 ring-line"
+              onClick={() => {
+                setSelectedId(agentNudge.documentId)
+                if (agentNudge.start != null && agentNudge.end != null && agentNudge.start !== agentNudge.end) {
+                  setRange({ start: agentNudge.start, end: agentNudge.end })
+                } else setRange(null)
+                setAgentNudge(null)
+              }}
+            >
+              Agent liest ein anderes Dokument — hier öffnen
+            </button>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {docs.length === 0 ? (
@@ -131,6 +168,7 @@ export default function CorpusTab({
                   key={d.id}
                   type="button"
                   onClick={() => {
+                    lastUserPickAt.current = Date.now()
                     setSelectedId(d.id)
                     setRange(null)
                   }}
@@ -142,6 +180,12 @@ export default function CorpusTab({
                       <div className="truncate text-sm font-medium">{d.title || d.filename || d.url}</div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1">
                         <OriginBadge origin={d.origin} />
+                        {isCapturePending(d) && (
+                          <span className="text-[11px] text-warn">Capture</span>
+                        )}
+                        {d.status === 'open' && !isCapturePending(d) && (
+                          <span className="text-[11px] text-muted">offen</span>
+                        )}
                         <span className="text-[11px] text-muted">{d.char_len.toLocaleString('de-DE')} Zeichen</span>
                         {d.page_starts && d.page_starts.length > 1 && (
                           <span className="text-[11px] text-muted">{d.page_starts.length} Seiten</span>
@@ -190,6 +234,9 @@ export default function CorpusTab({
             doc={full}
             range={range}
             citedBy={state.sources.filter((s) => s.document_id === selected.id).length}
+            projectId={state.project.id}
+            subQuestions={state.subQuestions}
+            onChanged={onReload}
           />
         ) : docs.length > 0 ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted">Dokument wählen oder eine Datei hierher ziehen.</div>

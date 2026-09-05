@@ -150,6 +150,16 @@ export interface FetchedDocument {
   filename: string | null
   /** Zeichenoffset des ersten Zeichens je PDF-Seite (0-basiert). null = kein Seitenumbruch bekannt. */
   page_starts: number[] | null
+  /**
+   * Gesetzt, solange der Volltext fehlt (Paywall/Campus). Status bleibt `open`.
+   * Nach dem Nachlegen der PDF wird das Feld geleert — URL/DOI bleiben.
+   */
+  capture_reason: string | null
+}
+
+/** Offener Capture-Auftrag: Gate zählt ihn, Zitate sind noch nicht möglich. */
+export function isCapturePending(doc: Pick<FetchedDocument, 'status' | 'capture_reason'>): boolean {
+  return doc.status === 'open' && Boolean(doc.capture_reason)
 }
 
 export interface Extraction {
@@ -274,6 +284,34 @@ export interface ExcludedSource {
   reason: string
   created_at: string
   created_by: string
+}
+
+/** Titel/Abstract-Sichtung — bevor Volltext geholt wird. */
+export type ScreeningStatus = 'undecided' | 'maybe' | 'included' | 'excluded'
+
+export interface ScreeningCandidate {
+  id: string
+  project_id: string
+  doi: string | null
+  url: string
+  oa_url: string | null
+  title: string
+  authors: string[]
+  year: number | null
+  venue: string | null
+  abstract: string | null
+  cited_by_count: number | null
+  is_open_access: boolean | null
+  found_via: string[]
+  query: string | null
+  search_log_id: string | null
+  status: ScreeningStatus
+  decision_reason: string | null
+  decided_at: string | null
+  decided_by: string | null
+  document_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface EventLogEntry {
@@ -546,6 +584,7 @@ export interface ProjectState {
   searchLog: SearchLogEntry[]
   searchReflections: SearchReflection[]
   excludedSources: ExcludedSource[]
+  screeningCandidates: ScreeningCandidate[]
   subQuestions: SubQuestion[]
   rounds: ResearchRound[]
   marks: Mark[]
@@ -589,6 +628,17 @@ export interface DataLock {
   pid: number
   startedAt: string
   appVersion: string
+}
+
+export type ContactEmailSource = 'env' | 'settings' | 'default'
+
+export interface ContactEmailInfo {
+  /** Wirksame Adresse (Umgebung > Einstellungen > Fallback). */
+  value: string
+  /** In settings.json gespeichert, unabhängig von der Umgebung. */
+  stored: string | null
+  source: ContactEmailSource
+  envLocked: boolean
 }
 
 export interface DataRootInfo {

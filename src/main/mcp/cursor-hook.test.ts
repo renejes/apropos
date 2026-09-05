@@ -99,10 +99,16 @@ describe('Cursor-Hook POST /ingest/search', () => {
     )
     expect(code).toBe(0)
     const parsed = JSON.parse(stdout)
+    expect(parsed.additional_context).toMatch(/Sichtungstisch/)
+    expect(parsed.additional_context).toMatch(/wait_for_screening/)
     expect(parsed.additional_context).toMatch(/fetch_source/)
     expect(parsed.additional_context).toMatch(/reflect_search/)
     expect(parsed.permission).toBeUndefined()
-    expect(received).toMatchObject({ query: 'attention is all you need', provider: 'cursor-websearch' })
+    expect(received).toMatchObject({
+      query: 'attention is all you need',
+      provider: 'cursor-websearch',
+      urls: ['https://arxiv.org/abs/1706.03762'],
+    })
   })
 
   it('weist die nächste WebSearch ab, wenn das Gate search_reflection_required meldet', async () => {

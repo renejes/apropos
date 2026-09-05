@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { acquireDataLock, releaseDataLock } from './data-lock'
-import { isCloudSyncedPath, journalModeForRoot, relocateDataRoot, inspectDataRoot } from './data-root'
+import { isCloudSyncedPath, journalModeForRoot, relocateDataRoot, inspectDataRoot, loadRootSettings, saveRootSettings } from './data-root'
 import { openDb } from './db'
 
 describe('Datenordner: Cloud-Pfad und Journal', () => {
@@ -94,5 +94,17 @@ describe('Datenordner umziehen', () => {
     expect(inspectDataRoot(to).hasDb).toBe(true)
     rmSync(from, { recursive: true, force: true })
     rmSync(to, { recursive: true, force: true })
+  })
+})
+
+describe('settings.json rundet Kontakt-Mail mit', () => {
+  it('verliert contactEmail nicht, wenn nur cloudSynced geschrieben wird', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rop-set-'))
+    saveRootSettings(dir, { contactEmail: 'name@domain.de' })
+    saveRootSettings(dir, { cloudSynced: true })
+    const loaded = loadRootSettings(dir)
+    expect(loaded.contactEmail).toBe('name@domain.de')
+    expect(loaded.cloudSynced).toBe(true)
+    rmSync(dir, { recursive: true, force: true })
   })
 })

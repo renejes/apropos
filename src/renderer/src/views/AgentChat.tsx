@@ -97,6 +97,8 @@ function reduceEvents(events: AgentChatEvent[]): ChatItem[] {
       case 'run_end':
         items.push({ kind: 'run_end', status: e.status, error: e.error })
         break
+      case 'follow_doc':
+        break
       default: {
         const _never: never = e
         void _never
@@ -180,12 +182,14 @@ export default function AgentChat({
   projectId,
   onRunEnd,
   onCorpusChange,
+  onFollowDoc,
   variant = 'research',
   onSaveNote,
 }: {
   projectId: string
   onRunEnd: () => void
   onCorpusChange?: () => void
+  onFollowDoc?: (follow: { documentId: string; start: number; end: number; capture: boolean }) => void
   variant?: 'research' | 'notebook'
   onSaveNote?: (text: string) => void
 }) {
@@ -261,6 +265,11 @@ export default function AgentChat({
         setUsageLine(formatUsageLine(payload.event))
         return
       }
+      if (payload.event.type === 'follow_doc') {
+        onFollowDoc?.(payload.event)
+        onCorpusChange?.()
+        return
+      }
       setEvents((cur) => [...cur, payload.event])
       if (payload.event.type === 'run_end') {
         setRunning(false)
@@ -269,7 +278,7 @@ export default function AgentChat({
       }
     })
     return off
-  }, [projectId, onRunEnd])
+  }, [projectId, onRunEnd, onFollowDoc, onCorpusChange])
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight })

@@ -204,6 +204,7 @@ describe('Repo (in-memory SQLite)', () => {
     expect(state.extractions).toHaveLength(1)
     expect(state.project.id).toBe(p.id)
     expect(state.notes).toEqual([])
+    expect(state.screeningCandidates).toEqual([])
     expect(state.project.kind).toBe('research')
   })
 })

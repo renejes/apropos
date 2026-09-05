@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   const res = await searchLiterature(
     repo,
-    { project_id: project.id, query: QUERY, backends: ['openalex', 'crossref', 'europepmc', 'arxiv'], limit: 5, note: 'Live-Check' },
+    { project_id: project.id, query: QUERY, backends: ['openalex', 'crossref', 'europepmc', 'semanticscholar', 'openaire', 'arxiv'], limit: 5, note: 'Live-Check' },
     'lit-check'
   )
 

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Repo } from '../repo'
 import { ServiceError, requireAdoptedBrief, requireSearchReflection } from './research'
+import { contactUserAgent, resolveContactEmail } from '../contact-email'
 
 /**
  * Wissenschaftliche Literatursuche über offene, kostenlose APIs.
@@ -15,20 +16,39 @@ import { ServiceError, requireAdoptedBrief, requireSearchReflection } from './re
  *  - Jede Suche wird automatisch in `search_log` protokolliert (PRISMA-S). Die
  *    Suchdokumentation entsteht damit als Nebenprodukt, nicht als Pflichtübung.
  *
- * Höflichkeit: OpenAlex und Crossref öffnen den schnelleren "polite pool", wenn eine
- * Kontakt-Mail mitgeschickt wird. Konfigurierbar über ROP_CONTACT_EMAIL.
+ * Höflichkeit: OpenAlex, Crossref und OpenAIRE öffnen den schnelleren "polite pool",
+ * wenn eine Kontakt-Mail mitgeschickt wird. Einstellungen → Kontakt-Mail, oder ROP_CONTACT_EMAIL.
+ * Semantic Scholar: optional S2_API_KEY / SEMANTIC_SCHOLAR_API_KEY gegen 429.
  */
-
-const CONTACT = process.env.ROP_CONTACT_EMAIL?.trim() || 'apropos@localhost'
-const UA = `ResearchOverviewPlatform/0.1 (+mailto:${CONTACT})`
 const TIMEOUT_MS = 12_000
+const S2_API_KEY = process.env.S2_API_KEY?.trim() || process.env.SEMANTIC_SCHOLAR_API_KEY?.trim() || ''
 
-export type LiteratureBackend = 'openalex' | 'crossref' | 'europepmc' | 'arxiv'
+export const LITERATURE_BACKENDS = ['openalex', 'crossref', 'europepmc', 'semanticscholar', 'openaire', 'arxiv'] as const
+export type LiteratureBackend = (typeof LITERATURE_BACKENDS)[number]
+
+/** Standard: offene Register. arXiv nur, wenn der Aufruf es setzt. */
+export const DEFAULT_LITERATURE_BACKENDS: LiteratureBackend[] = [
+  'openalex',
+  'crossref',
+  'europepmc',
+  'semanticscholar',
+  'openaire',
+]
+
+export type LiteratureGraphKind = 'project' | 'organization' | 'dataset' | 'software' | 'publication' | 'other'
+
+/** Kante im OpenAIRE-Graph (Förderprojekt, Affiliation, verknüpftes Produkt). */
+export interface LiteratureGraphEdge {
+  kind: LiteratureGraphKind
+  id: string
+  label: string
+  url: string | null
+}
 
 export const literatureInputSchema = z.object({
   project_id: z.string().min(1),
   query: z.string().min(3),
-  backends: z.array(z.enum(['openalex', 'crossref', 'europepmc', 'arxiv'])).optional(),
+  backends: z.array(z.enum(LITERATURE_BACKENDS)).optional(),
   limit: z.number().int().min(1).max(50).optional(),
   year_from: z.number().int().min(1500).max(2100).optional(),
   year_to: z.number().int().min(1500).max(2100).optional(),
@@ -50,6 +70,7 @@ export interface LiteratureHit {
   cited_by_count: number | null
   is_open_access: boolean | null
   found_via: LiteratureBackend[]
+  graph_edges?: LiteratureGraphEdge[]
 }
 
 export interface LiteratureResult {
@@ -62,11 +83,14 @@ export interface LiteratureResult {
   hint: string
 }
 
-async function getJson(url: string): Promise<unknown> {
+async function getJson(url: string, extraHeaders: Record<string, string> = {}): Promise<unknown> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/json', 'user-agent': UA } })
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { accept: 'application/json', 'user-agent': contactUserAgent(), ...extraHeaders },
+    })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.json()
   } finally {
@@ -78,7 +102,7 @@ async function getText(url: string): Promise<string> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/atom+xml,text/xml', 'user-agent': UA } })
+    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/atom+xml,text/xml', 'user-agent': contactUserAgent() } })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.text()
   } finally {
@@ -136,7 +160,7 @@ async function searchOpenAlex(q: string, limit: number, o: { yearFrom?: number; 
   const url =
     `https://api.openalex.org/works?search=${encodeURIComponent(q)}&per-page=${limit}` +
     (filters.length ? `&filter=${encodeURIComponent(filters.join(','))}` : '') +
-    `&mailto=${encodeURIComponent(CONTACT)}`
+    `&mailto=${encodeURIComponent(resolveContactEmail())}`
 
   const data = (await getJson(url)) as { results?: Array<Record<string, any>> }
   return (data.results ?? []).map((w) => {
@@ -166,7 +190,7 @@ async function searchCrossref(q: string, limit: number, o: { yearFrom?: number; 
   const url =
     `https://api.crossref.org/works?query=${encodeURIComponent(q)}&rows=${limit}` +
     (filters.length ? `&filter=${encodeURIComponent(filters.join(','))}` : '') +
-    `&mailto=${encodeURIComponent(CONTACT)}`
+    `&mailto=${encodeURIComponent(resolveContactEmail())}`
 
   const data = (await getJson(url)) as { message?: { items?: Array<Record<string, any>> } }
   return (data.message?.items ?? []).map((it) => {
@@ -247,6 +271,213 @@ async function searchArxiv(q: string, limit: number): Promise<LiteratureHit[]> {
   })
 }
 
+const S2_FIELDS = [
+  'title',
+  'authors',
+  'year',
+  'abstract',
+  'venue',
+  'citationCount',
+  'externalIds',
+  'url',
+  'isOpenAccess',
+  'openAccessPdf',
+  'publicationVenue',
+].join(',')
+
+async function searchSemanticScholar(
+  q: string,
+  limit: number,
+  o: { yearFrom?: number; yearTo?: number; oaOnly?: boolean }
+): Promise<LiteratureHit[]> {
+  // Semantic Scholar matcht Bindestriche in Queries nicht.
+  const params = new URLSearchParams()
+  params.set('query', q.replace(/-/g, ' '))
+  params.set('limit', String(Math.min(limit, 100)))
+  params.set('fields', S2_FIELDS)
+  if (o.yearFrom && o.yearTo) params.set('year', `${o.yearFrom}-${o.yearTo}`)
+  else if (o.yearFrom) params.set('year', `${o.yearFrom}-`)
+  else if (o.yearTo) params.set('year', `-${o.yearTo}`)
+  if (o.oaOnly) params.set('openAccessPdf', '')
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?${params.toString()}`
+  const headers: Record<string, string> = {}
+  if (S2_API_KEY) headers['x-api-key'] = S2_API_KEY
+  let data: { data?: Array<Record<string, any>> }
+  try {
+    data = (await getJson(url, headers)) as { data?: Array<Record<string, any>> }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/\b429\b/.test(msg)) {
+      throw new Error(
+        'HTTP 429 — Semantic Scholar Rate-Limit. Optional S2_API_KEY (oder SEMANTIC_SCHOLAR_API_KEY) setzt ein höheres Kontingent.'
+      )
+    }
+    throw err
+  }
+  return (data.data ?? []).map((p) => {
+    const doi = cleanDoi(p.externalIds?.DOI)
+    const oa = typeof p.openAccessPdf?.url === 'string' ? p.openAccessPdf.url : null
+    const venue =
+      (typeof p.publicationVenue?.name === 'string' && p.publicationVenue.name) ||
+      (typeof p.venue === 'string' && p.venue) ||
+      null
+    const s2Url = typeof p.url === 'string' ? p.url : null
+    return {
+      title: String(p.title ?? '(ohne Titel)'),
+      authors: (p.authors ?? [])
+        .slice(0, 12)
+        .map((a: { name?: string }) => String(a?.name ?? ''))
+        .filter(Boolean),
+      year: typeof p.year === 'number' ? p.year : null,
+      doi,
+      url: preferLanding(s2Url, doi ? `https://doi.org/${doi}` : null, oa),
+      oa_url: oa,
+      venue,
+      abstract: typeof p.abstract === 'string' ? p.abstract.slice(0, 1500) : null,
+      cited_by_count: typeof p.citationCount === 'number' ? p.citationCount : null,
+      is_open_access: typeof p.isOpenAccess === 'boolean' ? p.isOpenAccess : oa ? true : null,
+      found_via: ['semanticscholar'] as LiteratureBackend[],
+    }
+  })
+}
+
+function openaireExploreUrl(kind: LiteratureGraphKind, id: string): string {
+  switch (kind) {
+    case 'project':
+      return `https://explore.openaire.eu/search/project?projectId=${encodeURIComponent(id)}`
+    case 'publication':
+      return `https://explore.openaire.eu/search/publication?articleId=${encodeURIComponent(id)}`
+    case 'dataset':
+      return `https://explore.openaire.eu/search/dataset?datasetId=${encodeURIComponent(id)}`
+    case 'software':
+      return `https://explore.openaire.eu/search/software?softwareId=${encodeURIComponent(id)}`
+    case 'organization':
+      return `https://explore.openaire.eu/search/organization?organizationId=${encodeURIComponent(id)}`
+    case 'other':
+      return `https://explore.openaire.eu/search/find?keyword=${encodeURIComponent(id)}`
+    default: {
+      const _never: never = kind
+      return _never
+    }
+  }
+}
+
+function openaireRecordKind(recordType: string | undefined): LiteratureGraphKind {
+  const t = (recordType ?? '').toLowerCase()
+  if (t === 'project') return 'project'
+  if (t === 'dataset' || t === 'data') return 'dataset'
+  if (t === 'software') return 'software'
+  if (t === 'publication' || t === 'result') return 'publication'
+  if (t === 'organization' || t === 'organisation') return 'organization'
+  return 'other'
+}
+
+function isOpenaireOpen(label: unknown): boolean {
+  const s = String(label ?? '').toUpperCase()
+  return s === 'OPEN' || s === 'OPEN ACCESS' || s === 'OPEN SOURCE'
+}
+
+function openaireGraphEdges(w: Record<string, any>): LiteratureGraphEdge[] {
+  const edges: LiteratureGraphEdge[] = []
+  const seen = new Set<string>()
+  const push = (kind: LiteratureGraphKind, id: string, label: string, url?: string | null) => {
+    const key = `${kind}:${id}`
+    if (!id || seen.has(key)) return
+    seen.add(key)
+    edges.push({ kind, id, label: label || id, url: url ?? openaireExploreUrl(kind, id) })
+  }
+
+  for (const p of (w.projects ?? []).slice(0, 8)) {
+    const id = String(p?.id ?? '')
+    const funder = typeof p?.funder === 'string' ? p.funder : String(p?.funder?.shortName ?? p?.funder?.name ?? '')
+    const name = [p?.acronym, p?.title].filter(Boolean).join(' — ') || p?.code || id
+    push('project', id, funder ? `${name} (${funder})` : name)
+  }
+
+  for (const org of (w.organizations ?? []).slice(0, 6)) {
+    const id = String(org?.id ?? '')
+    const ror = (org?.pids ?? []).find((x: { scheme?: string; value?: string }) => String(x?.scheme ?? '').toUpperCase() === 'ROR')
+    const rorUrl = typeof ror?.value === 'string' ? ror.value : null
+    push('organization', id, String(org?.legalName ?? org?.acronym ?? id), rorUrl)
+  }
+
+  for (const link of w.links ?? []) {
+    const header = link?.header ?? {}
+    const kind = openaireRecordKind(String(header.relatedRecordType ?? ''))
+    if (kind === 'project') continue
+    const id = String(header.relatedIdentifier ?? link?.id ?? '')
+    const label = String(link?.projectTitle ?? link?.mainTitle ?? link?.title ?? header.relationClass ?? id)
+    push(kind, id, label)
+  }
+
+  return edges
+}
+
+/** Dieselbe Suche wie OpenAIRE Explore — Graph-API, nicht die Website. */
+async function searchOpenaire(
+  q: string,
+  limit: number,
+  o: { yearFrom?: number; yearTo?: number; oaOnly?: boolean }
+): Promise<LiteratureHit[]> {
+  const params = new URLSearchParams()
+  params.set('search', q)
+  params.set('type', 'publication')
+  params.set('pageSize', String(limit))
+  params.set('page', '1')
+  if (o.yearFrom) params.set('fromPublicationYear', String(o.yearFrom))
+  if (o.yearTo) params.set('toPublicationYear', String(o.yearTo))
+  if (o.oaOnly) params.set('accessRightLabel', 'Open Access')
+  params.set('mailto', resolveContactEmail())
+  const url = `https://api.openaire.eu/graph/v3/research-products?${params.toString()}`
+  const data = (await getJson(url)) as { results?: Array<Record<string, any>> }
+  return (data.results ?? []).map((w) => {
+    const doiPid = (w.pids ?? []).find((p: { scheme?: string; value?: string }) => String(p?.scheme ?? '').toLowerCase() === 'doi')
+    const doi = cleanDoi(doiPid?.value)
+    const openInstance = (w.instances ?? []).find((i: { accessRight?: { label?: string }; urls?: string[] }) =>
+      isOpenaireOpen(i?.accessRight?.label)
+    )
+    const oa = (openInstance?.urls ?? []).find((u: string) => typeof u === 'string' && u.length > 0) ?? null
+    const landing = (w.instances ?? [])
+      .flatMap((i: { urls?: string[] }) => i?.urls ?? [])
+      .find((u: string) => typeof u === 'string' && u.length > 0) ?? null
+    const productId = typeof w.id === 'string' ? w.id : ''
+    const cite = w.indicators?.citationImpact?.citationCount
+    const graph_edges = openaireGraphEdges(w)
+    return {
+      title: String(w.mainTitle ?? '(ohne Titel)'),
+      authors: (w.authors ?? [])
+        .slice(0, 12)
+        .map((a: { fullName?: string }) => String(a?.fullName ?? ''))
+        .filter(Boolean),
+      year: w.publicationDate ? Number(String(w.publicationDate).slice(0, 4)) || null : null,
+      doi,
+      url: preferLanding(
+        doi ? `https://doi.org/${doi}` : null,
+        productId ? openaireExploreUrl('publication', productId) : null,
+        landing,
+        oa
+      ),
+      oa_url: oa,
+      venue: w.container?.name ?? (Array.isArray(w.sources) ? w.sources[0] : null) ?? null,
+      abstract: stripTags(Array.isArray(w.descriptions) ? w.descriptions[0] : w.descriptions),
+      cited_by_count: typeof cite === 'number' ? cite : null,
+      is_open_access: isOpenaireOpen(w.bestAccessRight?.label),
+      found_via: ['openaire'] as LiteratureBackend[],
+      ...(graph_edges.length ? { graph_edges } : {}),
+    }
+  })
+}
+
+function mergeGraphEdges(a: LiteratureGraphEdge[] | undefined, b: LiteratureGraphEdge[] | undefined): LiteratureGraphEdge[] | undefined {
+  if (!a?.length && !b?.length) return a ?? b
+  const seen = new Map<string, LiteratureGraphEdge>()
+  for (const e of [...(a ?? []), ...(b ?? [])]) {
+    const key = `${e.kind}:${e.id}`
+    if (!seen.has(key)) seen.set(key, e)
+  }
+  return [...seen.values()]
+}
+
 // ------------------------------------------------------------------ Zusammenführung
 
 /** Titel für den Duplikat-Abgleich normalisieren (DOI hat Vorrang, fehlt aber oft). */
@@ -278,6 +509,7 @@ function merge(lists: LiteratureHit[][]): LiteratureHit[] {
       seen.year ??= hit.year
       seen.cited_by_count ??= hit.cited_by_count
       seen.is_open_access ??= hit.is_open_access
+      seen.graph_edges = mergeGraphEdges(seen.graph_edges, hit.graph_edges)
       if (seen.authors.length === 0) seen.authors = hit.authors
     }
   }
@@ -326,6 +558,8 @@ const BACKEND_LABEL: Record<LiteratureBackend, string> = {
   openalex: 'OpenAlex',
   crossref: 'Crossref',
   europepmc: 'Europe PMC',
+  semanticscholar: 'Semantic Scholar',
+  openaire: 'OpenAIRE',
   arxiv: 'arXiv',
 }
 
@@ -365,8 +599,9 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
   }
 
   // Psychologie: dieselben offenen Register; arXiv nur wenn der Aufruf es explizit setzt. PSYNDEX fehlt.
-  const openRegisters: LiteratureBackend[] = ['openalex', 'crossref', 'europepmc']
-  const backends: LiteratureBackend[] = input.backends?.length ? [...new Set(input.backends)] : [...openRegisters]
+  const backends: LiteratureBackend[] = input.backends?.length
+    ? [...new Set(input.backends)]
+    : [...DEFAULT_LITERATURE_BACKENDS]
   const limit = input.limit ?? 10
   const opts = { yearFrom, yearTo, oaOnly: input.open_access_only }
 
@@ -379,6 +614,10 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
           return searchCrossref(input.query, limit, opts)
         case 'europepmc':
           return searchEuropePmc(input.query, limit, opts)
+        case 'semanticscholar':
+          return searchSemanticScholar(input.query, limit, opts)
+        case 'openaire':
+          return searchOpenaire(input.query, limit, opts)
         case 'arxiv':
           return searchArxiv(input.query, limit)
         default: {
@@ -435,8 +674,26 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
   }
 
   const hits = selectFairly(merge(lists), limit * 2)
+  repo.upsertScreeningHits(
+    input.project_id,
+    hits.map((h) => ({
+      title: h.title,
+      authors: h.authors,
+      year: h.year,
+      doi: h.doi,
+      url: h.url,
+      oa_url: h.oa_url,
+      venue: h.venue,
+      abstract: h.abstract,
+      cited_by_count: h.cited_by_count,
+      is_open_access: h.is_open_access,
+      found_via: h.found_via,
+    })),
+    { query: input.query, search_log_id: logIds[0] ?? null, actor }
+  )
   const withOa = hits.filter((h) => h.oa_url).length
   const triangulated = hits.filter((h) => h.found_via.length > 1).length
+  const withGraph = hits.filter((h) => (h.graph_edges?.length ?? 0) > 0).length
 
   return {
     query: input.query,
@@ -450,13 +707,18 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       (triangulated > 0 ? `, ${triangulated} in mehreren Registern gefunden (stehen oben)` : '') +
       '. ' +
       'Die Suchen sind bereits protokolliert — log_search ist hier NICHT nötig. ' +
-      'Lesen ist jetzt erlaubt: oa_url (HTML oder PDF) mit fetch_source abrufen und per document_id + Offsets belegen. ' +
+      `${hits.length} Treffer liegen auf dem Sichtungstisch (Tab „Sichtung“). NICHT alle fetchen und NICHT aus Abstracts belegen. ` +
+      'Der Mensch sichtet (Rein / Raus / Unsicher). fetch_source auf offenen Karten ist gesperrt. wait_for_screening oder include_screening (nur wenn der Mensch Rein gesagt hat). ' +
       'Bevor du erneut suchst: reflect_search (covered / underrepresented / next_action). Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. ' +
       'url ist die Landing-Page/DOI — nicht automatisch die PDF. ' +
-      'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — dann exclude_source mit Grund "Paywall" ' +
-      'oder eine frei zugängliche Fassung suchen.' +
+      'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — fetch_source legt dann einen Capture-Auftrag an; ' +
+      'nicht verbatim_quote, nicht vorschnell exclude_source. Der Mensch legt die PDF. ' +
+      'Nach reflect_search: WebSearch zusätzlich auch für Wissenschaft (Instituts-PDF, deutschsprachige Fassung, sehr neue Preprints) — der Hook protokolliert. Nicht in derselben Welle.' +
+      (withGraph > 0
+        ? ` ${withGraph} Treffer mit OpenAIRE-Kanten (graph_edges: Förderprojekte, Organisationen) — Explore-URLs mit fetch_source lesen, Labels nicht als Beleg übernehmen.`
+        : '') +
       (brief?.discipline === 'psychology'
-        ? ` Disziplin Psychologie: OpenAlex/Crossref/Europe PMC (PubMed teilweise). PSYNDEX hat keine offene API (Institutszugang über EBSCO/Ovid; Einzelnutzer: PubPsych im Browser, https://www.pubpsych.eu — Query «${input.query}»). Treffer von dort mit fetch_source einlesen, das Portal nicht scrapen.`
+        ? ` Disziplin Psychologie: OpenAlex/Crossref/Europe PMC/Semantic Scholar/OpenAIRE (PubMed teilweise). PSYNDEX hat keine offene API (Institutszugang über EBSCO/Ovid; Einzelnutzer: PubPsych im Browser, https://www.pubpsych.eu — Query «${input.query}»). Treffer von dort mit fetch_source einlesen, das Portal nicht scrapen.`
         : ''),
   }
 }

@@ -36,7 +36,8 @@ import {
   prepareView,
   toggleMark,
 } from '../core/services/visual'
-import { searchLiterature } from '../core/services/literature'
+import { searchLiterature, LITERATURE_BACKENDS } from '../core/services/literature'
+import { includeScreeningInProject, listScreeningDesk, waitForScreening } from '../core/services/screening'
 import { adoptResearchBrief, draftResearchBrief, getResearchBrief } from '../core/services/brief'
 import { exportBibliography } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
@@ -317,8 +318,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '4. DANACH SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id.',
         '   Der Server schneidet das Zitat selbst aus dem gespeicherten Text — du tippst nichts ab, und ein',
         '   falsch erinnertes Zitat ist ausgeschlossen. Ohne sub_question_id zählt die Quelle nirgends.',
-        '5. BEI WISSENSCHAFTLICHEN FRAGEN ZUERST search_literature (OpenAlex, Crossref, Europe PMC, arXiv).',
-        '   Liefert DOI und frei zugänglichen Volltext; protokolliert sich selbst. Erst nach adoptiertem Brief.',
+        '5. BEI WISSENSCHAFTLICHEN FRAGEN ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE, arXiv).',
+        '   Liefert DOI und frei zugänglichen Volltext; protokolliert sich selbst. Treffer liegen auf dem Sichtungstisch.',
+        '   Offene Karten: wait_for_screening (Mensch im Tab). Chat-Rein: include_screening. fetch_source auf offenen Karten ist gesperrt.',
+        '   Abstracts sind keine Quelle. URLs, die nicht auf dem Tisch liegen, weiter über fetch_source.',
         '6. NACH JEDER SUCHWELLE reflect_search, BEVOR du erneut suchst. covered / underrepresented (vs Brief/Ziel, keine Stückzahl) /',
         '   next_action search|read|enough. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus.',
         '   Lesen (fetch_source, read_document) ist zwischen Suche und Lage erlaubt. get_coverage_gaps ist eine Zählung, kein Suchauftrag.',
@@ -438,7 +441,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       inputSchema: {
         project_id: z.string().describe('ID des Projekts'),
         include: z
-          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes']))
+          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes', 'screening']))
           .optional()
           .describe('Optional: nur bestimmte Teile zurückgeben (Standard: alles)'),
       },
@@ -461,6 +464,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         if (include.includes('documents')) filtered.documents = state.documents
         if (include.includes('search_reflections')) filtered.searchReflections = state.searchReflections
         if (include.includes('notes')) filtered.notes = state.notes
+        if (include.includes('screening')) filtered.screeningCandidates = state.screeningCandidates
         return ok(filtered)
       } catch (err) {
         return failFrom(err)
@@ -728,19 +732,20 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Wissenschaftliche Literatur suchen',
       description:
-        'Bei wissenschaftlichen Fragen VOR der Websuche nutzen: durchsucht OpenAlex, Crossref, Europe PMC und arXiv parallel ' +
-        'und führt die Treffer über DOI zusammen. Liefert DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen ' +
-        'frei zugänglichen Volltext (oa_url, auch PDF) — der geht direkt in fetch_source. url ist die Landing-Page/DOI. ' +
+        'Bei wissenschaftlichen Fragen VOR der Websuche nutzen: durchsucht OpenAlex, Crossref, Europe PMC, Semantic Scholar und OpenAIRE parallel ' +
+        '(arXiv auf Wunsch) und führt die Treffer über DOI zusammen. Liefert DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen ' +
+        'frei zugänglichen Volltext (oa_url, auch PDF). Treffer liegen auf dem Sichtungstisch — der Mensch sichtet Rein/Raus. ' +
+        'fetch_source auf offenen Karten ist gesperrt. wait_for_screening oder include_screening (nur wenn der Mensch Rein gesagt hat). url ist die Landing-Page/DOI. ' +
+        'OpenAIRE-Treffer können graph_edges (Förderprojekte, Organisationen) mitliefern — das ist Zusatz, die Suche selbst ist der Graph-API-Suchindex hinter Explore. ' +
         'Protokolliert sich selbst; kein log_search nötig. ' +
-        'Nach der Suche: lesen ist erlaubt, die nächste Suche erst nach reflect_search. ' +
-        'Mehrfach gefundene Arbeiten stehen oben.',
+        'Die nächste Suche erst nach reflect_search. Mehrfach gefundene Arbeiten stehen oben.',
       inputSchema: {
         project_id: z.string(),
         query: z.string().min(3).describe('Suchbegriffe, bevorzugt englisch'),
         backends: z
-          .array(z.enum(['openalex', 'crossref', 'europepmc', 'arxiv']))
+          .array(z.enum(LITERATURE_BACKENDS))
           .optional()
-          .describe('Standard: openalex, crossref, europepmc. arXiv für Preprints dazunehmen.'),
+          .describe('Standard: openalex, crossref, europepmc, semanticscholar, openaire. arXiv für Preprints dazunehmen.'),
         limit: z.number().int().min(1).max(50).optional().describe('Treffer pro Register (Standard 10)'),
         year_from: z.number().int().optional(),
         year_to: z.number().int().optional(),
@@ -757,6 +762,133 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     }
   )
 
+  defineTool(
+    server,
+    'list_screening',
+    {
+      title: 'Sichtungstisch lesen',
+      description:
+        'Zeigt die identifizierten Literatur-/Web-Treffer, die der Mensch sichtet (Rein/Raus/Unsicher). ' +
+        'Kein Volltext, keine Quelle. Standard: offene Karten. fetch_source auf offenen/ausgeschlossenen Karten ist gesperrt. ' +
+        'Nach der Suche: wait_for_screening, bis der Mensch im Tab entscheidet. Chat-Rein: include_screening. Snippets und Abstracts sind keine Belege.',
+      inputSchema: {
+        project_id: z.string(),
+        status: z.enum(['open', 'undecided', 'maybe', 'included', 'excluded', 'all']).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const desk = listScreeningDesk(repo, args.project_id, args.status ?? 'open')
+        return ok({
+          counts: desk.counts,
+          next_action: desk.next_action,
+          candidates: desk.candidates.map((c) => ({
+            id: c.id,
+            title: c.title,
+            year: c.year,
+            doi: c.doi,
+            url: c.url,
+            oa_url: c.oa_url,
+            status: c.status,
+            found_via: c.found_via,
+            is_open_access: c.is_open_access,
+            cited_by_count: c.cited_by_count,
+            document_id: c.document_id,
+            abstract: c.abstract ? c.abstract.slice(0, 280) : null,
+          })),
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'include_screening',
+    {
+      title: 'Sichtungskarte auf Rein setzen und Volltext holen',
+      description:
+        'Nur wenn der Mensch diese Karte genannt hat (Chat: „nimm X“ / Tab Rein hast du schon gesehen). ' +
+        'Setzt included, ruft den Volltext (oa_url bevorzugt) und gibt document_id plus Textfenster zurück — danach add_source mit Offsets. ' +
+        'Nicht die ganze Suchwelle includen. Offene Karten, auf die der Mensch nicht gezeigt hat: wait_for_screening.',
+      inputSchema: {
+        project_id: z.string(),
+        candidate_id: z.string().describe('id aus list_screening / wait_for_screening'),
+        reason: z
+          .string()
+          .min(10)
+          .describe('Warum diese Karte — z. B. „Mensch im Chat: nimm Vaswani 2017“.'),
+      },
+    },
+    async (args) => {
+      try {
+        const res = await includeScreeningInProject(repo, args.project_id, args.candidate_id, actor(), args.reason)
+        return ok({
+          candidate_id: res.candidate.id,
+          status: res.candidate.status,
+          document_id: res.fetch.document_id,
+          window: res.fetch.window,
+          has_more: res.fetch.has_more,
+          char_len: res.fetch.char_len,
+          needs_capture: res.fetch.needs_capture ?? false,
+          capture_reason: res.fetch.capture_reason ?? null,
+          next_action: res.fetch.needs_capture
+            ? 'Capture-Auftrag: auf den Menschen warten, dann read_document.'
+            : 'add_source mit document_id + quote_start + quote_end aus diesem Fenster.',
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'wait_for_screening',
+    {
+      title: 'Warten, bis der Mensch gesichtet hat',
+      description:
+        'Nach search_literature: blockiert, bis der Mensch im Tab Sichtung mindestens eine offene Karte entscheidet (Rein/Raus/Unsicher), oder Timeout. ' +
+        'Liegen schon included-Karten bereit, kehrt der Aufruf sofort zurück. Danach read_document / add_source auf document_id. ' +
+        'Nicht fetch_source auf offenen Karten — das Gate lehnt ab.',
+      inputSchema: {
+        project_id: z.string(),
+        timeout_ms: z
+          .number()
+          .int()
+          .min(500)
+          .max(300_000)
+          .optional()
+          .describe('Wie lange warten (Standard 90000, max 300000).'),
+      },
+    },
+    async (args) => {
+      try {
+        const res = await waitForScreening(repo, { project_id: args.project_id, timeout_ms: args.timeout_ms })
+        return ok({
+          waited_ms: res.waited_ms,
+          timed_out: res.timed_out,
+          counts: res.counts,
+          still_open: res.still_open,
+          next_action: res.next_action,
+          decided: res.decided.map((c) => ({
+            id: c.id,
+            title: c.title,
+            year: c.year,
+            doi: c.doi,
+            url: c.url,
+            oa_url: c.oa_url,
+            status: c.status,
+            document_id: c.document_id,
+          })),
+        })
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
   // ---------------------------------------------------------------- sources
   defineTool(
     server,
@@ -767,7 +899,11 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         'STATT WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft HTML und PDF ab, speichert den Text und gibt ein ' +
         'Textfenster mit Zeichenpositionen zurück. Danach add_source mit document_id + quote_start + quote_end — der Server ' +
         'schneidet das Zitat selbst. Weitere Abrufe werden verweigert, solange abgerufene Quellen undokumentiert sind. ' +
-        'Lange Dokumente in Fenstern lesen (offset).',
+        'search_literature-Treffer liegen auf dem Sichtungstisch: fetch_source auf offenen oder ausgeschlossenen Karten wird ABGELEHNT. ' +
+        'Nach der Suche wait_for_screening; Chat-Rein: include_screening. URLs, die nicht auf dem Tisch liegen, weiter hier. ' +
+        'Lange Dokumente in Fenstern lesen (offset). Bei Paywall/Campus (401/403) zuerst Unpaywall (legale OA-URL zur DOI); ' +
+        'nur wenn das nichts liefert, Capture-Auftrag: NICHT verbatim_quote, ' +
+        'auf den Menschen warten, dann read_document. Derselbe URL-Aufruf holt nicht erneut aus dem Netz.',
       inputSchema: {
         project_id: z.string(),
         url: z.string().url().describe('URL der Quelle'),
@@ -1741,14 +1877,14 @@ ${
 `
                 : ''
             }4. WÄHREND DER RECHERCHE — die Kernregel: **Dokumentiere im Moment des Lesens, nie rückwirkend aus dem Gedächtnis.** Arbeite Teilfrage für Teilfrage. Jede Suche nennt ein Ziel aus dem Brief. Treffer, die den Plan nicht treffen: exclude_source, nicht ablegen.
-   - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, arXiv parallel): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
-   - Nach JEDER Suchwelle (search_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (fetch_source/read_document) ist dazwischen erlaubt. get_coverage_gaps ist eine Zählung, kein Suchauftrag.
-   - Für graue Literatur/News/Marktquellen: WebSearch ist zur Entdeckung erlaubt (Suchprotokoll kommt vom Hook). Was in den Bericht soll: fetch_source, nicht WebFetch. Snippets sind keine Quelle.
+   - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Die Treffer liegen auf dem Sichtungstisch. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
+   - Nach JEDER Suchwelle (search_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt — aber nicht alle Treffer abarbeiten. Offene Karten: wait_for_screening. Chat-Rein: include_screening. fetch_source auf offenen Karten ist gesperrt. Abstracts sind keine Quelle.
+   - WebSearch darf danach AUCH für Wissenschaft entdecken (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints, die Register schlecht indexieren). Graue Literatur/News/Behörden ebenfalls WebSearch. Das Suchprotokoll kommt vom Hook. Was in den Bericht soll: fetch_source, nicht WebFetch. Snippets sind keine Quelle.
    - Quellen aus dem Netz liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text und gibt ein Fenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id. Der Server schneidet das Zitat selbst heraus.
    - Hochgeladene PDFs/Texte des Menschen sind Seed-Quellen: ZUERST list_corpus und search_documents, dann read_document (nicht WebFetch, nicht file://). Danach SOFORT add_source mit Offsets.
    - Chat-Anhänge in der Inbox: list_inbox, dann ingest_local_file, falls sie noch nicht im Korpus liegen.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
-   - Nur wenn fetch_source scheitert (Scan ohne Textschicht / Paywall): add_source mit verbatim_quote statt document_id. Der Server prüft dann selbst; bei quote_verified=false das Zitat korrigieren, nicht ignorieren.
+   - Nur wenn fetch_source scheitert (Scan ohne Textschicht, Binärformat): add_source mit verbatim_quote statt document_id — menschlicher Sign-off. Bei Paywall legt fetch_source einen Capture-Auftrag an (needs_capture): NICHT verbatim_quote, auf den Menschen warten, dann read_document.
    - Für JEDE gesichtete, aber verworfene Quelle: exclude_source mit ehrlichem Grund.
    - Weitere Erkenntnisse aus einer schon erfassten Quelle: log_extraction (nicht erneut add_source).
    - Bei Unsicherheit, dünner Beleglage oder Widersprüchen: flag_uncertainty. Lieber einmal zu viel.
