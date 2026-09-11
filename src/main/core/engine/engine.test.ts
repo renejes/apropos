@@ -21,6 +21,19 @@ const FIXTURE = `<!doctype html><html><head><title>Fixture</title></head><body>
 <h1>Über belegte Forschung</h1><p>Viele Systeme behaupten Korrektheit ohne Beleg. ${QUOTE}
 Wer seine Quellen nicht zeigen kann, sollte keine starken Schlüsse ziehen.</p></body></html>`
 
+function lastToolJson(req: { messages: Array<{ role: string; content?: string }> }, key?: string): Record<string, any> {
+  for (const m of [...req.messages].reverse()) {
+    if (m.role !== 'tool') continue
+    try {
+      const parsed = JSON.parse(m.content ?? '{}') as Record<string, unknown>
+      if (!key || parsed[key] != null) return parsed
+    } catch {
+      /* nächste Nachricht */
+    }
+  }
+  return {}
+}
+
 describe('Agenten-Schleife & Engine', () => {
   let db: DB
   let repo: Repo
@@ -71,6 +84,7 @@ describe('Agenten-Schleife & Engine', () => {
     const tools = await bridge.listAll()
     expect(tools.length).toBeGreaterThanOrEqual(21)
     expect(tools.map((t) => t.name)).toContain('add_source')
+    expect(tools.map((t) => t.name)).toContain('assess_carrier')
     expect(tools.map((t) => t.name)).toContain('draft_research_brief')
     expect(tools.map((t) => t.name)).toContain('adopt_research_brief')
     expect(tools.find((t) => t.name === 'add_source')?.parameters).toHaveProperty('properties')
@@ -85,7 +99,7 @@ describe('Agenten-Schleife & Engine', () => {
       expect(tools.length).toBeGreaterThan(0)
       expect(tools.length).toBeLessThanOrEqual(15)
     }
-    expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('fetch_source')
+    expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('assess_carrier')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('wait_for_screening')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('include_screening')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('reflect_search')
@@ -245,9 +259,28 @@ describe('Agenten-Schleife & Engine', () => {
     },
     {
       dynamic: (req) => {
-        // document_id und Offsets aus dem Werkzeug-Ergebnis lesen — wie ein echtes Modell.
-        const toolMsg = [...req.messages].reverse().find((m) => m.role === 'tool')
-        const parsed = JSON.parse(toolMsg?.content ?? '{}')
+        const parsed = lastToolJson(req)
+        return {
+          toolCalls: [
+            {
+              name: 'assess_carrier',
+              arguments: {
+                project_id: projectId,
+                carrier_id: parsed.carrier_id,
+                observed: 'Lokaler Testhost ohne erkennbares Impressum in der Fixture.',
+                interpretation: 'Kein redaktioneller Träger, nur die Test-PDF selbst.',
+                uncertainty: 'Impressum und About wurden nicht gelesen.',
+                carrier_kind: 'unknown',
+                evidence_basis: 'insufficient',
+              },
+            },
+          ],
+        }
+      },
+    },
+    {
+      dynamic: (req) => {
+        const parsed = lastToolJson(req, 'document_id')
         const text: string = parsed.window?.text ?? ''
         const rel = text.indexOf(QUOTE)
         const start = (parsed.window?.offset ?? 0) + rel
@@ -317,16 +350,22 @@ describe('Agenten-Schleife & Engine', () => {
         },
       },
       {
-        toolCalls: [
-          {
-            name: 'add_report_version',
-            arguments: {
-              project_id: projectId,
-              content_markdown: '## Ergebnis\n\nBelegte Provenienz trägt [S1]. '.padEnd(80, '.'),
-              change_summary: 'Erstfassung durch die Engine',
-            },
-          },
-        ],
+        dynamic: () => {
+          const src = repo.listSources(projectId)[0]
+          repo.signSourceHuman(src.id, 'human_signed', 'übernommen', 'human:test')
+          return {
+            toolCalls: [
+              {
+                name: 'add_report_version',
+                arguments: {
+                  project_id: projectId,
+                  content_markdown: '## Ergebnis\n\nBelegte Provenienz trägt [S1]. '.padEnd(80, '.'),
+                  change_summary: 'Erstfassung durch die Engine',
+                },
+              },
+            ],
+          }
+        },
       },
       { text: 'Bericht abgelegt.' },
     ]

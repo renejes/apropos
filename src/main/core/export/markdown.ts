@@ -252,6 +252,14 @@ function renderSource(s: Source, idx: number, state: ProjectState): string[] {
   lines.push(
     `- **Review-Status:** ${statusLabel(s.review_status)}${humanReview ? ` — Mensch: ${humanReview.verdict} (${humanReview.created_at})${humanReview.note ? `, "${inline(humanReview.note, 300)}"` : ''}` : ''}`
   )
+  const carrier = s.carrier_id ? state.carriers.find((c) => c.id === s.carrier_id) : undefined
+  const profile = s.carrier_id ? state.carrierProfiles.find((p) => p.carrier_id === s.carrier_id) : undefined
+  if (carrier) {
+    const status = profile ? statusLabel(profile.review_status) : 'ohne Profil'
+    lines.push(
+      `- **Träger:** ${inline(carrier.display_name || carrier.registrable_domain, 120)} (${carrier.registrable_domain}, ${carrier.carrier_kind}) — ${status}`
+    )
+  }
   for (const r of aiReviews) {
     lines.push(
       `- **KI-Verifikation (${inline(r.method, 40) || 'ai_judge'}):** ${r.verdict}${r.confidence ? ` (Konfidenz ${r.confidence})` : ''}${r.note ? ` — ${inline(r.note, 300)}` : ''}`

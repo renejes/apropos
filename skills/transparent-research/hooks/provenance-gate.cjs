@@ -17,7 +17,7 @@
  *
  * Konfiguration per Env:
  *   ROP_MAX_PENDING  – wie viele gefetchte, noch unprotokollierte Quellen
- *                      erlaubt sind, bevor geblockt wird (Default: 3)
+ *                      erlaubt sind, bevor geblockt wird (Default: 5)
  */
 'use strict'
 
@@ -25,7 +25,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const MAX_PENDING = Math.max(1, parseInt(process.env.ROP_MAX_PENDING || '3', 10) || 3)
+const MAX_PENDING = Math.max(1, parseInt(process.env.ROP_MAX_PENDING || '5', 10) || 5)
 
 function statePath(sessionId) {
   const safe = String(sessionId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '')

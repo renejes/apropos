@@ -36,7 +36,7 @@ Alles andere ist Infrastruktur. In `services/research.ts`, unter MCP und Agent.
 
 ### (b) Vollständigkeit
 
-Weitere `fetch_source`, solange Pending-Dokumente offen (`ROP_MAX_PENDING`, Default 3). Uploads zählen nicht. Hooks in Subagenten feuern nicht verlässlich — deshalb der Server.
+Weitere `fetch_source`, solange Pending-Dokumente offen (`ROP_MAX_PENDING`, Default 5). Uploads zählen nicht. Hooks in Subagenten feuern nicht verlässlich — deshalb der Server.
 
 ### (c) Tiefe
 

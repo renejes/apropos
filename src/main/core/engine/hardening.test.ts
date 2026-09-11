@@ -168,25 +168,31 @@ describe('Auto-Mode-Härtung', () => {
         }),
       },
       {
-        dynamic: () => ({
-          toolCalls: [
-            {
-              name: 'add_report_version',
-              arguments: { project_id: projectId, content_markdown: `# Bericht\n\n${QUOTE} [S1]`.padEnd(80, ' ') },
-            },
-          ],
-        }),
+        dynamic: () => {
+          const src = repo.listSources(projectId)[0]
+          repo.signSourceHuman(src.id, 'human_signed', 'übernommen', 'human:test')
+          return {
+            toolCalls: [
+              {
+                name: 'add_report_version',
+                arguments: { project_id: projectId, content_markdown: `# Bericht\n\n${QUOTE} [S1]`.padEnd(80, ' ') },
+              },
+            ],
+          }
+        },
       },
       { text: 'Bericht abgelegt.' },
     ]
     // Bewusst so bemessen, dass der Test etwas UNTERSCHEIDET:
-    // 500 Token gesamt, 40 % Reserve -> die Recherche darf 300, die Synthese 500.
-    // Die Recherche verbraucht 360 (3 Turns à 120) und liegt damit ÜBER ihrer Grenze.
+    // 800 Token gesamt, 40 % Reserve → die Recherche darf 480, die Synthese 800.
+    // Die Recherche verbraucht 480 (4 Turns à 120) und liegt damit AN ihrer Grenze.
     // Ohne Reserve wäre die Synthese jetzt gesperrt und es gäbe keinen Bericht.
-    const { provider, engine } = engineWith(script, { budget: { maxTotalTokens: 500, synthesisReserve: 0.4 } })
+    // Recherche: fetch + assess_carrier + add_source + Abschluss = 4 Turns à 120 = 480.
+    // 800 Token, 40 % Reserve → Recherche-Deckel 480, Synthese darf den Rest.
+    const { provider, engine } = engineWith(script, { budget: { maxTotalTokens: 800, synthesisReserve: 0.4 } })
     const { result } = await runWith(provider, engine)
 
-    const spentAfterResearch = 3 * 120
+    const spentAfterResearch = 4 * 120
     expect(result.totalPromptTokens + result.totalCompletionTokens).toBeGreaterThan(spentAfterResearch)
     expect(result.reportVersionId).not.toBeNull()
   })
@@ -287,8 +293,28 @@ function researchScript(repo: Repo, projectId: string, paperUrl: string, sqIndex
     { dynamic: () => ({ toolCalls: [{ name: 'fetch_source', arguments: { project_id: projectId, url: paperUrl, purpose: 'Belegquelle abrufen' } }] }) },
     {
       dynamic: (req) => {
-        const toolMsg = [...req.messages].reverse().find((m) => m.role === 'tool')
-        const parsed = JSON.parse(toolMsg?.content ?? '{}')
+        const parsed = lastToolJson(req)
+        return {
+          toolCalls: [
+            {
+              name: 'assess_carrier',
+              arguments: {
+                project_id: projectId,
+                carrier_id: parsed.carrier_id,
+                observed: 'Lokaler Testhost ohne erkennbares Impressum in der Fixture.',
+                interpretation: 'Kein redaktioneller Träger, nur die Test-PDF selbst.',
+                uncertainty: 'Impressum und About wurden nicht gelesen.',
+                carrier_kind: 'unknown',
+                evidence_basis: 'insufficient',
+              },
+            },
+          ],
+        }
+      },
+    },
+    {
+      dynamic: (req) => {
+        const parsed = lastToolJson(req, 'document_id')
         const text: string = parsed.window?.text ?? ''
         const start = (parsed.window?.offset ?? 0) + text.indexOf(QUOTE)
         const sq = repo.listSubQuestions(projectId).filter((s) => s.status !== 'dropped')[sqIndex]
@@ -316,4 +342,17 @@ function researchScript(repo: Repo, projectId: string, paperUrl: string, sqIndex
     },
     { text: 'Teilfrage belegt.' },
   ]
+}
+
+function lastToolJson(req: { messages: Array<{ role: string; content?: string }> }, key?: string): Record<string, any> {
+  for (const m of [...req.messages].reverse()) {
+    if (m.role !== 'tool') continue
+    try {
+      const parsed = JSON.parse(m.content ?? '{}') as Record<string, unknown>
+      if (!key || parsed[key] != null) return parsed
+    } catch {
+      /* nächste Nachricht */
+    }
+  }
+  return {}
 }

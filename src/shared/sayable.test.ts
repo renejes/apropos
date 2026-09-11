@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sayableItems } from './sayable'
-import type { ClaimSourceLink, Project, ProjectState, ResearchBrief, Source, UncertaintyFlag } from './types'
+import type { CarrierProfile, ClaimSourceLink, Project, ProjectState, ResearchBrief, Source, UncertaintyFlag } from './types'
 
 function project(): Project {
   return {
@@ -46,6 +46,8 @@ function source(over: Partial<Source>): Source {
     entry_type: null,
     citekey: null,
     source_kind: null,
+    context_id: null,
+    carrier_id: null,
     created_at: '2026-01-01',
     created_by: 'test',
     ...over,
@@ -95,6 +97,11 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     searchReflections: [],
     excludedSources: [],
     screeningCandidates: [],
+    carriers: [],
+    carrierProfiles: [],
+    carrierSignals: [],
+    documentContexts: [],
+    carrierWatchlist: [],
     subQuestions: [],
     rounds: [],
     marks: [],
@@ -153,5 +160,38 @@ describe('Was darfst du sagen (Phase H)', () => {
   it('lässt abgelehnte Quellen weg', () => {
     const rejected = source({ id: 'r', review_status: 'rejected', quote_verified: 0 })
     expect(sayableItems(state({ sources: [rejected] }))).toHaveLength(0)
+  })
+
+  it('hält signierte Quellen gelb, solange der Träger ungeprüft ist, und rot bei abgelehntem Träger', () => {
+    const src = source({
+      id: 'g',
+      title: 'Signiert',
+      review_status: 'human_signed',
+      quote_verified: 1,
+      carrier_id: 'c1',
+    })
+    const pending: CarrierProfile = {
+      id: 'cp1',
+      carrier_id: 'c1',
+      project_id: 'p1',
+      observed: 'Impressum nennt einen Verein ohne weitere Angaben zur Redaktion.',
+      interpretation: 'Selbstbeschreibung, noch nicht menschlich bestätigt.',
+      uncertainty: 'Finanzierung und Eigentümer unklar.',
+      evidence_basis: 'imprint',
+      confidence: 'low',
+      self_description_document_id: null,
+      self_description_start: null,
+      self_description_end: null,
+      review_status: 'pending',
+      created_at: '2026-01-01',
+      created_by: 'agent',
+    }
+    const pendingItems = sayableItems(state({ sources: [src], carrierProfiles: [pending] }))
+    expect(pendingItems.find((i) => i.id === 'g')?.tone).toBe('yellow')
+
+    const rejectedItems = sayableItems(
+      state({ sources: [src], carrierProfiles: [{ ...pending, review_status: 'rejected' }] })
+    )
+    expect(rejectedItems.find((i) => i.id === 'g')?.tone).toBe('red')
   })
 })

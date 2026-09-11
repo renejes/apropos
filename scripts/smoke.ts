@@ -97,6 +97,11 @@ async function main(): Promise<void> {
       tools.tools.map((t) => t.name)
     )
     check(
+      'Träger-Tool assess_carrier vorhanden',
+      tools.tools.some((t) => t.name === 'assess_carrier'),
+      tools.tools.map((t) => t.name)
+    )
+    check(
       'reflect_search vorhanden',
       tools.tools.some((t) => t.name === 'reflect_search'),
       tools.tools.map((t) => t.name)
@@ -197,8 +202,45 @@ async function main(): Promise<void> {
 
     const qStart = (doc.window.text as string).indexOf(QUOTE)
     check('Fixture-Zitat im abgerufenen Text gefunden', qStart >= 0)
+    check('fetch_source liefert carrier_id für assess_carrier', typeof doc?.carrier_id === 'string', doc)
     const absStart = doc.window.offset + qStart
     const absEnd = absStart + QUOTE.length
+
+    const tooSoon = parseResult(
+      await client.callTool({
+        name: 'add_source',
+        arguments: {
+          project_id: proj.project_id,
+          url: paperUrl,
+          title: 'On Trustworthy AI Research (Offset)',
+          retrieval_method: 'fetch_source',
+          reason: 'Beleg per Offset aus dem selbst abgerufenen Dokument geschnitten.',
+          extraction: 'Verifizierbare Provenienz ist die Grundlage vertrauenswürdiger KI-Research.',
+          contribution: 'Stützt die Kernthese des Berichts.',
+          document_id: doc.document_id,
+          quote_start: absStart,
+          quote_end: absEnd,
+          sub_question_id: subQuestionId,
+        },
+      })
+    )
+    check('add_source ohne assess_carrier wird mit carrier_profile_required abgelehnt', tooSoon?.code === 'carrier_profile_required', tooSoon)
+
+    const assessed = parseResult(
+      await client.callTool({
+        name: 'assess_carrier',
+        arguments: {
+          project_id: proj.project_id,
+          carrier_id: doc.carrier_id,
+          observed: 'Lokaler Fixture-Host ohne erkennbares Impressum in der Smoke-Seite.',
+          interpretation: 'Kein redaktioneller Träger, nur die Testquelle selbst.',
+          uncertainty: 'Impressum und About wurden nicht gelesen.',
+          carrier_kind: 'unknown',
+          evidence_basis: 'insufficient',
+        },
+      })
+    )
+    check('assess_carrier legt ein Trägerprofil an', typeof assessed?.profile_id === 'string' && assessed?.review_status === 'pending', assessed)
 
     const offsetSource = parseResult(
       await client.callTool({
@@ -220,6 +262,16 @@ async function main(): Promise<void> {
     )
     check('add_source per Offset: Zitat serverseitig geschnitten, verifiziert', offsetSource?.checks?.quote_verified === true, offsetSource?.checks)
     check('Offset-Beleg wird als offset_exact auditiert', String(offsetSource?.checks?.note ?? '').startsWith('offset_exact'), offsetSource?.checks?.note)
+    check('Offset-Beleg ist dem Träger zugeordnet', typeof offsetSource?.carrier_id === 'string', offsetSource)
+
+    const carrierState = parseResult(
+      await client.callTool({ name: 'get_project_state', arguments: { project_id: proj.project_id, include: ['carriers'] } })
+    )
+    check(
+      'get_project_state include carriers liefert Träger + Profil',
+      carrierState?.carriers?.length >= 1 && carrierState?.carrierProfiles?.length >= 1,
+      { carriers: carrierState?.carriers?.length, profiles: carrierState?.carrierProfiles?.length }
+    )
 
     // --- PDF: fetch_source extrahiert Text, Offset bleibt unfälschbar
     const pdfDoc = parseResult(
@@ -382,7 +434,7 @@ async function main(): Promise<void> {
     check('link_claim_to_source legt Claim + Kante an', typeof linked?.link_id === 'string')
 
     // Berichts-Gate: Die fabrizierte Quelle ist eine offene Lücke — der Server muss ablehnen.
-    const REPORT_MD = '## Ergebnis\n\nProvenienz ist die Grundlage vertrauenswürdiger KI-Research [S1]. '.padEnd(80, '.')
+    const REPORT_MD = '## Ergebnis\n\nProvenienz ist die Grundlage vertrauenswürdiger KI-Research. '.padEnd(80, '.')
     const blocked = await client
       .callTool({
         name: 'add_report_version',

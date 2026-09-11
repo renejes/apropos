@@ -56,6 +56,18 @@ import type {
   Note,
   NoteCitation,
   NoteOrigin,
+  Carrier,
+  CarrierKind,
+  CarrierProfile,
+  CarrierEvidenceBasis,
+  CarrierSignal,
+  CarrierSignalKind,
+  CarrierSignalOrigin,
+  DocumentContext,
+  DocumentRole,
+  DiscoveryMethod,
+  CarrierWatchlistEntry,
+  WatchlistKind,
 } from '../../shared/types'
 
 /**
@@ -229,6 +241,8 @@ export class Repo {
     entry_type?: BibEntryType | null
     citekey?: string | null
     source_kind?: SourceKind | null
+    context_id?: string | null
+    carrier_id?: string | null
     actor: string
   }): Source {
     const id = randomUUID()
@@ -238,8 +252,9 @@ export class Repo {
            reason, extraction, contribution, verbatim_quote, quote_locator,
            confidence, sub_question_id, document_id, quote_start, quote_end,
            doi, authors_json, year, venue, entry_type, citekey, source_kind,
+           context_id, carrier_id,
            review_status, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
       .run(
         id,
@@ -265,6 +280,8 @@ export class Repo {
         input.entry_type ?? null,
         input.citekey ?? null,
         input.source_kind ?? null,
+        input.context_id ?? null,
+        input.carrier_id ?? null,
         nowIso(),
         input.actor
       )
@@ -524,14 +541,28 @@ export class Repo {
   // ---------- Reviews (Verifikations-Kanten; überschreiben nie das Original) ----------
   /** Review-Finding: Reviews nur für real existierende Entitäten zulassen. */
   private assertEntityExists(entityType: Review['entity_type'], entityId: string): void {
-    const table =
-      entityType === 'source'
-        ? 'sources'
-        : entityType === 'claim'
-          ? 'claims'
-          : entityType === 'claim_source_link'
-            ? 'claim_source_links'
-            : 'report_versions'
+    let table: string
+    switch (entityType) {
+      case 'source':
+        table = 'sources'
+        break
+      case 'claim':
+        table = 'claims'
+        break
+      case 'claim_source_link':
+        table = 'claim_source_links'
+        break
+      case 'report_version':
+        table = 'report_versions'
+        break
+      case 'carrier_profile':
+        table = 'carrier_profiles'
+        break
+      default: {
+        const _never: never = entityType
+        return _never
+      }
+    }
     const row = this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(entityId)
     if (!row) throw new Error(`${entityType} ${entityId} not found — Review verweigert`)
   }
@@ -582,6 +613,7 @@ export class Repo {
             OR (r.entity_type = 'claim_source_link' AND r.entity_id IN
                  (SELECT l.id FROM claim_source_links l JOIN claims c ON c.id = l.claim_id WHERE c.project_id = @p))
             OR (r.entity_type = 'report_version' AND r.entity_id IN (SELECT id FROM report_versions WHERE project_id = @p))
+            OR (r.entity_type = 'carrier_profile' AND r.entity_id IN (SELECT id FROM carrier_profiles WHERE project_id = @p))
          ORDER BY r.created_at ASC`
       )
       .all({ p: projectId }) as Review[]
@@ -706,14 +738,30 @@ export class Repo {
       .get(projectId) as SearchReflection | undefined
   }
 
-  addExcludedSource(input: { project_id: string; url: string; title?: string | null; reason: string; actor: string }): ExcludedSource {
+  addExcludedSource(input: {
+    project_id: string
+    url: string
+    title?: string | null
+    reason: string
+    carrier_id?: string | null
+    actor: string
+  }): ExcludedSource {
     const id = randomUUID()
     this.db
       .prepare(
-        `INSERT INTO excluded_sources (id, project_id, url, title, reason, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO excluded_sources (id, project_id, url, title, reason, carrier_id, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.project_id, input.url, input.title ?? null, input.reason, nowIso(), input.actor)
+      .run(
+        id,
+        input.project_id,
+        input.url,
+        input.title ?? null,
+        input.reason,
+        input.carrier_id ?? null,
+        nowIso(),
+        input.actor
+      )
     this.logEvent(input.project_id, input.actor, 'source.excluded', { exclusion_id: id, url: input.url, reason: input.reason })
     return this.db.prepare(`SELECT * FROM excluded_sources WHERE id = ?`).get(id) as ExcludedSource
   }
@@ -909,16 +957,18 @@ export class Repo {
     page_starts?: number[] | null
     status?: DocumentStatus
     capture_reason?: string | null
+    document_role?: DocumentRole
   }): FetchedDocument {
     const id = randomUUID()
     const origin: DocumentOrigin = input.origin ?? 'fetched'
     const status: DocumentStatus = input.status ?? 'open'
+    const role: DocumentRole = input.document_role ?? 'work'
     const pageJson = input.page_starts && input.page_starts.length > 0 ? JSON.stringify(input.page_starts) : null
     const captureReason = input.capture_reason?.trim() ? input.capture_reason.trim() : null
     this.db
       .prepare(
-        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO documents (id, project_id, url, title, text, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason, document_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -935,7 +985,8 @@ export class Repo {
         origin,
         input.filename ?? null,
         pageJson,
-        captureReason
+        captureReason,
+        role
       )
     this.logEvent(
       input.project_id,
@@ -962,7 +1013,7 @@ export class Repo {
   listDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
     const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason, document_role
          FROM documents WHERE project_id = ? ORDER BY fetched_at ASC`
       )
       .all(projectId) as DocumentRow[]
@@ -973,8 +1024,8 @@ export class Repo {
   listOpenDocuments(projectId: string): Array<Omit<FetchedDocument, 'text'>> {
     const rows = this.db
       .prepare(
-        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason
-         FROM documents WHERE project_id = ? AND status = 'open' ORDER BY fetched_at ASC`
+        `SELECT id, project_id, url, title, char_len, content_hash, fetched_at, fetched_by, purpose, status, origin, filename, page_starts_json, capture_reason, document_role
+         FROM documents WHERE project_id = ? AND status = 'open' AND document_role = 'work' ORDER BY fetched_at ASC`
       )
       .all(projectId) as DocumentRow[]
     return rows.map(mapDocumentMeta)
@@ -1601,6 +1652,329 @@ export class Repo {
     return this.getSource(sourceId)!
   }
 
+  // ---------- Träger / Fundstelle (v18) ----------
+  ensureCarrier(input: {
+    project_id: string
+    registrable_domain: string
+    canonical_url: string
+    actor: string
+  }): Carrier {
+    const existing = this.getCarrierByDomain(input.project_id, input.registrable_domain)
+    if (existing) return existing
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO carriers (id, project_id, registrable_domain, canonical_url, display_name, carrier_kind, created_at)
+         VALUES (?, ?, ?, ?, NULL, 'unknown', ?)`
+      )
+      .run(id, input.project_id, input.registrable_domain, input.canonical_url, nowIso())
+    this.logEvent(input.project_id, input.actor, 'carrier.created', { carrier_id: id, domain: input.registrable_domain })
+    return this.getCarrier(id)!
+  }
+
+  getCarrier(id: string): Carrier | undefined {
+    return this.db.prepare(`SELECT * FROM carriers WHERE id = ?`).get(id) as Carrier | undefined
+  }
+
+  getCarrierByDomain(projectId: string, domain: string): Carrier | undefined {
+    return this.db
+      .prepare(`SELECT * FROM carriers WHERE project_id = ? AND registrable_domain = ?`)
+      .get(projectId, domain) as Carrier | undefined
+  }
+
+  listCarriers(projectId: string): Carrier[] {
+    return this.db.prepare(`SELECT * FROM carriers WHERE project_id = ? ORDER BY created_at ASC`).all(projectId) as Carrier[]
+  }
+
+  upsertCarrierProfile(input: {
+    carrier_id: string
+    project_id: string
+    observed: string
+    interpretation: string
+    uncertainty: string
+    evidence_basis: CarrierEvidenceBasis
+    confidence: ConfidenceLevel | null
+    self_description_document_id: string | null
+    self_description_start: number | null
+    self_description_end: number | null
+    review_status: ReviewStatus
+    actor: string
+    carrier_kind?: CarrierKind
+    display_name?: string | null
+  }): CarrierProfile {
+    const existing = this.getCarrierProfileByCarrier(input.carrier_id)
+    const ts = nowIso()
+    if (input.carrier_kind || input.display_name !== undefined) {
+      this.db
+        .prepare(`UPDATE carriers SET carrier_kind = COALESCE(?, carrier_kind), display_name = COALESCE(?, display_name) WHERE id = ?`)
+        .run(input.carrier_kind ?? null, input.display_name ?? null, input.carrier_id)
+    }
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE carrier_profiles SET
+             observed = ?, interpretation = ?, uncertainty = ?, evidence_basis = ?, confidence = ?,
+             self_description_document_id = ?, self_description_start = ?, self_description_end = ?,
+             review_status = ?, created_at = ?, created_by = ?
+           WHERE id = ?`
+        )
+        .run(
+          input.observed,
+          input.interpretation,
+          input.uncertainty,
+          input.evidence_basis,
+          input.confidence,
+          input.self_description_document_id,
+          input.self_description_start,
+          input.self_description_end,
+          input.review_status,
+          ts,
+          input.actor,
+          existing.id
+        )
+      this.logEvent(input.project_id, input.actor, 'carrier.profile_updated', { profile_id: existing.id, carrier_id: input.carrier_id })
+      return this.getCarrierProfile(existing.id)!
+    }
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO carrier_profiles (
+           id, carrier_id, project_id, observed, interpretation, uncertainty, evidence_basis, confidence,
+           self_description_document_id, self_description_start, self_description_end, review_status, created_at, created_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        input.carrier_id,
+        input.project_id,
+        input.observed,
+        input.interpretation,
+        input.uncertainty,
+        input.evidence_basis,
+        input.confidence,
+        input.self_description_document_id,
+        input.self_description_start,
+        input.self_description_end,
+        input.review_status,
+        ts,
+        input.actor
+      )
+    this.logEvent(input.project_id, input.actor, 'carrier.profile_created', { profile_id: id, carrier_id: input.carrier_id })
+    return this.getCarrierProfile(id)!
+  }
+
+  getCarrierProfile(id: string): CarrierProfile | undefined {
+    return this.db.prepare(`SELECT * FROM carrier_profiles WHERE id = ?`).get(id) as CarrierProfile | undefined
+  }
+
+  getCarrierProfileByCarrier(carrierId: string): CarrierProfile | undefined {
+    return this.db.prepare(`SELECT * FROM carrier_profiles WHERE carrier_id = ?`).get(carrierId) as CarrierProfile | undefined
+  }
+
+  listCarrierProfiles(projectId: string): CarrierProfile[] {
+    return this.db
+      .prepare(`SELECT * FROM carrier_profiles WHERE project_id = ? ORDER BY created_at ASC`)
+      .all(projectId) as CarrierProfile[]
+  }
+
+  signCarrierProfileHuman(
+    id: string,
+    verdict: 'human_signed' | 'rejected',
+    note: string | null,
+    reviewer: string
+  ): void {
+    this.tx(() => {
+      const profile = this.getCarrierProfile(id)
+      if (!profile) throw new Error(`carrier_profile ${id} not found`)
+      this.db.prepare(`UPDATE carrier_profiles SET review_status = ? WHERE id = ?`).run(verdict, id)
+      this.addReview({
+        entity_type: 'carrier_profile',
+        entity_id: id,
+        reviewer_type: 'human',
+        reviewer_id: reviewer,
+        verdict: verdict === 'human_signed' ? 'approved' : 'rejected',
+        confidence: 'high',
+        evidence_span: null,
+        source_snapshot_hash: null,
+        note,
+        method: 'human_signoff',
+      })
+      this.logEvent(profile.project_id, reviewer, 'carrier.signed', { profile_id: id, verdict })
+    })
+  }
+
+  replaceCarrierSignals(profileId: string): void {
+    this.db.prepare(`DELETE FROM carrier_signals WHERE carrier_profile_id = ?`).run(profileId)
+  }
+
+  addCarrierSignal(input: {
+    carrier_profile_id: string
+    signal_kind: CarrierSignalKind
+    label: string
+    detail: string
+    origin: CarrierSignalOrigin
+    document_id?: string | null
+    quote_start?: number | null
+    quote_end?: number | null
+    watchlist_id?: string | null
+  }): CarrierSignal {
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO carrier_signals (
+           id, carrier_profile_id, signal_kind, label, detail, origin, document_id, quote_start, quote_end, watchlist_id, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        input.carrier_profile_id,
+        input.signal_kind,
+        input.label,
+        input.detail,
+        input.origin,
+        input.document_id ?? null,
+        input.quote_start ?? null,
+        input.quote_end ?? null,
+        input.watchlist_id ?? null,
+        nowIso()
+      )
+    return this.db.prepare(`SELECT * FROM carrier_signals WHERE id = ?`).get(id) as CarrierSignal
+  }
+
+  listCarrierSignals(profileId: string): CarrierSignal[] {
+    return this.db
+      .prepare(`SELECT * FROM carrier_signals WHERE carrier_profile_id = ? ORDER BY created_at ASC`)
+      .all(profileId) as CarrierSignal[]
+  }
+
+  listAllCarrierSignals(projectId: string): CarrierSignal[] {
+    return this.db
+      .prepare(
+        `SELECT s.* FROM carrier_signals s
+         JOIN carrier_profiles p ON p.id = s.carrier_profile_id
+         WHERE p.project_id = ? ORDER BY s.created_at ASC`
+      )
+      .all(projectId) as CarrierSignal[]
+  }
+
+  ensureDocumentContext(input: {
+    project_id: string
+    document_id: string
+    parent_document_id: string | null
+    carrier_id: string
+    discovery_url: string
+    discovery_method: DiscoveryMethod
+    search_log_id?: string | null
+    screening_candidate_id?: string | null
+    actor: string
+  }): DocumentContext {
+    const existing = this.db
+      .prepare(`SELECT * FROM document_contexts WHERE document_id = ? AND discovery_url = ?`)
+      .get(input.document_id, input.discovery_url) as DocumentContext | undefined
+    if (existing) {
+      if (input.parent_document_id && !existing.parent_document_id) {
+        this.db
+          .prepare(`UPDATE document_contexts SET parent_document_id = ? WHERE id = ?`)
+          .run(input.parent_document_id, existing.id)
+        return this.getDocumentContext(existing.id)!
+      }
+      return existing
+    }
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO document_contexts (
+           id, project_id, document_id, parent_document_id, carrier_id, discovery_url, discovery_method,
+           search_log_id, screening_candidate_id, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        input.project_id,
+        input.document_id,
+        input.parent_document_id,
+        input.carrier_id,
+        input.discovery_url,
+        input.discovery_method,
+        input.search_log_id ?? null,
+        input.screening_candidate_id ?? null,
+        nowIso()
+      )
+    this.logEvent(input.project_id, input.actor, 'document.context', {
+      context_id: id,
+      document_id: input.document_id,
+      carrier_id: input.carrier_id,
+    })
+    return this.getDocumentContext(id)!
+  }
+
+  getDocumentContext(id: string): DocumentContext | undefined {
+    return this.db.prepare(`SELECT * FROM document_contexts WHERE id = ?`).get(id) as DocumentContext | undefined
+  }
+
+  getLatestDocumentContext(documentId: string): DocumentContext | undefined {
+    return this.db
+      .prepare(`SELECT * FROM document_contexts WHERE document_id = ? ORDER BY created_at DESC LIMIT 1`)
+      .get(documentId) as DocumentContext | undefined
+  }
+
+  listDocumentContexts(projectId: string): DocumentContext[] {
+    return this.db
+      .prepare(`SELECT * FROM document_contexts WHERE project_id = ? ORDER BY created_at ASC`)
+      .all(projectId) as DocumentContext[]
+  }
+
+  addWatchlistEntry(input: {
+    project_id: string
+    list_kind: WatchlistKind
+    domain: string
+    note: string
+    actor: string
+  }): CarrierWatchlistEntry {
+    const existing = this.db
+      .prepare(`SELECT * FROM carrier_watchlist WHERE project_id = ? AND domain = ?`)
+      .get(input.project_id, input.domain) as CarrierWatchlistEntry | undefined
+    if (existing) {
+      this.db
+        .prepare(`UPDATE carrier_watchlist SET list_kind = ?, note = ?, created_by = ? WHERE id = ?`)
+        .run(input.list_kind, input.note, input.actor, existing.id)
+      this.logEvent(input.project_id, input.actor, 'watchlist.updated', { watchlist_id: existing.id, domain: input.domain })
+      return this.getWatchlistEntry(existing.id)!
+    }
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO carrier_watchlist (id, project_id, list_kind, domain, note, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, input.project_id, input.list_kind, input.domain, input.note, nowIso(), input.actor)
+    this.logEvent(input.project_id, input.actor, 'watchlist.added', { watchlist_id: id, domain: input.domain })
+    return this.getWatchlistEntry(id)!
+  }
+
+  getWatchlistEntry(id: string): CarrierWatchlistEntry | undefined {
+    return this.db.prepare(`SELECT * FROM carrier_watchlist WHERE id = ?`).get(id) as CarrierWatchlistEntry | undefined
+  }
+
+  removeWatchlistEntry(id: string, actor: string): void {
+    const row = this.getWatchlistEntry(id)
+    if (!row) return
+    this.db.prepare(`DELETE FROM carrier_watchlist WHERE id = ?`).run(id)
+    this.logEvent(row.project_id, actor, 'watchlist.removed', { watchlist_id: id, domain: row.domain })
+  }
+
+  listWatchlist(projectId: string): CarrierWatchlistEntry[] {
+    return this.db
+      .prepare(`SELECT * FROM carrier_watchlist WHERE project_id = ? ORDER BY domain ASC`)
+      .all(projectId) as CarrierWatchlistEntry[]
+  }
+
+  findWatchlistHits(projectId: string, domain: string): CarrierWatchlistEntry[] {
+    const all = this.listWatchlist(projectId)
+    const needle = domain.toLowerCase()
+    return all.filter((row) => needle === row.domain || needle.endsWith(`.${row.domain}`) || row.domain.endsWith(`.${needle}`))
+  }
+
   // ---------- Aggregat ----------
   getProjectState(projectId: string): ProjectState {
     const project = this.getProject(projectId)
@@ -1619,6 +1993,11 @@ export class Repo {
       searchReflections: this.listSearchReflections(projectId),
       excludedSources: this.listExcludedSources(projectId),
       screeningCandidates: this.listScreeningCandidates(projectId),
+      carriers: this.listCarriers(projectId),
+      carrierProfiles: this.listCarrierProfiles(projectId),
+      carrierSignals: this.listAllCarrierSignals(projectId),
+      documentContexts: this.listDocumentContexts(projectId),
+      carrierWatchlist: this.listWatchlist(projectId),
       subQuestions: this.listSubQuestions(projectId),
       rounds: this.listRounds(projectId),
       marks: this.listMarks(projectId),
@@ -1777,6 +2156,7 @@ interface ScreeningRow {
   decided_at: string | null
   decided_by: string | null
   document_id: string | null
+  parent_url?: string | null
   created_at: string
   updated_at: string
 }
@@ -1797,6 +2177,7 @@ interface DocumentRow {
   filename?: string | null
   page_starts_json?: string | null
   capture_reason?: string | null
+  document_role?: string | null
 }
 
 interface ProjectRow {
@@ -1937,27 +2318,26 @@ function mapDocument(row: DocumentRow): FetchedDocument {
     filename: row.filename ?? null,
     page_starts: parsePageStarts(row.page_starts_json),
     capture_reason: row.capture_reason ?? null,
+    document_role: mapDocumentRole(row.document_role),
+  }
+}
+
+function mapDocumentRole(raw: string | null | undefined): DocumentRole {
+  switch (raw) {
+    case 'landing':
+    case 'imprint':
+    case 'about':
+    case 'other':
+    case 'work':
+      return raw
+    default:
+      return 'work'
   }
 }
 
 function mapDocumentMeta(row: DocumentRow): Omit<FetchedDocument, 'text'> {
-  const mapped = mapDocument(row)
-  return {
-    id: mapped.id,
-    project_id: mapped.project_id,
-    url: mapped.url,
-    title: mapped.title,
-    char_len: mapped.char_len,
-    content_hash: mapped.content_hash,
-    fetched_at: mapped.fetched_at,
-    fetched_by: mapped.fetched_by,
-    purpose: mapped.purpose,
-    status: mapped.status,
-    origin: mapped.origin,
-    filename: mapped.filename,
-    page_starts: mapped.page_starts,
-    capture_reason: mapped.capture_reason,
-  }
+  const { text: _text, ...meta } = mapDocument(row)
+  return meta
 }
 
 function parseJsonStrings(raw: string | null | undefined): string[] {
@@ -2019,6 +2399,7 @@ function mapScreening(row: ScreeningRow): ScreeningCandidate {
     decided_at: row.decided_at,
     decided_by: row.decided_by,
     document_id: row.document_id,
+    parent_url: row.parent_url ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }

@@ -96,7 +96,7 @@ export default function ReportsTab({ state, onReload }: { state: ProjectState; o
         <EmptyState
           icon="description"
           title="Noch keine Berichtsversion"
-          hint="Die KI legt Berichte über add_report_version ab — oder du beginnst selbst eine Fassung. Jede Version ist unveränderlich und über ihren Snapshot-Hash zitierbar."
+          hint="Im Chat: „Bericht aus übernommenen Quellen“. Nur übernommene Ordner dürfen zitiert werden. Oder du beginnst selbst eine Fassung — jede Version ist unveränderlich."
         />
         <div className="flex justify-center">
           <Button variant="primary" icon="edit_note" onClick={() => startEdit(null)}>

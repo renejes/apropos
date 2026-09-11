@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { openDb, type DB } from '../db'
 import { Repo } from '../repo'
 import { fetchDocument, recordSource } from './research'
+import { assessCarrier } from './carriers'
 import { adoptMinimalBrief } from './brief'
 import { buildMinimalPdf } from '../enforce/minimal-pdf'
 
@@ -47,6 +48,20 @@ describe('fetch_source + add_source auf PDF (Offset unfälschbar)', () => {
     adoptMinimalBrief(repo, project.id, ACTOR)
     const doc = await fetchDocument(repo, { project_id: project.id, url: pdfUrl, purpose: 'arXiv-typischen Fließtext belegen' }, ACTOR)
     expect(doc.document_id).toBeTruthy()
+    expect(doc.carrier_id).toBeTruthy()
+    await assessCarrier(
+      repo,
+      {
+        project_id: project.id,
+        carrier_id: doc.carrier_id,
+        observed: 'Testdomain ohne erkennbares Impressum in dieser Fixture.',
+        interpretation: 'Lokaler Testträger ohne redaktionellen Rahmen.',
+        uncertainty: 'Impressum wurde nicht gelesen.',
+        carrier_kind: 'unknown',
+        evidence_basis: 'insufficient',
+      },
+      ACTOR
+    )
     const start = doc.window.text.indexOf(QUOTE)
     expect(start).toBeGreaterThanOrEqual(0)
     const absStart = doc.window.offset + start

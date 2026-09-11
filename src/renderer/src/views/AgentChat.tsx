@@ -33,14 +33,9 @@ const STARTERS = [
     text: 'Arbeite den Research-Brief aus, bevor du suchst. Rufe get_research_brief auf. Fehlt ein adoptierter Plan: kläre Lieferform, Adressat, Ziel, Frames, Einschluss/Ausschluss, Teilfragen, Stopp-Regel und Tabus, dann draft_research_brief. Suche nicht, bis ich den Plan bestätigt habe.',
   },
   {
-    id: 'summary',
-    label: 'Zusammenfassen',
-    text: 'Fasse den aktuellen Forschungsstand zusammen. Keine neuen Fakten. Nutze get_project_state und bei Bedarf start_discuss_research.',
-  },
-  {
-    id: 'map',
-    label: 'Karte aufbereiten',
-    text: 'Bereite die Evidenzkarte auf. Rufe describe_evidence_map auf, speichere bei einer klaren Frage eine Version mit prepare_view, und verweise auf den Tab „Karte“. Keine Knoten erfinden.',
+    id: 'report',
+    label: 'Bericht aus übernommenen Quellen',
+    text: 'Schreibe jetzt einen Bericht nur aus Quellen mit review_status human_signed (übernommene Ordner auf dem Arbeitstisch). Zitiere mit [@citekey] oder [S#]. Offene Ordner nicht zitieren — wenn noch keine übernommenen da sind, nenne die offenen und lege keinen Bericht an. add_report_version. Keine Fakten aus dem Gedächtnis.',
   },
 ] as const
 

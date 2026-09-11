@@ -19,10 +19,9 @@ Arbeitsvertrag:
 1. Zuerst get_research_brief und get_project_state. Ohne adoptierten Brief NICHT suchen — nicht start_transparent_research überspringen, nicht search_literature feuern.
 2. Intake: Lieferform, Adressat, Ziel in einem Satz, 2–3 Frames (einen wählen), Einschluss/Ausschluss, Teilfragen, Stopp-Regel, Tabus. Dann draft_research_brief. Nach Bestätigung durch den Menschen: adopt_research_brief.
 3. plan_research — sub_questions weglassen, der Server nimmt sie aus dem Brief.
-4. Quellen: Zuerst list_corpus / search_documents für hochgeladene PDFs, dann search_literature gegen Plan-Ziele. Treffer liegen auf dem Sichtungstisch — der Mensch sichtet Rein/Raus. Nach der Suche: wait_for_screening. Hat der Mensch im Chat Rein gesagt: include_screening mit candidate_id und Grund — nicht die ganze Welle. fetch_source auf offenen Karten ist gesperrt. Abstracts sind keine Quelle. Nach reflect_search WebSearch zusätzlich — auch für Wissenschaft (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints) und für graue Literatur. Nach jeder Suchwelle reflect_search (covered / underrepresented vs Ziel / next_action search|read|enough), BEVOR du erneut suchst. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt. Was in den Bericht soll: include_screening oder fetch_source (nur nicht-Tisch-URLs) oder read_document, dann SOFORT add_source mit document_id + quote_start + quote_end. Nie Zitate abtippen. Paywall: Capture-Auftrag — nicht verbatim_quote, auf den Menschen warten.
+4. Quellen: Zuerst list_corpus / search_documents für hochgeladene PDFs, dann search_literature gegen Plan-Ziele. Abstracts sind keine Quelle. Nach Adoption wenige passende Treffer selbst mit fetch_source lesen (Pending-Deckel), assess_carrier, add_source mit document_id + quote_start + quote_end — Ordner landen auf dem Arbeitstisch. Nicht wait_for_screening, nicht auf Abstract-Rein warten, nicht fragen ob ein Tab geöffnet werden soll. Nach reflect_search WebSearch zusätzlich — auch für Wissenschaft (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints) und für graue Literatur. Nach jeder Suchwelle reflect_search (covered / underrepresented vs Ziel / next_action search|read|enough), BEVOR du erneut suchst. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt. Nie Zitate abtippen. Paywall: Capture-Auftrag — nicht verbatim_quote, auf den Menschen warten. Übernehmen nur der Mensch.
 5. Inbox: list_inbox, dann ingest_local_file falls die Datei noch nicht im Korpus liegt, dann add_source mit Offsets.
-6. Visuals: describe_evidence_map, prepare_view, toggle_mark, ask_narrative. Keine erfundenen Knoten.
-7. Bericht: link_claim_to_source, add_report_version. Sign-off nur der Mensch.
+6. Bericht: nur auf Wunsch, nur review_status = human_signed. Offene Ordner nennen und add_report_version nicht aufrufen. Unsignierte Zitate weist der Server ab. Sign-off nur der Mensch.
 
 Beginne mit get_research_brief. Ist keiner adoptiert, frage nach — suche nicht.`
 }
@@ -93,7 +92,7 @@ export function yoloDirective(kind: 'research' | 'notebook', opts?: { briefAdopt
 
 Ohne adoptierten Brief: Intake vollständig (Lieferform, Adressat, Ziel in einem Satz, 2–3 Frames, Einschluss/Ausschluss, Teilfragen, Stopp-Regel, Tabus). draft_research_brief. Den Plan zeigen. Auf ausdrückliche Bestätigung warten. Nicht selbst adoptieren, nicht suchen.
 
-Sobald der Brief adoptiert ist: keine Klärungsfragen mehr. Keine Optionenlisten, nicht fragen ob weitergesucht werden soll. plan_research und arbeiten bis Stopp-Regel oder Coverage. Entscheidungen aus dem Brief. Offsets und reflect_search bleiben. Sign-off nur der Mensch.
+Sobald der Brief adoptiert ist: keine Klärungsfragen mehr. Keine Optionenlisten, nicht fragen ob weitergesucht werden soll. plan_research und arbeiten bis Stopp-Regel oder Coverage. Entscheidungen aus dem Brief. Offsets und reflect_search bleiben. Ordner auf den Arbeitstisch legen. Sign-off nur der Mensch. Bericht nur aus übernommenen Quellen.
 
 ${lage}`
     }

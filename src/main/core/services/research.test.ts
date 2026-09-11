@@ -153,6 +153,7 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     const docCols = (migrated.pragma('table_info(documents)') as Array<{ name: string }>).map((c) => c.name)
     expect(docCols).toContain('origin')
     expect(docCols).toContain('capture_reason')
+    expect(docCols).toContain('document_role')
     const searchCols = (migrated.pragma('table_info(search_log)') as Array<{ name: string }>).map((c) => c.name)
     expect(searchCols).toContain('reflection_id')
     const projectCols = (migrated.pragma('table_info(projects)') as Array<{ name: string }>).map((c) => c.name)
@@ -161,6 +162,10 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(projectCols).toContain('linked_research_id')
     expect(tables).toContain('notes')
     expect(tables).toContain('screening_candidates')
+    expect(tables).toContain('carriers')
+    expect(tables).toContain('carrier_profiles')
+    expect(tables).toContain('document_contexts')
+    expect(tables).toContain('carrier_watchlist')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()
@@ -464,6 +469,24 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(version.change_summary).toMatch(/^⚠️ MIT 1 OFFENEN LÜCKEN ABGELEGT: Zwischenbericht/)
     const events = repo.listEvents(p.id).map((e) => e.event_type)
     expect(events).toContain('report.gaps_acknowledged')
+  })
+
+  it('weist Berichte ab, die nicht übernommene Quellen zitieren', () => {
+    const p = makeProject()
+    const { sub_questions } = plan(p.id, 1)
+    const s = addSource(p.id, { sq: sub_questions[0].id, verified: true })
+    addClaimFor(p.id, s.id)
+    try {
+      recordReportVersion(repo, { project_id: p.id, content_markdown: `${REPORT} Siehe [S1].` }, ACTOR)
+      throw new Error('hätte werfen müssen')
+    } catch (err) {
+      expect(err).toBeInstanceOf(ServiceError)
+      expect((err as ServiceError).code).toBe('unsigned_citations')
+      expect((err as ServiceError).message).toMatch(/Offene Ordner/)
+    }
+    repo.signSourceHuman(s.id, 'human_signed', 'übernommen', 'mensch')
+    const { version } = recordReportVersion(repo, { project_id: p.id, content_markdown: `${REPORT} Siehe [S1].` }, ACTOR)
+    expect(version.id).toBeTruthy()
   })
 
   // ---------------------------------------------------------------- Validierung

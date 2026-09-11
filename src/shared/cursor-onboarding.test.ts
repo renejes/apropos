@@ -24,7 +24,8 @@ describe('cursorMcpJson', () => {
     expect(CURSOR_RULE_MDC).toContain('WebSearch')
     expect(CURSOR_RULE_MDC).toContain('reflect_search')
     expect(CURSOR_RULE_MDC).toContain('benannten Modell')
-    expect(CURSOR_RULE_MDC).toMatch(/Snippets sind keine Quelle/)
+    expect(CURSOR_RULE_MDC).toContain('assess_carrier')
+    expect(CURSOR_RULE_MDC).toContain('parent_url')
   })
 
   it('Allowlist gilt nur für research-overview', () => {

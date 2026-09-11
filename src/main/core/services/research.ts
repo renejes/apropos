@@ -10,6 +10,7 @@ import { extractPdfText, isPdfMagic, MAX_PDF_BYTES } from '../enforce/pdf'
 import { htmlToText } from '../enforce/textmatch'
 import { listInboxFiles, localInboxUrl, projectWorkspace, registeredWorkspace, resolveInboxFile } from '../agent/workspace'
 import { enrichSourceBiblio } from './biblio'
+import { attachDocumentContext, assertCarrierAllowsSource, carrierHint } from './carriers'
 import {
   type ClaimSourceLink,
   type CoverageGap,
@@ -28,6 +29,7 @@ import {
   isCapturePending,
 } from '../../../shared/types'
 import { isFailedSearchAttempt } from '../../../shared/search-waves'
+import { citedSourcesInMarkdown } from '../../../shared/citations'
 
 export { isFailedSearchAttempt }
 
@@ -233,26 +235,36 @@ export function requireAdoptedBrief(repo: Repo, projectId: string): void {
 }
 
 /**
- * Treffer auf dem Sichtungstisch kommen nicht per fetch_source in den Korpus,
- * solange sie offen oder ausgeschlossen sind. include_screening / UI-Rein zuerst.
+ * Ausgeschlossene Treffer kommen nicht per fetch_source in den Korpus.
+ * Offene Karten darf der Agent selbst lesen — der Pending-Deckel begrenzt die Menge.
  * URLs, die nicht auf dem Tisch liegen (genannte Adresse, Upload), bleiben frei.
  */
 export function requireScreeningAllowsFetch(repo: Repo, projectId: string, url: string): void {
   if (repo.getProject(projectId)?.kind === 'notebook') return
   const candidate = repo.findScreeningCandidate(projectId, { url, doi: extractDoi(url) })
   if (!candidate) return
-  if (candidate.status === 'included') return
   if (candidate.status === 'excluded') {
     throw new ServiceError(
       'screening_locked',
       `Dieser Treffer ist ausgeschlossen (${candidate.id}, „${candidate.title}“).`,
-      'Eine ausgeschlossene Karte kommt nicht in den Korpus. Nimm eine included-Karte oder eine URL, die nicht auf dem Sichtungstisch liegt.'
+      'Nimm eine andere URL oder einen übernommenen Ordner. Ausgeschlossene Karten holt fetch_source nicht.'
     )
   }
+}
+
+/** Bericht darf nur übernommene Ordner zitieren. Offene Ordner stehen in der Meldung. */
+export function assertReportCitesOnlySigned(repo: Repo, projectId: string, markdown: string): void {
+  const sources = repo.listSources(projectId)
+  const cited = citedSourcesInMarkdown(markdown, sources)
+  const bad = cited.filter((s) => s.review_status !== 'human_signed')
+  if (bad.length === 0) return
+  const open = sources.filter((s) => s.review_status === 'pending' || s.review_status === 'ai_checked')
+  const badList = bad.map((s) => `„${s.title}“ (${s.review_status})`).join('; ')
+  const openList = open.length > 0 ? open.map((s) => `„${s.title}“`).join('; ') : 'keine'
   throw new ServiceError(
-    'screening_required',
-    `Dieser Treffer liegt ungesichtet auf dem Sichtungstisch (${candidate.status}, id ${candidate.id}, „${candidate.title}“). fetch_source ist dafür gesperrt.`,
-    'Tab Sichtung: der Mensch sagt Rein/Raus. Du: wait_for_screening, bis Karten entschieden sind. Hat der Mensch im Chat Rein gesagt: include_screening mit dieser candidate_id und einem Grund. Nicht die ganze Welle includen.'
+    'unsigned_citations',
+    `Bericht zitiert Quellen, die nicht übernommen sind: ${badList}. Offene Ordner: ${openList}.`,
+    'Nimm die offenen Ordner auf dem Arbeitstisch (Übernehmen) oder entferne ihre Zitate. add_report_version nur mit human_signed.'
   )
 }
 
@@ -417,7 +429,7 @@ export function reflectSearch(
 // ---------------------------------------------------------------- Dokumente
 
 /** Wie viele abgerufene, aber undokumentierte Dokumente gleichzeitig offen sein dürfen. */
-const MAX_OPEN_DOCUMENTS = Number(process.env.ROP_MAX_PENDING ?? 3)
+const MAX_OPEN_DOCUMENTS = Number(process.env.ROP_MAX_PENDING ?? 5)
 /** Wie viel Text ein einzelner Abruf zurückgibt (Kontext-Budget des Modells). */
 const WINDOW_DEFAULT = 8000
 const WINDOW_MAX = 30000
@@ -428,6 +440,8 @@ export const fetchInputSchema = z.object({
   purpose: z.string().min(10),
   offset: z.number().int().min(0).optional(),
   limit: z.number().int().min(500).max(WINDOW_MAX).optional(),
+  /** Seite, auf der diese URL verlinkt war (Blog/Landing). Nicht die PDF selbst. */
+  parent_url: z.string().url().optional().nullable(),
 })
 
 export interface FetchDocumentResult {
@@ -442,6 +456,11 @@ export interface FetchDocumentResult {
   /** true: kein Volltext, Mensch muss die PDF nachlegen. Agent: nicht zitieren. */
   needs_capture?: boolean
   capture_reason?: string | null
+  carrier_id?: string
+  context_id?: string
+  parent_document_id?: string | null
+  imprint_document_id?: string | null
+  carrier_needs_assessment?: boolean
 }
 
 /**
@@ -464,16 +483,14 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
   const doi = extractDoi(input.url)
   const existing = findFetchedDocument(repo, input.project_id, input.url, doi)
   if (existing) {
-    const cached = windowOf(
-      existing,
-      input.offset ?? 0,
-      input.limit ?? WINDOW_DEFAULT,
-      repo,
-      input.project_id,
-      true
-    )
     repo.markScreeningFetched(input.project_id, input.url, existing.id, doi, actor)
-    return cached
+    return withCarrierContext(
+      repo,
+      existing,
+      actor,
+      windowOf(existing, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true),
+      { parentUrl: input.parent_url }
+    )
   }
 
   // Gate: erst dokumentieren, dann weiterlesen.
@@ -496,9 +513,15 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
         const alreadyOa = findFetchedDocument(repo, input.project_id, oa.url, doi)
         if (alreadyOa) {
           repo.markScreeningFetched(input.project_id, input.url, alreadyOa.id, doi, actor)
-          return withUnpaywallHint(
-            windowOf(alreadyOa, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true),
-            oa
+          return withCarrierContext(
+            repo,
+            alreadyOa,
+            actor,
+            withUnpaywallHint(
+              windowOf(alreadyOa, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true),
+              oa
+            ),
+            { parentUrl: input.parent_url ?? input.url }
           )
         }
         const oaFetched = await fetchSourceText(oa.url)
@@ -515,9 +538,15 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
           })
           repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
           repo.markScreeningFetched(input.project_id, oa.url, doc.id, doi, actor)
-          return withUnpaywallHint(
-            windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false),
-            oa
+          return withCarrierContext(
+            repo,
+            doc,
+            actor,
+            withUnpaywallHint(
+              windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false),
+              oa
+            ),
+            { parentUrl: input.parent_url ?? input.url, landingHtml: oaFetched.html }
           )
         }
       }
@@ -532,7 +561,13 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
         capture_reason: fetched.note || `HTTP ${fetched.status}`,
       })
       repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
-      return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
+      return withCarrierContext(
+        repo,
+        doc,
+        actor,
+        windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false),
+        { parentUrl: input.parent_url }
+      )
     }
     throw new ServiceError(
       'fetch_failed',
@@ -555,7 +590,13 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
     page_starts: fetched.pageStarts ?? null,
   })
   repo.markScreeningFetched(input.project_id, input.url, doc.id, doi, actor)
-  return windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false)
+  return withCarrierContext(
+    repo,
+    doc,
+    actor,
+    windowOf(doc, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, false),
+    { parentUrl: input.parent_url, landingHtml: fetched.html }
+  )
 }
 
 function findFetchedDocument(
@@ -576,6 +617,29 @@ function findFetchedDocument(
   const needle = doi.toLowerCase()
   const byDoi = docs.find((d) => extractDoi(d.url)?.toLowerCase() === needle)
   return byDoi ? repo.getDocument(byDoi.id) : undefined
+}
+
+async function withCarrierContext(
+  repo: Repo,
+  doc: FetchedDocument,
+  actor: string,
+  result: FetchDocumentResult,
+  opts: { parentUrl?: string | null; landingHtml?: string | null }
+): Promise<FetchDocumentResult> {
+  const attach = await attachDocumentContext(repo, doc, actor, {
+    parentUrl: opts.parentUrl,
+    landingHtml: opts.landingHtml,
+  })
+  if (!attach) return result
+  return {
+    ...result,
+    carrier_id: attach.carrier.id,
+    context_id: attach.context.id,
+    parent_document_id: attach.context.parent_document_id,
+    imprint_document_id: attach.imprint_document_id,
+    carrier_needs_assessment: attach.needs_assessment,
+    hint: result.hint + carrierHint(attach),
+  }
 }
 
 function withUnpaywallHint(result: FetchDocumentResult, oa: { version: string | null; host_type: string | null }): FetchDocumentResult {
@@ -1165,6 +1229,8 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
     quote = sliced
   }
 
+  const carrierIds = assertCarrierAllowsSource(repo, { projectId: input.project_id, document: doc, actor })
+
   const source = repo.addSource({
     project_id: input.project_id,
     url: input.url,
@@ -1182,6 +1248,8 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
     quote_start: input.quote_start ?? null,
     quote_end: input.quote_end ?? null,
     source_kind: input.source_kind ?? null,
+    context_id: carrierIds.context_id,
+    carrier_id: carrierIds.carrier_id,
     actor,
   })
 
@@ -1372,11 +1440,14 @@ export function recordExclusion(repo: Repo, rawInput: unknown, actor: string): E
   const input = parseOrThrow(exclusionInputSchema, rawInput, 'exclusion_invalid')
   assertProject(repo, input.project_id)
   assertCorpusWritable(repo, input.project_id)
+  const related = repo.listDocuments(input.project_id).find((d) => d.url === input.url)
+  const ctx = related ? repo.getLatestDocumentContext(related.id) : undefined
   const entry = repo.addExcludedSource({
     project_id: input.project_id,
     url: input.url,
     title: input.title ?? null,
     reason: input.reason,
+    carrier_id: ctx?.carrier_id ?? null,
     actor,
   })
   // Ein begründeter Ausschluss erfüllt die Dokumentationspflicht für diese URL.
@@ -1843,6 +1914,7 @@ function writeReportChecked(
   input: z.infer<typeof reportInputSchema>,
   actor: string
 ): { version: ReportVersion; coverage: CoverageReport } {
+  assertReportCitesOnlySigned(repo, input.project_id, input.content_markdown)
   const coverage = computeCoverage(repo, input.project_id)
   const blocking = coverage.blocking_gaps
 

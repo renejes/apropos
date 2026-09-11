@@ -232,6 +232,18 @@ function SourceDetail({
         <Field label="Warum diese Quelle (KI-Angabe, zu verifizieren)">{s.reason}</Field>
         <Field label="Extraktion">{s.extraction}</Field>
         <Field label="Beitrag zum Ergebnis">{s.contribution}</Field>
+        {s.carrier_id && (
+          <Field label="Träger">
+            {(() => {
+              const carrier = state.carriers.find((c) => c.id === s.carrier_id)
+              const profile = state.carrierProfiles.find((p) => p.carrier_id === s.carrier_id)
+              if (!carrier) return 'verknüpft'
+              return `${carrier.display_name || carrier.registrable_domain} · ${carrier.carrier_kind}${
+                profile ? ` · ${profile.review_status}` : ' · ohne Profil'
+              }`
+            })()}
+          </Field>
+        )}
         {(s.source_kind || s.year || s.citekey) && (
           <Field label="Bibliografie">
             {[s.source_kind && `Typ: ${s.source_kind}`, s.year && `Jahr: ${s.year}`, s.citekey && `Citekey: ${s.citekey}`]

@@ -124,17 +124,17 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             ab. Unpassendes verwerfen.
           </li>
           <li>
-            Rechts prüfen: Übersicht, Sichtung (Rein/Raus auf Treffer), Korpus, Quellen (Sign-off),
-            Aussagen, Karte.
+            Rechts prüfen: Arbeitstisch — Ordner öffnen, <strong>Übernehmen</strong> oder Ablehnen. Dann Bericht aus
+            übernommenen Quellen.
           </li>
           <li>
-            Karte aufbereiten, Punkte markieren oder eine Version speichern. Über <strong>Export</strong> nach Easy Writing
-            schreiben. Artikel dort schreiben, Dossier beim Export in Easy Writing abwählen.
+            Über <strong>Export</strong> nach Easy Writing schreiben. Artikel dort schreiben, Dossier beim Export in Easy
+            Writing abwählen.
           </li>
         </Ol>
         <Note>
-          Starter im leeren Research-Chat: <strong>Research starten</strong>, <strong>Zusammenfassen</strong>,{' '}
-          <strong>Karte aufbereiten</strong>. Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
+          Starter im leeren Research-Chat: <strong>Research starten</strong>, später{' '}
+          <strong>Bericht aus übernommenen Quellen</strong>. Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
           <strong>Als HTML aufbereiten</strong>. Unter jeder Agenten-Antwort liegt <strong>Als Notiz speichern</strong> —
           dann öffnet sich die Notiz in der Mitte zum Bearbeiten.
         </Note>
@@ -160,8 +160,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             Artefakte; Chat und Notiz-Editor in der Mitte als Tabs.
           </li>
           <li>
-            <strong>Rechts (nur Research):</strong> Tabs Übersicht, Sichtung, Korpus, Quellen, Aussagen, Karte, Berichte,
-            Protokoll, Audit.
+            <strong>Rechts (nur Research):</strong> Arbeitstisch (Ordner) und Bericht. Übernehmen setzt nur du.
           </li>
           <li>
             <strong>Menüleiste (macOS):</strong> Unter dem App-Namen und unter <strong>Manual</strong> öffnet „Manual“ dieses
@@ -205,8 +204,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
     body: (
       <>
         <Lead>
-          Hier läuft die Research. Der Agent darf nur über die Provenienz-Werkzeuge schreiben. Sign-off bleibt rechts bei
-          dir.
+          Hier läuft die Research. Der Agent darf nur über die Provenienz-Werkzeuge schreiben. Übernehmen bleibt rechts bei
+          dir auf dem Arbeitstisch.
         </Lead>
         <H>Anmeldung</H>
         <P>
@@ -245,7 +244,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         <H>Was du siehst</H>
         <P>
           Stream der Antwort, Denken, Tool-Chips (läuft / fertig / Fehler), Token-Verbrauch, Hinweis wenn lange nichts
-          kommt. Das ist der Arbeitschat — nicht das archivierte Protokoll rechts.
+          kommt. Das ist der Arbeitschat.
         </P>
       </>
     ),
@@ -288,7 +287,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             + Quelltext.
           </li>
           <li>
-            <strong>Mensch:</strong> Quellen-Tab, Freigeben oder Ablehnen.
+            <strong>Mensch:</strong> Arbeitstisch, Übernehmen oder Ablehnen.
           </li>
         </Ol>
         <H>Suchdokumentation</H>
@@ -302,39 +301,38 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   },
   {
     id: 'sichtung',
-    title: 'Tab Sichtung',
+    title: 'Arbeitstisch',
     body: (
       <>
         <Lead>
-          Die KI legt Treffer hin. Du sagst Rein, Raus oder Unsicher — und kannst vorher Ansehen. Erst Rein holt den
-          Volltext in den Korpus. Abstracts sind keine Quelle.
+          Nach dem Briefing sucht der Agent und legt Treffer als Ordner ab. Du öffnest die Akte: Volltext, KI-Anmerkung,
+          Übernehmen oder Ablehnen. Abstracts allein sind keine Quelle.
         </Lead>
-        <H>Woher die Karten kommen</H>
+        <H>Was ein Ordner ist</H>
         <P>
-          Nach <Code>search_literature</Code> (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE) und nach
-          WebSearch-URLs. Dieselbe Arbeit erscheint einmal (DOI, sonst URL). Schon entschiedene Karten bleiben grau.
+          Eine Quelle mit Begründung, Einschätzung, Beitrag und Beleg — oder ein identifizierter Treffer, den der Agent
+          noch liest. Dieselbe Arbeit erscheint einmal (DOI, sonst URL).
         </P>
         <H>Was du tust</H>
         <Ul>
           <li>
-            <strong>Rein</strong> — holt den Volltext (<Code>oa_url</Code> oder Landing-Page). Bei Paywall entsteht ein
-            Capture-Auftrag im Korpus; du legst die PDF nach.
+            <strong>Übernehmen</strong> — nur bei angelegter Quelle. Setzt <Code>human_signed</Code>. Danach darf der
+            Bericht sie zitieren.
           </li>
           <li>
-            <strong>Raus</strong> — schließt aus, mit Grund (mind. 10 Zeichen). Landet bei den ausgeschlossenen Quellen.
-          </li>
-          <li>
-            <strong>Unsicher</strong> — bleibt auf dem Tisch, Filter „Unsicher“.
-          </li>
-          <li>
-            <strong>Ansehen</strong> — öffnet die URL im Systembrowser, ohne zu holen.
+            <strong>Ablehnen</strong> — legt den Ordner weg. Bei Treffern ohne Quelle: Ausschluss mit Grund.
           </li>
         </Ul>
         <H>Was die KI darf</H>
         <P>
-          Nicht alle Treffer abarbeiten, nicht aus Snippets belegen. Nach der Suche wartet die KI mit{' '}
-          <Code>wait_for_screening</Code>, bis du im Tab entscheidest. Sagst du im Chat Rein, ruft sie{' '}
-          <Code>include_screening</Code> auf. <Code>fetch_source</Code> auf offenen Karten lehnt der Server ab.
+          Nach adoptiertem Brief wenige passende Treffer selbst holen (<Code>fetch_source</Code>), nicht auf Abstract-Rein
+          warten, nicht <Code>wait_for_screening</Code>. Der Pending-Deckel begrenzt, wie viele ungelesene Volltexte
+          gleichzeitig offen sind. Kein Werkzeug setzt Übernehmen.
+        </P>
+        <H>Bericht</H>
+        <P>
+          Im Chat: „Bericht aus übernommenen Quellen“. Nur Ordner mit Übernehmen dürfen zitiert werden. Offene Ordner
+          nennt der Agent und legt keinen Bericht an.
         </P>
       </>
     ),
@@ -470,7 +468,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   },
   {
     id: 'berichte',
-    title: 'Tab Berichte',
+    title: 'Bericht',
     body: (
       <>
         <P>
@@ -479,7 +477,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         </P>
         <P>
           Du kannst von einer Version aus überarbeiten oder einen Bericht von Hand beginnen. Die KI darf{' '}
-          <Code>add_report_version</Code> nur, wenn blockierende Coverage-Lücken geschlossen oder begründet quittiert sind.
+          <Code>add_report_version</Code> nur mit übernommenen Ordnern (<Code>human_signed</Code>) und wenn blockierende
+          Coverage-Lücken geschlossen oder begründet quittiert sind.
         </P>
         <Note>
           Der Artikel, den du veröffentlichst, entsteht nicht hier. Berichte in dieser App sind Synthese der Research-Sicht
@@ -713,15 +712,12 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             Text.
           </li>
           <li>
-            <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Treffer auf den
-            Sichtungstisch. Danach <Code>reflect_search</Code>.
+            <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Danach{' '}
+            <Code>reflect_search</Code>. Abstracts sind keine Quelle.
           </li>
           <li>
-            <Code>list_screening</Code> / <Code>wait_for_screening</Code> / <Code>include_screening</Code> — offene
-            Karten; Rein holt den Volltext. <Code>fetch_source</Code> auf offenen Karten ist gesperrt.
-          </li>
-          <li>
-            <Code>fetch_source</Code> / <Code>add_source</Code> / <Code>exclude_source</Code> — Belegen oder verwerfen.
+            <Code>fetch_source</Code> / <Code>assess_carrier</Code> / <Code>add_source</Code> / <Code>exclude_source</Code> —
+            wenige Treffer holen und als Ordner ablegen. PDF auf einer Seite: <Code>parent_url</Code>. Übernehmen nur du.
           </li>
           <li>
             <Code>plan_research</Code> / <Code>get_coverage_gaps</Code> / <Code>next_round</Code> — Teilfragen, Lücken,

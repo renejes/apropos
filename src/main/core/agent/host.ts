@@ -8,6 +8,7 @@ import {
   CursorAgentError,
   JsonlLocalAgentStore,
 } from '@cursor/sdk'
+import { disableIncompatibleSdkNatives } from './electron-natives'
 import type { ModelSelection, SDKAgent, SDKCustomTool, SDKJsonValue, SDKModel, Run } from '@cursor/sdk'
 import { MAX_PDF_BYTES } from '../enforce/pdf'
 import { ToolBridge } from '../engine/tool-bridge'
@@ -114,6 +115,8 @@ function uniqueInboxName(dir: string, original: string): string {
 function asMode(value: AgentMode | undefined): AgentMode {
   return value === 'plan' ? 'plan' : 'agent'
 }
+
+disableIncompatibleSdkNatives()
 
 /**
  * In-App-Host für den Cursor-Agenten. Mehrere Chats pro Projekt, Werkzeuge = MCP via ToolBridge.
@@ -634,6 +637,7 @@ export class CursorAgentHost {
     cwd: string,
     resumeId: string | null
   ): Promise<{ agent: SDKAgent; store: JsonlLocalAgentStore; fresh: boolean }> {
+    disableIncompatibleSdkNatives()
     const storeDir = join(cwd, '.sdk-store')
     mkdirSync(storeDir, { recursive: true })
     const store = new JsonlLocalAgentStore(storeDir)

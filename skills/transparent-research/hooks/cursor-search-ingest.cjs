@@ -121,8 +121,8 @@ function decide(input) {
         urls,
       },
       additional_context:
-        '[Research Overview] Suche protokolliert. Treffer liegen auf dem Sichtungstisch. Snippets sind keine Quelle. ' +
-        'fetch_source auf offenen Karten ist gesperrt. wait_for_screening oder include_screening (nur Chat-Rein), dann add_source mit Offsets. Nicht WebFetch. ' +
+        '[Research Overview] Suche protokolliert. Abstracts und Snippets sind keine Quelle. ' +
+        'Hole wenige passende Treffer mit fetch_source (Pending-Deckel), dann add_source — Ordner auf den Arbeitstisch. Nicht WebFetch. ' +
         'Bevor du erneut suchst: reflect_search (covered / underrepresented / next_action).',
     }
   }

@@ -236,7 +236,18 @@ Wer seine Quellen nicht zeigen kann, sollte keine starken Schlüsse ziehen.</p><
       project_id: projectId,
       url: paperUrl,
       purpose: 'Beleg für die Kernaussage suchen.',
-    })).text) as { document_id: string; window: { text: string; offset: number } }
+    })).text) as { document_id: string; carrier_id: string; window: { text: string; offset: number } }
+
+    const assessed = await bridge.call('assess_carrier', {
+      project_id: projectId,
+      carrier_id: fetched.carrier_id,
+      observed: 'Lokaler Testhost ohne erkennbares Impressum in der Fixture.',
+      interpretation: 'Kein redaktioneller Träger, nur die Testquelle selbst.',
+      uncertainty: 'Impressum und About wurden nicht gelesen.',
+      carrier_kind: 'unknown',
+      evidence_basis: 'insufficient',
+    })
+    expect(assessed.isError).toBe(false)
 
     const start = fetched.window.offset + fetched.window.text.indexOf(QUOTE)
     const res = await bridge.call('add_source', {
@@ -262,21 +273,23 @@ Wer seine Quellen nicht zeigen kann, sollte keine starken Schlüsse ziehen.</p><
       url: `${paperUrl}?a`,
       purpose: 'Erste Quelle für die Teilfrage lesen.',
     })).text) as { hint: string }
-    expect(first.hint).toMatch(/Noch 2 Abruf/)
+    expect(first.hint).toMatch(/Noch 4 Abruf/)
 
     await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?b`, purpose: 'Zweite Quelle lesen.' })
-    const third = JSON.parse((await bridge.call('fetch_source', {
+    await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?c`, purpose: 'Dritte Quelle lesen.' })
+    await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?d`, purpose: 'Vierte Quelle lesen.' })
+    const fifth = JSON.parse((await bridge.call('fetch_source', {
       project_id: projectId,
-      url: `${paperUrl}?c`,
-      purpose: 'Dritte Quelle lesen.',
+      url: `${paperUrl}?e`,
+      purpose: 'Fünfte Quelle lesen.',
     })).text) as { hint: string }
-    expect(third.hint).toMatch(/Kontingent ist damit aufgebraucht/)
+    expect(fifth.hint).toMatch(/Kontingent ist damit aufgebraucht/)
 
     // Und der nächste Abruf wird tatsächlich abgelehnt — die Warnung war keine Floskel.
     const { res, payload } = await callAndParse('fetch_source', {
       project_id: projectId,
-      url: `${paperUrl}?d`,
-      purpose: 'Vierte Quelle lesen.',
+      url: `${paperUrl}?f`,
+      purpose: 'Sechste Quelle lesen.',
     })
     expect(res.isError).toBe(true)
     expect(payload.code).toBe('open_documents_limit')

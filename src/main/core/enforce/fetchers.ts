@@ -38,6 +38,8 @@ export interface SourceTextResult {
   status: number | null
   note: string
   pageStarts?: number[] | null
+  /** Roh-HTML, nur wenn der Body HTML war — für Impressum-Links, nicht zum Zitieren. */
+  html?: string | null
 }
 
 function withTimeout(ms: number): { signal: AbortSignal; cancel: () => void } {
@@ -261,9 +263,17 @@ export async function fetchSourceText(rawUrl: string): Promise<SourceTextResult>
     }
 
     const raw = decodeUtf8(bytes)
-    const text = /html/i.test(contentType) || raw.trimStart().startsWith('<') ? htmlToText(raw) : raw
+    const isHtml = /html/i.test(contentType) || raw.trimStart().startsWith('<')
+    const text = isHtml ? htmlToText(raw) : raw
     const snapshotHash = createHash('sha256').update(text).digest('hex').slice(0, 16)
-    return { ok: true, text, snapshotHash, status: res.status, note: `ok (${contentType || 'unknown type'})` }
+    return {
+      ok: true,
+      text,
+      snapshotHash,
+      status: res.status,
+      note: `ok (${contentType || 'unknown type'})`,
+      html: isHtml ? raw : null,
+    }
   } catch (err) {
     return { ok: false, text: '', snapshotHash: null, status: null, note: `Network error: ${errMsg(err)}` }
   }

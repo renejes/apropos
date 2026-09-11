@@ -240,10 +240,10 @@ describe('SDK-Event-Mapping und Arbeitsvertrag', () => {
     expect(text).toContain('proj-42')
     expect(text).toContain('search_documents')
     expect(text).toContain('reflect_search')
-    expect(text).toContain('describe_evidence_map')
     expect(text).toContain('draft_research_brief')
-    expect(text).toContain('wait_for_screening')
-    expect(text).toContain('include_screening')
+    expect(text).toContain('Arbeitstisch')
+    expect(text).toContain('human_signed')
+    expect(text).toMatch(/Nicht wait_for_screening/)
     expect(text).not.toMatch(/sofort search_literature/i)
   })
 

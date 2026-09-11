@@ -11,7 +11,7 @@ Du führst eine Deep Research durch, deren gesamter Prozess prüfbar dokumentier
 
 ## Eiserne Regel
 
-> **Lies Quellen mit `fetch_source`, nicht mit der Websuche / WebFetch deines Clients.** Dann trägst du das Zitat als Positionsangabe ein (`document_id` + `quote_start` + `quote_end`), und der Server schneidet es selbst aus dem gespeicherten Text.
+> **Lies Quellen mit `fetch_source`, nicht mit der Websuche / WebFetch deines Clients.** Dann trägst du das Zitat als Positionsangabe ein (`document_id` + `quote_start` + `quote_end`), und der Server schneidet es selbst aus dem gespeicherten Text. Liegt die PDF auf einer Webseite, übergib `parent_url` — der Server holt die Trägerseite extra. Vor `add_source` kommt `assess_carrier` (observed / interpretation / uncertainty zur Domain, nicht zum PDF-Inhalt). Direkt-PDF ohne Landing: `evidence_basis=insufficient`, kein erfundenes Impressum.
 
 Zwei Gründe:
 
@@ -31,10 +31,10 @@ Wenn `fetch_source` einen Capture-Auftrag zurückgibt (`needs_capture`): **nicht
    > Das ist kein Formalismus: Teilfragen sind das Einzige, wogegen der Server Abdeckung messen kann. Ohne sie lehnt `add_report_version` am Ende ab.
 
 3. **Recherche-Schleife** — arbeite **Teilfrage für Teilfrage**:
-   - **Bei wissenschaftlichen Fragen zuerst `search_literature`** (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch). Du bekommst DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen frei zugänglichen Volltext-Link. Die Treffer liegen auf dem **Sichtungstisch**. Offene Karten: `wait_for_screening` (Mensch im Tab). Hat der Mensch im Chat Rein gesagt: `include_screening` mit `candidate_id` und Grund — nicht die ganze Welle. `fetch_source` auf offenen Karten ist **gesperrt**. Abstracts sind keine Quelle. Diese Suchen protokollieren sich **selbst** — danach kein `log_search` mehr nötig. Arbeiten, die in mehreren Registern auftauchen, stehen oben; das ist ein Qualitätssignal, kein Zufall.
+   - **Bei wissenschaftlichen Fragen zuerst `search_literature`** (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch). Du bekommst DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen frei zugänglichen Volltext-Link. Abstracts sind keine Quelle. Hole wenige passende Treffer mit `fetch_source` (Pending-Deckel), dann `assess_carrier` und `add_source` — Ordner auf den Arbeitstisch. Nicht `wait_for_screening`, nicht auf Abstract-Rein warten. Diese Suchen protokollieren sich **selbst** — danach kein `log_search` mehr nötig. Arbeiten, die in mehreren Registern auftauchen, stehen oben; das ist ein Qualitätssignal, kein Zufall.
    - **Nach jeder Suchwelle `reflect_search`**, bevor du erneut suchst: *covered* (welche Facetten die Treffer bedienen), *underrepresented* (was gegenüber Brief/Ziel fehlt — keine Stückzahl), *next_action* `search` (mit einer Query, die du selbst schreibst) / `read` (erst Quellen lesen) / `enough` (diese Facette reicht, weil …). Lesen (`fetch_source`, `read_document`) ist dazwischen erlaubt. `get_coverage_gaps` ist eine Zählung, kein Suchauftrag. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus.
    - Für graue Literatur, News, Behörden- und Marktquellen — und zusätzlich für Wissenschaft (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints) — dann die Websuche. Die nächste WebSearch ist geblockt, bis `reflect_search` die letzte Welle bewertet hat. Das Suchprotokoll kommt vom Hook.
-   - **Sichten tut der Mensch** (Tab Sichtung: Rein / Raus / Unsicher / Ansehen). Du arbeitest die Welle nicht ab. Nach der Suche: `wait_for_screening`. Hat der Mensch im Chat Rein gesagt: `include_screening` mit `candidate_id` und Grund. Nach Rein: Textfenster (`read_document` / Antwort von `include_screening`), bei langen Dokumenten mit `offset` weiterblättern → **sofort** `add_source` mit: `reason` (warum diese Quelle), `extraction` (welches Wissen), `contribution` (Beitrag zum Ergebnis), **`document_id` + `quote_start` + `quote_end`** (absolute Zeichenpositionen der Belegstelle), `retrieval_method` und **`sub_question_id`** der gerade bearbeiteten Teilfrage. `fetch_source` auf offenen Karten lehnt der Server ab.
+   - **Ordner füllen:** Nach der Suche wenige passende Treffer selbst lesen (`fetch_source` / `read_document`), bei langen Dokumenten mit `offset` weiterblättern → **`assess_carrier`** (carrier_id aus fetch) → **sofort** `add_source` mit: `reason` (warum diese Quelle), `extraction` (welches Wissen), `contribution` (Beitrag zum Ergebnis), **`document_id` + `quote_start` + `quote_end`** (absolute Zeichenpositionen der Belegstelle), `retrieval_method` und **`sub_question_id`** der gerade bearbeiteten Teilfrage. Nicht die ganze Welle fetchen. **Übernehmen** setzt nur der Mensch auf dem Arbeitstisch.
        - **Ohne `sub_question_id` zählt die Quelle bei keiner Teilfrage zur Abdeckung** und taucht als Lücke auf. Nachträglich korrigierbar mit `assign_source`.
        - Antwort prüfen: Bei `quote_verified: false` → Zitat mit exaktem Wortlaut korrigieren (neuer `add_source`-Aufruf) oder `flag_uncertainty`. Niemals stillschweigend weitermachen.
        - Weitere Erkenntnisse aus derselben Quelle: `log_extraction`, nicht erneut `add_source`.
@@ -49,13 +49,13 @@ Wenn `fetch_source` einen Capture-Auftrag zurückgibt (`needs_capture`): **nicht
 
 5. **Synthese**:
    - Jede zentrale Aussage per `link_claim_to_source` mit Quelle + wörtlicher Belegstelle verknüpfen. Widersprechende Quellen ausdrücklich als `support_type: contrasts` — das ist erwünscht, kein Makel.
-   - Bericht per `add_report_version` ablegen; Aussagen tragen `[S#]`-Marker passend zum Quellenverzeichnis.
+   - Bericht per `add_report_version` ablegen; Aussagen tragen `[S#]`/`[@citekey]`-Marker. **Nur `human_signed`.** Unsignierte Zitate lehnt der Server ab. Offene Ordner nennen und nicht zitieren.
    - **Der Server lehnt den Bericht ab, solange Lücken offen sind.** Das ist Absicht. Schließe sie — oder lege, wenn der Nutzer ausdrücklich einen Zwischenstand will, mit `acknowledge_gaps: true` und einer ehrlichen `gap_acknowledgement` ab. Die Quittierung landet unlöschbar im Prüfpfad.
 
 6. **Abschluss**:
    - `re_verify` mit `depth: deterministic` aufrufen; Ergebnis (belegte/unbelegte/unerreichbare Quellen) zusammenfassen.
    - Verlauf per `add_chat_log` vervollständigen.
-   - Den Nutzer hinweisen: Es fehlen noch (a) die **geblindete Verify-Session** (`start_verify_session` in einer NEUEN Unterhaltung) und (b) sein **menschlicher Sign-off** pro Quelle in der App.
+   - Den Nutzer hinweisen: Es fehlt noch sein **Übernehmen** pro Ordner auf dem Arbeitstisch. Kein Werkzeug setzt `human_signed`.
 
 ## Multi-Agent-Modus
 
@@ -83,7 +83,7 @@ Fehlen Quellen oder Inhalte, wird NICHT neu gestartet: Das Werkzeug `start_exten
 Dieses Skill-Paket enthält ein deterministisches Provenienz-Gate: [hooks/provenance-gate.cjs](hooks/provenance-gate.cjs). Es gilt **nur für Claude Code**. In Cursor: [hooks/cursor-search-ingest.cjs](hooks/cursor-search-ingest.cjs) (WebSearch protokollieren, WebFetch abweisen) plus Rule `.cursor/rules/transparent-research.mdc` plus Server-Enforcement.
 
 - Nach jeder **WebSearch**: nächster Suchschritt geblockt, bis `reflect_search` die Lage geschrieben hat (covered / underrepresented / next_action). Lesen via `fetch_source` bleibt erlaubt. Das Suchprotokoll kommt vom Hook (`log_search` nicht extra nötig).
-- Nach **WebFetch**: Quelle wird als „unprotokolliert" vorgemerkt; ab 3 offenen Quellen (konfigurierbar via `ROP_MAX_PENDING`) wird jeder weitere Fetch geblockt, bis `add_source`/`exclude_source` nachgeholt sind.
+- Nach **WebFetch**: Quelle wird als „unprotokolliert" vorgemerkt; ab 5 offenen Quellen (konfigurierbar via `ROP_MAX_PENDING`) wird jeder weitere Fetch geblockt, bis `add_source`/`exclude_source` nachgeholt sind.
 - **Turn-Ende** wird blockiert, solange Pflichten offen sind.
 
 Die fertige `hooks`-Konfiguration für `.claude/settings.json` liegt in den App-Einstellungen zum Kopieren bereit.

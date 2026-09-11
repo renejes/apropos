@@ -1,32 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
-import { type ProjectState, isCapturePending } from '../../../shared/types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ProjectState, isCapturePending, isWorkDocument } from '../../../shared/types'
+import { buildDeskFolders } from '../../../shared/desk'
 import { Badge, Button } from '../components/ui'
 import AgentChat from './AgentChat'
 import NotebookView from './NotebookView'
-import OverviewTab from './tabs/OverviewTab'
-import ScreeningTab from './tabs/ScreeningTab'
-import CorpusTab from './tabs/CorpusTab'
-import SourcesTab from './tabs/SourcesTab'
-import ClaimsTab from './tabs/ClaimsTab'
-import MapTab from './tabs/MapTab'
+import DeskTab, { type DeskFocus } from './tabs/DeskTab'
 import ReportsTab from './tabs/ReportsTab'
-import ChatTab from './tabs/ChatTab'
-import AuditTab from './tabs/AuditTab'
 import ExportDialog from './ExportDialog'
 
-const TABS = [
-  { id: 'overview', label: 'Übersicht' },
-  { id: 'screening', label: 'Sichtung' },
-  { id: 'corpus', label: 'Korpus' },
-  { id: 'sources', label: 'Quellen' },
-  { id: 'claims', label: 'Aussagen' },
-  { id: 'map', label: 'Karte' },
-  { id: 'reports', label: 'Berichte' },
-  { id: 'chat', label: 'Protokoll' },
-  { id: 'audit', label: 'Audit' },
-] as const
-
-type TabId = (typeof TABS)[number]['id']
+type PaneId = 'desk' | 'report'
 
 export default function ProjectView({
   projectId,
@@ -38,24 +20,18 @@ export default function ProjectView({
   onOpenProject?: (id: string) => void
 }) {
   const [state, setState] = useState<ProjectState | null>(null)
-  const [tab, setTab] = useState<TabId>('overview')
+  const [pane, setPane] = useState<PaneId>('desk')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
-  const [coverageKey, setCoverageKey] = useState(0)
-  const [focusSourceId, setFocusSourceId] = useState<string | null>(null)
-  const [focusDoc, setFocusDoc] = useState<{ documentId: string; start?: number; end?: number } | null>(null)
-  const openSource = (sourceId: string) => {
-    setFocusSourceId(sourceId)
-    setTab('sources')
-  }
+  const [deskFocus, setDeskFocus] = useState<DeskFocus | null>(null)
+
   const openDocument = (documentId: string, start?: number, end?: number) => {
-    setFocusDoc({ documentId, start, end })
-    setTab('corpus')
+    setDeskFocus({ documentId, start, end })
+    setPane('desk')
   }
 
   const reload = useCallback(async () => {
     setState(await window.api.getProjectState(projectId))
-    setCoverageKey((k) => k + 1)
     onChanged()
   }, [projectId, onChanged])
 
@@ -65,6 +41,12 @@ export default function ProjectView({
     return () => clearInterval(t)
   }, [reload])
 
+  const deskCounts = useMemo(() => {
+    if (!state) return { open: 0, accepted: 0 }
+    const folders = buildDeskFolders(state)
+    return { open: folders.filter((f) => f.pile === 'open').length }
+  }, [state])
+
   if (!state) {
     return <div className="flex h-full items-center justify-center font-mono text-xs text-muted">lädt …</div>
   }
@@ -73,10 +55,7 @@ export default function ProjectView({
     return <NotebookView projectId={projectId} state={state} onReload={reload} onOpenProject={onOpenProject} />
   }
 
-  const pendingCount = state.sources.filter((s) => s.review_status === 'pending').length
-  const corpusCount = state.documents.filter((d) => d.status !== 'excluded').length
-  const screeningOpen = state.screeningCandidates.filter((c) => c.status === 'undecided' || c.status === 'maybe').length
-  const openDocs = state.documents.filter((d) => d.status === 'open')
+  const openDocs = state.documents.filter((d) => d.status === 'open' && isWorkDocument(d))
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -171,45 +150,33 @@ export default function ProjectView({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <nav className="flex shrink-0 gap-0 overflow-x-auto border-b border-hairline px-4">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
-                  tab === t.id ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
-                }`}
-              >
-                {t.label}
-                {t.id === 'screening' && screeningOpen > 0 && <Badge tone="amber">{screeningOpen}</Badge>}
-                {t.id === 'sources' && pendingCount > 0 && <Badge tone="amber">{pendingCount}</Badge>}
-                {t.id === 'corpus' && corpusCount > 0 && <Badge tone="slate">{corpusCount}</Badge>}
-              </button>
-            ))}
+          <nav className="flex shrink-0 gap-0 border-b border-hairline px-4">
+            <button
+              type="button"
+              onClick={() => setPane('desk')}
+              className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
+                pane === 'desk' ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
+              }`}
+            >
+              Arbeitstisch
+              {deskCounts.open > 0 && <Badge tone="amber">{deskCounts.open}</Badge>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPane('report')}
+              className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
+                pane === 'report' ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
+              }`}
+            >
+              Bericht
+              {state.reportVersions.length > 0 && <Badge tone="slate">{state.reportVersions.length}</Badge>}
+            </button>
           </nav>
-          <div className={`min-h-0 flex-1 ${tab === 'corpus' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
-            {tab === 'overview' && <OverviewTab state={state} onReload={reload} coverageKey={coverageKey} onOpenSource={openSource} />}
-            {tab === 'screening' && (
-              <ScreeningTab state={state} onReload={reload} onOpenDocument={(id) => openDocument(id)} />
+          <div className={`min-h-0 flex-1 ${pane === 'desk' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
+            {pane === 'desk' && (
+              <DeskTab state={state} onReload={reload} focus={deskFocus} onFocusConsumed={() => setDeskFocus(null)} />
             )}
-            {tab === 'corpus' && (
-              <CorpusTab state={state} onReload={reload} focus={focusDoc} onFocusConsumed={() => setFocusDoc(null)} />
-            )}
-            {tab === 'sources' && (
-              <SourcesTab
-                state={state}
-                onReload={reload}
-                focusSourceId={focusSourceId}
-                onFocusConsumed={() => setFocusSourceId(null)}
-                onOpenDocument={openDocument}
-              />
-            )}
-            {tab === 'claims' && <ClaimsTab state={state} onOpenSource={openSource} />}
-            {tab === 'map' && <MapTab state={state} onOpenSource={openSource} onReload={reload} />}
-            {tab === 'reports' && <ReportsTab state={state} onReload={reload} />}
-            {tab === 'chat' && <ChatTab state={state} />}
-            {tab === 'audit' && <AuditTab projectId={projectId} />}
+            {pane === 'report' && <ReportsTab state={state} onReload={reload} />}
           </div>
         </div>
       </div>

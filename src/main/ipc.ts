@@ -9,8 +9,9 @@ import { exportBibliography } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
-import { computeCoverage, ingestUploadedFiles, fulfillCaptureFromInbox, ServiceError, resolveCorpusProjectId, assertCorpusWritable, recordSource, recordExclusion } from './core/services/research'
+import { computeCoverage, ingestUploadedFiles, fulfillCaptureFromInbox, ServiceError, resolveCorpusProjectId, assertCorpusWritable, recordSource, recordExclusion, assertReportCitesOnlySigned } from './core/services/research'
 import { excludeScreeningCandidate, includeScreeningCandidate, maybeScreeningCandidate } from './core/services/screening'
+import { addWatchlistEntry, removeWatchlistEntry, signCarrierProfileHuman } from './core/services/carriers'
 import {
   createProject,
   deleteProject,
@@ -358,17 +359,57 @@ export function registerIpc(deps: IpcDeps): void {
     }
   })
 
+  ipcMain.handle(
+    'carriers:sign',
+    (_e, profileId: string, verdict: 'human_signed' | 'rejected', note: string | null) => {
+      try {
+        return signCarrierProfileHuman(repo, profileId, verdict, note, HUMAN)
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'carriers:watchlistAdd',
+    (
+      _e,
+      input: { project_id: string; list_kind: 'exclude' | 'caution' | 'prefer'; domain: string; note: string }
+    ) => {
+      try {
+        return addWatchlistEntry(repo, input, HUMAN)
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle('carriers:watchlistRemove', (_e, id: string) => {
+    try {
+      removeWatchlistEntry(repo, id, HUMAN)
+      return { removed: true }
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+
   // Menschliche Berichts-Überarbeitung: erzeugt eine NEUE unveränderliche Version
   ipcMain.handle(
     'reports:add',
-    (_e, projectId: string, contentMarkdown: string, parentVersionId: string | null, changeSummary: string | null) =>
-      repo.addReportVersion({
-        project_id: projectId,
-        content_markdown: contentMarkdown,
-        parent_version_id: parentVersionId,
-        change_summary: changeSummary,
-        actor: HUMAN,
-      })
+    (_e, projectId: string, contentMarkdown: string, parentVersionId: string | null, changeSummary: string | null) => {
+      try {
+        assertReportCitesOnlySigned(repo, projectId, contentMarkdown)
+        return repo.addReportVersion({
+          project_id: projectId,
+          content_markdown: contentMarkdown,
+          parent_version_id: parentVersionId,
+          change_summary: changeSummary,
+          actor: HUMAN,
+        })
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
   )
 
   ipcMain.handle('verify:run', async (e, projectId: string) => {

@@ -6,6 +6,7 @@ import { Repo } from './core/repo'
 import { defaultDbPath, DEFAULT_MCP_PORT, appDataDir } from './core/paths'
 import { startMcpHttpServer, type RunningHttpServer } from './mcp/http'
 import { registerIpc } from './ipc'
+import { disableIncompatibleSdkNatives } from './core/agent/electron-natives'
 import { CursorAgentHost } from './core/agent/host'
 import { buildAppMenu } from './menu'
 import { acquireDataLock, releaseDataLock, type AcquireLockResult } from './core/data-lock'
@@ -70,6 +71,7 @@ function formatLockMessage(result: Extract<AcquireLockResult, { ok: false }>): s
 }
 
 app.whenReady().then(async () => {
+  disableIncompatibleSdkNatives()
   const root = appDataDir()
   let acquired = acquireDataLock(root, { appVersion: app.getVersion() })
   if (!acquired.ok) {

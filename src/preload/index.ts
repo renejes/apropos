@@ -24,6 +24,8 @@ import type {
   DocumentOpenInfo,
   ExcludedSource,
   ScreeningCandidate,
+  CarrierProfile,
+  CarrierWatchlistEntry,
 } from '../shared/types'
 import type {
   AgentAuthStatus,
@@ -78,6 +80,15 @@ const api = {
   excludeScreening: (candidateId: string, reason: string): Promise<ScreeningCandidate> =>
     ipcRenderer.invoke('screening:exclude', candidateId, reason),
   maybeScreening: (candidateId: string): Promise<ScreeningCandidate> => ipcRenderer.invoke('screening:maybe', candidateId),
+  signCarrier: (profileId: string, verdict: 'human_signed' | 'rejected', note: string | null): Promise<CarrierProfile> =>
+    ipcRenderer.invoke('carriers:sign', profileId, verdict, note),
+  addCarrierWatchlist: (input: {
+    project_id: string
+    list_kind: 'exclude' | 'caution' | 'prefer'
+    domain: string
+    note: string
+  }): Promise<CarrierWatchlistEntry> => ipcRenderer.invoke('carriers:watchlistAdd', input),
+  removeCarrierWatchlist: (id: string): Promise<{ removed: boolean }> => ipcRenderer.invoke('carriers:watchlistRemove', id),
 
   getCoverage: (projectId: string): Promise<CoverageReport> => ipcRenderer.invoke('coverage:get', projectId),
   describeMap: (

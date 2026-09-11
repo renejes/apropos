@@ -20,25 +20,22 @@ function screeningNextAction(all: ScreeningCandidate[]): string {
   const included = all.filter((c) => c.status === 'included')
   const open = all.filter((c) => c.status === 'undecided' || c.status === 'maybe').length
   if (all.length === 0) {
-    return 'Der Sichtungstisch ist leer. Nach search_literature liegen die Treffer hier. Nicht aus Snippets belegen.'
+    return 'Noch keine Treffer. Nach search_literature liegen sie intern bereit. Abstracts sind keine Quelle — fetch_source auf wenige passende Treffer, dann add_source als Ordner auf den Arbeitstisch.'
   }
   if (included.length > 0) {
     const withDoc = included.filter((c) => c.document_id).length
     const capture = included.length - withDoc
     const read =
       withDoc > 0
-        ? `read_document auf die ${withDoc} document_id(s), dann add_source mit Offsets.`
-        : 'included ohne Dokument: Capture im Korpus oder offene Quellen zuerst dokumentieren, dann include_screening erneut.'
-    const rest =
-      open > 0
-        ? ` ${open} Karten noch offen — wait_for_screening erneut, oder include_screening wenn der Mensch im Chat Rein gesagt hat.`
-        : ''
-    return `${included.length} Rein.${capture > 0 ? ` ${capture} ohne Volltext.` : ''} ${read}${rest}`
+        ? `Lies read_document auf die ${withDoc} document_id(s), dann add_source mit Offsets.`
+        : 'included ohne Dokument: Capture im Korpus oder offene Quellen zuerst dokumentieren, dann fetch_source erneut.'
+    const rest = open > 0 ? ` ${open} weitere Treffer — hole wenige passende selbst, nicht die ganze Welle.` : ''
+    return `${included.length} bereits geholt.${capture > 0 ? ` ${capture} ohne Volltext.` : ''} ${read}${rest}`
   }
   if (open > 0) {
-    return `${open} Treffer warten auf den Menschen (Tab Sichtung: Rein / Raus / Unsicher). fetch_source auf offenen Karten ist gesperrt. wait_for_screening, bis Karten entschieden sind. Chat-Rein: include_screening mit candidate_id und Grund. Nicht die ganze Welle includen.`
+    return `${open} Treffer bereit. Hole wenige passende mit fetch_source (Pending-Deckel), assess_carrier, add_source — Ordner landen auf dem Arbeitstisch. Abstracts sind keine Quelle. Nicht wait_for_screening. Treffer, die den Plan nicht treffen: exclude_source.`
   }
-  return 'Keine offenen Karten. Eine neue Suche nach reflect_search — oder fetch_source auf URLs, die nicht auf dem Tisch liegen.'
+  return 'Keine offenen Treffer. Eine neue Suche nach reflect_search — oder fetch_source auf URLs, die nicht schon ausgeschlossen sind.'
 }
 
 function assertCandidate(repo: Repo, id: string): ScreeningCandidate {
@@ -99,12 +96,14 @@ export async function includeScreeningCandidate(
   }
   const reason = note?.trim() ? note.trim() : null
   if (c.status !== 'included') repo.setScreeningDecision(c.id, 'included', actor, reason)
+  const parentUrl = c.parent_url || (c.oa_url && c.url !== c.oa_url ? c.url : null)
   const fetch = await fetchDocument(
     repo,
     {
       project_id: c.project_id,
       url: fetchUrl,
       purpose: 'Zur Volltext-Sichtung ausgewählt.',
+      parent_url: parentUrl,
     },
     actor
   )
@@ -210,7 +209,7 @@ export async function waitForScreening(
       decided,
       still_open: counts.undecided + counts.maybe,
       next_action: timedOut && counts.undecided + counts.maybe > 0
-        ? `Zeit abgelaufen, ${counts.undecided + counts.maybe} Karten noch offen. Der Mensch sichtet im Tab — wait_for_screening erneut oder list_screening.`
+        ? `Zeit abgelaufen, ${counts.undecided + counts.maybe} Treffer noch ohne Ordner. Hole wenige passende mit fetch_source, nicht weiter warten.`
         : screeningNextAction(all),
     }
   }

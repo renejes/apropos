@@ -69,6 +69,9 @@ export interface Source {
   citekey: string | null
   /** Semantik der Quelle (Schema v10) — steuert Coverage, nicht Wahrheit. */
   source_kind: SourceKind | null
+  /** Fundstelle (Work ↔ Landing ↔ Träger). */
+  context_id: string | null
+  carrier_id: string | null
   created_at: string
   created_by: string
 }
@@ -108,6 +111,39 @@ export interface ResearchBrief {
 export type DocumentStatus = 'open' | 'used' | 'excluded'
 /** fetched = Netz/OA; upload = vom Menschen in den Projekt-Korpus gelegt; youtube = Transkript. */
 export type DocumentOrigin = 'fetched' | 'upload' | 'youtube'
+/** work = zitierbares Dokument; landing/imprint/about = Trägerkontext, zählt nicht ins Pending-Gate. */
+export type DocumentRole = 'work' | 'landing' | 'imprint' | 'about' | 'other'
+
+export type CarrierKind =
+  | 'academic_publisher'
+  | 'journal'
+  | 'government'
+  | 'ngo'
+  | 'thinktank'
+  | 'news'
+  | 'blog'
+  | 'party_media'
+  | 'commercial'
+  | 'personal'
+  | 'unknown'
+
+export type CarrierEvidenceBasis = 'imprint' | 'about' | 'landing' | 'literature_register' | 'domain_list' | 'insufficient'
+
+export type CarrierSignalKind =
+  | 'imprint_missing'
+  | 'imprint_quote'
+  | 'about_quote'
+  | 'ownership'
+  | 'funding'
+  | 'list_hit'
+  | 'undisclosed_affiliation'
+  | 'other'
+
+export type CarrierSignalOrigin = 'document' | 'domain_list' | 'manual'
+
+export type WatchlistKind = 'exclude' | 'caution' | 'prefer'
+
+export type DiscoveryMethod = 'web_search' | 'literature' | 'screening' | 'upload' | 'direct'
 
 /** Belegstelle im Originaltext mit Kontext — für den menschlichen Sign-off. */
 export interface DocumentExcerpt {
@@ -155,6 +191,78 @@ export interface FetchedDocument {
    * Nach dem Nachlegen der PDF wird das Feld geleert — URL/DOI bleiben.
    */
   capture_reason: string | null
+  document_role: DocumentRole
+}
+
+export function isWorkDocument(doc: Pick<FetchedDocument, 'document_role'>): boolean {
+  return doc.document_role === 'work'
+}
+
+/** Träger einer Fundstelle — eine Domain pro Projekt. */
+export interface Carrier {
+  id: string
+  project_id: string
+  registrable_domain: string
+  canonical_url: string
+  display_name: string | null
+  carrier_kind: CarrierKind
+  created_at: string
+}
+
+/** Belegtes Trägerprofil — ein Profil pro Carrier. Sign-off nur in der UI. */
+export interface CarrierProfile {
+  id: string
+  carrier_id: string
+  project_id: string
+  observed: string
+  interpretation: string
+  uncertainty: string
+  evidence_basis: CarrierEvidenceBasis
+  confidence: ConfidenceLevel | null
+  self_description_document_id: string | null
+  self_description_start: number | null
+  self_description_end: number | null
+  review_status: ReviewStatus
+  created_at: string
+  created_by: string
+}
+
+export interface CarrierSignal {
+  id: string
+  carrier_profile_id: string
+  signal_kind: CarrierSignalKind
+  label: string
+  detail: string
+  origin: CarrierSignalOrigin
+  document_id: string | null
+  quote_start: number | null
+  quote_end: number | null
+  watchlist_id: string | null
+  created_at: string
+}
+
+/** Wo ein Work-Dokument gefunden wurde. Ein Dokument kann mehrere Fundstellen haben. */
+export interface DocumentContext {
+  id: string
+  project_id: string
+  document_id: string
+  parent_document_id: string | null
+  carrier_id: string
+  discovery_url: string
+  discovery_method: DiscoveryMethod
+  search_log_id: string | null
+  screening_candidate_id: string | null
+  created_at: string
+}
+
+export interface CarrierWatchlistEntry {
+  id: string
+  project_id: string
+  list_kind: WatchlistKind
+  domain: string
+  note: string
+  created_at: string
+  created_by: string
 }
 
 /** Offener Capture-Auftrag: Gate zählt ihn, Zitate sind noch nicht möglich. */
@@ -220,7 +328,7 @@ export interface ChatMessage {
 
 export interface Review {
   id: string
-  entity_type: 'source' | 'claim' | 'claim_source_link' | 'report_version'
+  entity_type: 'source' | 'claim' | 'claim_source_link' | 'report_version' | 'carrier_profile'
   entity_id: string
   reviewer_type: ReviewerType
   reviewer_id: string
@@ -282,6 +390,7 @@ export interface ExcludedSource {
   url: string
   title: string | null
   reason: string
+  carrier_id: string | null
   created_at: string
   created_by: string
 }
@@ -310,6 +419,8 @@ export interface ScreeningCandidate {
   decided_at: string | null
   decided_by: string | null
   document_id: string | null
+  /** Seite, auf der url/oa_url verlinkt war — oft null bei Register-Treffern. */
+  parent_url: string | null
   created_at: string
   updated_at: string
 }
@@ -585,6 +696,11 @@ export interface ProjectState {
   searchReflections: SearchReflection[]
   excludedSources: ExcludedSource[]
   screeningCandidates: ScreeningCandidate[]
+  carriers: Carrier[]
+  carrierProfiles: CarrierProfile[]
+  carrierSignals: CarrierSignal[]
+  documentContexts: DocumentContext[]
+  carrierWatchlist: CarrierWatchlistEntry[]
   subQuestions: SubQuestion[]
   rounds: ResearchRound[]
   marks: Mark[]

@@ -91,7 +91,7 @@ describe('Literatursuche über offene Register', () => {
     expect(desk[0].doi).toBe('10.5555/3295222.3295349')
     expect(desk[0].status).toBe('undecided')
     expect(desk[0].found_via.sort()).toEqual(['crossref', 'openalex'])
-    expect(res.hint).toMatch(/Sichtungstisch/)
+    expect(res.hint).toMatch(/Arbeitstisch|Pending-Deckel/)
   })
 
   it('führt auch ohne DOI über den normalisierten Titel zusammen', async () => {

@@ -191,29 +191,18 @@ describe('Sichtungstisch', () => {
     expect(rows.every((r) => r.status === 'undecided')).toBe(true)
   })
 
-  it('sperrt fetch_source auf offenen Karten und auf der DOI derselben Karte', async () => {
+  it('erlaubt fetch_source auf offenen Karten und markiert sie included', async () => {
     const url = `${origin}/gated`
     repo.upsertScreeningHits(projectId, [hit({ doi: '10.5555/3295222.3295349', url, oa_url: null })], {
       query: 'q',
       search_log_id: null,
       actor: ACTOR,
     })
-    await expect(
-      fetchDocument(repo, { project_id: projectId, url, purpose: 'Ohne Sichtung die Karte holen.' }, ACTOR)
-    ).rejects.toMatchObject({ code: 'screening_required' })
-    await expect(
-      fetchDocument(
-        repo,
-        {
-          project_id: projectId,
-          url: 'https://doi.org/10.5555/3295222.3295349',
-          purpose: 'Dieselbe Karte über den DOI-Resolver holen.',
-        },
-        ACTOR
-      )
-    ).rejects.toMatchObject({ code: 'screening_required' })
-    expect(repo.listScreeningCandidates(projectId)[0].status).toBe('undecided')
-    expect(repo.listOpenDocuments(projectId)).toHaveLength(0)
+    const fetched = await fetchDocument(repo, { project_id: projectId, url, purpose: 'Passenden Treffer selbst auf den Arbeitstisch legen.' }, ACTOR)
+    expect(fetched.document_id).toBeTruthy()
+    expect(repo.listScreeningCandidates(projectId)[0].status).toBe('included')
+    expect(repo.listScreeningCandidates(projectId)[0].document_id).toBe(fetched.document_id)
+    expect(repo.listOpenDocuments(projectId).length).toBeGreaterThan(0)
   })
 
   it('sperrt fetch_source auf ausgeschlossenen Karten', async () => {
@@ -302,14 +291,14 @@ describe('Sichtungstisch', () => {
   })
 
   it('bleibt included ohne Dokument, wenn das Abruf-Kontingent voll ist', async () => {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await fetchDocument(
         repo,
         { project_id: projectId, url: `${origin}/open/${i}`, purpose: 'Kontingent mit offener Quelle füllen.' },
         ACTOR
       )
     }
-    expect(repo.listOpenDocuments(projectId)).toHaveLength(3)
+    expect(repo.listOpenDocuments(projectId)).toHaveLength(5)
     const screenUrl = `${origin}/screen`
     repo.upsertScreeningHits(projectId, [hit({ doi: '10.gate/x', url: screenUrl, oa_url: screenUrl })], {
       query: 'q',

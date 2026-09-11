@@ -38,6 +38,7 @@ import {
 } from '../core/services/visual'
 import { searchLiterature, LITERATURE_BACKENDS } from '../core/services/literature'
 import { includeScreeningInProject, listScreeningDesk, waitForScreening } from '../core/services/screening'
+import { assessCarrier } from '../core/services/carriers'
 import { adoptResearchBrief, draftResearchBrief, getResearchBrief } from '../core/services/brief'
 import { exportBibliography } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
@@ -315,13 +316,14 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '3. QUELLEN LIEST DU MIT fetch_source, nicht mit WebFetch. WebSearch darf entdecken;',
         '   was in den Bericht soll, muss über fetch_source in der DB liegen. Du bekommst eine',
         '   document_id und ein Textfenster mit Zeichenpositionen.',
-        '4. DANACH SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id.',
+        '4. DANACH assess_carrier (Träger: observed/interpretation/uncertainty), dann add_source mit document_id + quote_start + quote_end sowie der sub_question_id.',
         '   Der Server schneidet das Zitat selbst aus dem gespeicherten Text — du tippst nichts ab, und ein',
         '   falsch erinnertes Zitat ist ausgeschlossen. Ohne sub_question_id zählt die Quelle nirgends.',
+        '   PDF auf einer Webseite: fetch_source mit parent_url der Fundstelle. Direkt-PDF ohne Landing bleibt ohne Trägerseite.',
         '5. BEI WISSENSCHAFTLICHEN FRAGEN ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE, arXiv).',
-        '   Liefert DOI und frei zugänglichen Volltext; protokolliert sich selbst. Treffer liegen auf dem Sichtungstisch.',
-        '   Offene Karten: wait_for_screening (Mensch im Tab). Chat-Rein: include_screening. fetch_source auf offenen Karten ist gesperrt.',
-        '   Abstracts sind keine Quelle. URLs, die nicht auf dem Tisch liegen, weiter über fetch_source.',
+        '   Liefert DOI und frei zugänglichen Volltext; protokolliert sich selbst. Abstracts sind keine Quelle.',
+        '   Hole wenige passende Treffer mit fetch_source (Pending-Deckel), assess_carrier, add_source — Ordner auf den Arbeitstisch.',
+        '   Nicht wait_for_screening, nicht auf Abstract-Rein warten. Ausgeschlossene Treffer bleiben gesperrt.',
         '6. NACH JEDER SUCHWELLE reflect_search, BEVOR du erneut suchst. covered / underrepresented (vs Brief/Ziel, keine Stückzahl) /',
         '   next_action search|read|enough. Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus.',
         '   Lesen (fetch_source, read_document) ist zwischen Suche und Lage erlaubt. get_coverage_gaps ist eine Zählung, kein Suchauftrag.',
@@ -336,7 +338,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '    Inbox-Dateien (Chat-Klammer): list_inbox, ingest_local_file. Visuals: describe_evidence_map, prepare_view, toggle_mark, ask_narrative.',
         '   Keine erfundenen Knoten — nur vorhandene Quellen, Aussagen, Teilfragen.',
         '',
-        'Der menschliche Sign-off ist ausschließlich in der App möglich. Kein Werkzeug kann ihn setzen.',
+        'Der menschliche Sign-off (Übernehmen auf dem Arbeitstisch) ist ausschließlich in der App möglich. Kein Werkzeug kann human_signed setzen.',
       ].join('\n'),
     }
   )
@@ -436,12 +438,12 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Projektzustand lesen',
       description:
-        'Liefert den vollständigen aktuellen Zustand eines Projekts (Quellen inkl. Verifikationsstatus, Claims, Links, Berichts-Versionen, Reviews, Flags). ' +
-        'Read-only. Nutze dies, bevor du weiterarbeitest oder reviewst.',
+        'Liefert den vollständigen aktuellen Zustand eines Projekts (Quellen inkl. Verifikationsstatus, Claims, Links, Berichts-Versionen, Reviews, Flags, Träger). ' +
+        'Read-only. Nutze dies, bevor du weiterarbeitest oder reviewst. include: ["carriers"] liefert Träger, Profile, Signale, Fundstellen und Watchlist.',
       inputSchema: {
         project_id: z.string().describe('ID des Projekts'),
         include: z
-          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes', 'screening']))
+          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes', 'screening', 'carriers']))
           .optional()
           .describe('Optional: nur bestimmte Teile zurückgeben (Standard: alles)'),
       },
@@ -465,6 +467,13 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         if (include.includes('search_reflections')) filtered.searchReflections = state.searchReflections
         if (include.includes('notes')) filtered.notes = state.notes
         if (include.includes('screening')) filtered.screeningCandidates = state.screeningCandidates
+        if (include.includes('carriers')) {
+          filtered.carriers = state.carriers
+          filtered.carrierProfiles = state.carrierProfiles
+          filtered.carrierSignals = state.carrierSignals
+          filtered.documentContexts = state.documentContexts
+          filtered.carrierWatchlist = state.carrierWatchlist
+        }
         return ok(filtered)
       } catch (err) {
         return failFrom(err)
@@ -734,8 +743,9 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       description:
         'Bei wissenschaftlichen Fragen VOR der Websuche nutzen: durchsucht OpenAlex, Crossref, Europe PMC, Semantic Scholar und OpenAIRE parallel ' +
         '(arXiv auf Wunsch) und führt die Treffer über DOI zusammen. Liefert DOI, Autoren, Jahr, Journal, Zitationszahl und wo vorhanden einen ' +
-        'frei zugänglichen Volltext (oa_url, auch PDF). Treffer liegen auf dem Sichtungstisch — der Mensch sichtet Rein/Raus. ' +
-        'fetch_source auf offenen Karten ist gesperrt. wait_for_screening oder include_screening (nur wenn der Mensch Rein gesagt hat). url ist die Landing-Page/DOI. ' +
+        'frei zugänglichen Volltext (oa_url, auch PDF). Abstracts sind keine Quelle. Hole wenige passende Treffer mit fetch_source ' +
+        '(Pending-Deckel), dann assess_carrier und add_source — Ordner landen auf dem Arbeitstisch. Nicht wait_for_screening. ' +
+        'Ausgeschlossene Treffer bleiben gesperrt. url ist die Landing-Page/DOI. ' +
         'OpenAIRE-Treffer können graph_edges (Förderprojekte, Organisationen) mitliefern — das ist Zusatz, die Suche selbst ist der Graph-API-Suchindex hinter Explore. ' +
         'Protokolliert sich selbst; kein log_search nötig. ' +
         'Die nächste Suche erst nach reflect_search. Mehrfach gefundene Arbeiten stehen oben.',
@@ -766,11 +776,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     server,
     'list_screening',
     {
-      title: 'Sichtungstisch lesen',
+      title: 'Identifizierte Treffer lesen',
       description:
-        'Zeigt die identifizierten Literatur-/Web-Treffer, die der Mensch sichtet (Rein/Raus/Unsicher). ' +
-        'Kein Volltext, keine Quelle. Standard: offene Karten. fetch_source auf offenen/ausgeschlossenen Karten ist gesperrt. ' +
-        'Nach der Suche: wait_for_screening, bis der Mensch im Tab entscheidet. Chat-Rein: include_screening. Snippets und Abstracts sind keine Belege.',
+        'Zeigt Literatur-/Web-Treffer. Kein Volltext, keine Quelle. Standard: noch nicht geholte. ' +
+        'Hole wenige passende mit fetch_source, dann add_source. Abstracts sind keine Belege. Nicht wait_for_screening.',
       inputSchema: {
         project_id: z.string(),
         status: z.enum(['open', 'undecided', 'maybe', 'included', 'excluded', 'all']).optional(),
@@ -809,9 +818,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Sichtungskarte auf Rein setzen und Volltext holen',
       description:
-        'Nur wenn der Mensch diese Karte genannt hat (Chat: „nimm X“ / Tab Rein hast du schon gesehen). ' +
-        'Setzt included, ruft den Volltext (oa_url bevorzugt) und gibt document_id plus Textfenster zurück — danach add_source mit Offsets. ' +
-        'Nicht die ganze Suchwelle includen. Offene Karten, auf die der Mensch nicht gezeigt hat: wait_for_screening.',
+        'Nur wenn der Mensch diese Karte im Chat genannt hat („nimm X“). ' +
+        'Setzt included, ruft den Volltext (oa_url bevorzugt) und gibt document_id plus Textfenster zurück. ' +
+        'Danach assess_carrier (carrier_id), dann add_source mit Offsets. ' +
+        'Nicht die ganze Suchwelle includen. Alltagsweg: selbst fetch_source auf wenige Treffer.',
       inputSchema: {
         project_id: z.string(),
         candidate_id: z.string().describe('id aus list_screening / wait_for_screening'),
@@ -833,9 +843,13 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           char_len: res.fetch.char_len,
           needs_capture: res.fetch.needs_capture ?? false,
           capture_reason: res.fetch.capture_reason ?? null,
+          carrier_id: res.fetch.carrier_id ?? null,
+          carrier_needs_assessment: res.fetch.carrier_needs_assessment ?? false,
           next_action: res.fetch.needs_capture
             ? 'Capture-Auftrag: auf den Menschen warten, dann read_document.'
-            : 'add_source mit document_id + quote_start + quote_end aus diesem Fenster.',
+            : res.fetch.carrier_needs_assessment
+              ? 'assess_carrier mit dieser carrier_id, danach add_source mit document_id + quote_start + quote_end.'
+              : 'add_source mit document_id + quote_start + quote_end aus diesem Fenster.',
         })
       } catch (err) {
         return failFrom(err)
@@ -847,11 +861,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     server,
     'wait_for_screening',
     {
-      title: 'Warten, bis der Mensch gesichtet hat',
+      title: 'Warten (nicht der Alltagsweg)',
       description:
-        'Nach search_literature: blockiert, bis der Mensch im Tab Sichtung mindestens eine offene Karte entscheidet (Rein/Raus/Unsicher), oder Timeout. ' +
-        'Liegen schon included-Karten bereit, kehrt der Aufruf sofort zurück. Danach read_document / add_source auf document_id. ' +
-        'Nicht fetch_source auf offenen Karten — das Gate lehnt ab.',
+        'Alltag: nicht aufrufen. Nach search_literature wenige Treffer selbst mit fetch_source holen und als Ordner ablegen. ' +
+        'Dieses Werkzeug blockiert, bis eine Karte included/excluded ist, oder Timeout — nur falls der Mensch im Chat Rein sagt und include_screening folgt.',
       inputSchema: {
         project_id: z.string(),
         timeout_ms: z
@@ -897,17 +910,20 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       title: 'Quelle abrufen (und für Offset-Zitate speichern)',
       description:
         'STATT WebFetch nutzen, wenn du eine Quelle für die Research liest. Ruft HTML und PDF ab, speichert den Text und gibt ein ' +
-        'Textfenster mit Zeichenpositionen zurück. Danach add_source mit document_id + quote_start + quote_end — der Server ' +
-        'schneidet das Zitat selbst. Weitere Abrufe werden verweigert, solange abgerufene Quellen undokumentiert sind. ' +
-        'search_literature-Treffer liegen auf dem Sichtungstisch: fetch_source auf offenen oder ausgeschlossenen Karten wird ABGELEHNT. ' +
-        'Nach der Suche wait_for_screening; Chat-Rein: include_screening. URLs, die nicht auf dem Tisch liegen, weiter hier. ' +
-        'Lange Dokumente in Fenstern lesen (offset). Bei Paywall/Campus (401/403) zuerst Unpaywall (legale OA-URL zur DOI); ' +
-        'nur wenn das nichts liefert, Capture-Auftrag: NICHT verbatim_quote, ' +
-        'auf den Menschen warten, dann read_document. Derselbe URL-Aufruf holt nicht erneut aus dem Netz.',
+        'Textfenster mit Zeichenpositionen zurück. PDF auf einer Website: parent_url der Fundstelle mitgeben — der Server holt die Trägerseite extra. ' +
+        'Direkt-PDF ohne parent_url bleibt ehrlich ohne Landing. Danach assess_carrier (carrier_id aus der Antwort), dann add_source mit Offsets. ' +
+        'search_literature-Treffer darfst du selbst holen (Pending-Deckel). Ausgeschlossene Karten lehnt der Server ab. ' +
+        'Lange Dokumente in Fenstern lesen (offset). Bei Paywall/Campus (401/403) zuerst Unpaywall; ' +
+        'nur wenn das nichts liefert, Capture-Auftrag: NICHT verbatim_quote, auf den Menschen warten, dann read_document.',
       inputSchema: {
         project_id: z.string(),
-        url: z.string().url().describe('URL der Quelle'),
+        url: z.string().url().describe('URL der Quelle (Work — oft die PDF)'),
         purpose: z.string().min(10).describe('Warum diese Quelle? Wird protokolliert.'),
+        parent_url: z
+          .string()
+          .url()
+          .optional()
+          .describe('Seite, auf der die URL verlinkt war (Blog/Landing). Nicht dieselbe PDF-URL.'),
         offset: z.number().int().min(0).optional().describe('Ab welchem Zeichen (Standard 0)'),
         limit: z.number().int().min(500).max(30000).optional().describe('Wie viele Zeichen (Standard 8000)'),
       },
@@ -915,6 +931,63 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     async (args) => {
       try {
         return ok(await fetchDocument(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'assess_carrier',
+    {
+      title: 'Träger der Fundstelle belegen',
+      description:
+        'Bewertet den Publisher/die Domain einer gefundenen Quelle — nicht den PDF-Inhalt. Pflicht vor add_source, ' +
+        'sobald fetch_source eine carrier_id geliefert hat (außer Literatur-Shortcut). Pflichtfelder analog zu add_source: ' +
+        'observed (was auf Träger/Impressum steht), interpretation (Deutung), uncertainty. Zitate zur Selbstdarstellung ' +
+        'nur per Offset aus einem geholten Impressum/Landing-Dokument. Kein Bias-Score, kein Extremismus-Label. ' +
+        'Sign-off macht der Mensch gebündelt im Tab Träger.',
+      inputSchema: {
+        project_id: z.string(),
+        carrier_id: z.string().describe('ID aus fetch_source'),
+        observed: z.string().min(20).describe('Was auf Impressum, About oder Landing steht — keine Erfindung'),
+        interpretation: z.string().min(20).describe('Was das über die Art des Trägers nahelegt; klar als Deutung'),
+        uncertainty: z.string().min(10).describe('Was unklar bleibt; Pflicht, auch „nichts Auffälliges gesehen“'),
+        carrier_kind: z
+          .enum([
+            'academic_publisher',
+            'journal',
+            'government',
+            'ngo',
+            'thinktank',
+            'news',
+            'blog',
+            'party_media',
+            'commercial',
+            'personal',
+            'unknown',
+          ])
+          .describe('Gattung, keine politische Bewertung'),
+        evidence_basis: z
+          .enum(['imprint', 'about', 'landing', 'domain_list', 'insufficient'])
+          .describe('Worauf sich die Einordnung stützt. Direkt-PDF ohne Landing: insufficient.'),
+        confidence: confidence.optional(),
+        self_description_document_id: z.string().optional().describe('Impressum- oder Landing-Dokument, nicht die Work-PDF'),
+        self_description_start: z.number().int().min(0).optional(),
+        self_description_end: z.number().int().min(1).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const res = assessCarrier(repo, args, actor())
+        return ok({
+          carrier_id: res.carrier.id,
+          profile_id: res.profile.id,
+          review_status: res.profile.review_status,
+          signals: res.signals.map((s) => ({ kind: s.signal_kind, label: s.label })),
+          next_action: res.hint,
+        })
       } catch (err) {
         return failFrom(err)
       }
@@ -1212,9 +1285,9 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       // Arbeitsvertrag aus start_transparent_research. Wichtigster Satz zuerst —
       // manche Clients kürzen Beschreibungen hinten ab.
       description:
-        'Erfasst EINE gelesene Quelle mit Pflicht-Provenienz. Bevorzugt nach fetch_source: document_id + quote_start + quote_end ' +
-        'angeben, dann schneidet der Server das Zitat selbst (unfälschbar). Sonst verbatim_quote wörtlich angeben — der Server prüft es. ' +
-        'Nie aus dem Gedächtnis. Weitere Erkenntnisse derselben Quelle: log_extraction.',
+        'Erfasst EINE gelesene Quelle mit Pflicht-Provenienz. Bevorzugt nach fetch_source + assess_carrier: document_id + Offsets. ' +
+        'Ohne Trägerprofil (carrier_id aus fetch_source) lehnt der Server ab, außer Literatur-Shortcut oder menschlicher Reader. ' +
+        'Watchlist-Ausschluss blockiert add_source. Nie aus dem Gedächtnis. Weitere Erkenntnisse derselben Quelle: log_extraction.',
       inputSchema: {
         project_id: z.string(),
         url: z.string().url().describe('URL oder DOI-Link'),
@@ -1254,6 +1327,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           sub_question_id: res.source.sub_question_id,
           citekey: res.source.citekey,
           doi: res.source.doi,
+          carrier_id: res.source.carrier_id,
+          context_id: res.source.context_id,
           checks: res.checks,
           next_action: res.hint,
         })
@@ -1328,8 +1403,9 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       title: 'Berichtsversion ablegen',
       description:
         'Erzeugt eine UNVERÄNDERLICHE neue Berichtsfassung (Snapshot mit stabiler Hash-ID). ' +
-        'Aussagen im Markdown sollten Quellen-Marker wie [@citekey] (früher [S1]) auf die erfassten Quellen tragen. ' +
+        'Aussagen im Markdown sollten Quellen-Marker wie [@citekey] (früher [S1]) auf übernommene Quellen tragen. ' +
         'Bestehende Versionen können nie editiert werden — immer eine neue Version anlegen. ' +
+        'Nur Quellen mit review_status human_signed dürfen zitiert werden; unsignierte Zitate lehnt der Server ab. ' +
         'WICHTIG: Der Server lehnt den Bericht ab, solange get_coverage_gaps offene Lücken meldet. ' +
         'Schließe die Lücken zuerst; nur in begründeten Ausnahmen acknowledge_gaps=true setzen.',
       inputSchema: {
@@ -1605,7 +1681,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       title: 'Review anfordern',
       description: 'Meldet einen Eintrag explizit zum Review an (durch Mensch oder eine Verify-Session) und begründet warum.',
       inputSchema: {
-        entity_type: z.enum(['source', 'claim', 'claim_source_link', 'report_version']),
+        entity_type: z.enum(['source', 'claim', 'claim_source_link', 'report_version', 'carrier_profile']),
         entity_id: z.string(),
         reason: z.string().min(10).describe('Warum braucht dieser Eintrag ein Review?'),
       },
@@ -1877,10 +1953,10 @@ ${
 `
                 : ''
             }4. WÄHREND DER RECHERCHE — die Kernregel: **Dokumentiere im Moment des Lesens, nie rückwirkend aus dem Gedächtnis.** Arbeite Teilfrage für Teilfrage. Jede Suche nennt ein Ziel aus dem Brief. Treffer, die den Plan nicht treffen: exclude_source, nicht ablegen.
-   - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Die Treffer liegen auf dem Sichtungstisch. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
-   - Nach JEDER Suchwelle (search_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt — aber nicht alle Treffer abarbeiten. Offene Karten: wait_for_screening. Chat-Rein: include_screening. fetch_source auf offenen Karten ist gesperrt. Abstracts sind keine Quelle.
+   - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Abstracts sind keine Quelle. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
+   - Nach JEDER Suchwelle (search_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt — aber nicht alle Treffer abarbeiten. Hole wenige passende mit fetch_source, assess_carrier, add_source — Ordner auf den Arbeitstisch. Nicht wait_for_screening.
    - WebSearch darf danach AUCH für Wissenschaft entdecken (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints, die Register schlecht indexieren). Graue Literatur/News/Behörden ebenfalls WebSearch. Das Suchprotokoll kommt vom Hook. Was in den Bericht soll: fetch_source, nicht WebFetch. Snippets sind keine Quelle.
-   - Quellen aus dem Netz liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text und gibt ein Fenster mit Zeichenpositionen. Danach SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id. Der Server schneidet das Zitat selbst heraus.
+   - Quellen aus dem Netz liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text und gibt ein Fenster mit Zeichenpositionen. PDF auf einer Website: parent_url der Fundstelle. Danach assess_carrier (carrier_id), dann SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id. Der Server schneidet das Zitat selbst heraus. Direkt-PDF ohne Landing: evidence_basis=insufficient, kein erfundenes Impressum.
    - Hochgeladene PDFs/Texte des Menschen sind Seed-Quellen: ZUERST list_corpus und search_documents, dann read_document (nicht WebFetch, nicht file://). Danach SOFORT add_source mit Offsets.
    - Chat-Anhänge in der Inbox: list_inbox, dann ingest_local_file, falls sie noch nicht im Korpus liegen.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
@@ -1894,7 +1970,7 @@ ${
    - should_continue=false → weiter zur Synthese; nimm das stop_reason in den Bericht auf.
    - Jederzeit get_coverage_gaps als Arbeitsliste. Das ist eine Zählung, kein Urteil — DEINE Einschätzung, ob die Recherche "reicht", zählt nicht.
 
-6. SYNTHESE: Verknüpfe jede zentrale Aussage per link_claim_to_source mit Quelle + wörtlicher Belegstelle — widersprechende Quellen ausdrücklich als support_type=contrasts. Lege den Bericht mit add_report_version ab; Aussagen tragen [S#]-Marker. Der Server lehnt ab, solange Lücken offen sind; das ist Absicht. Nur wenn der Nutzer ausdrücklich einen Zwischenstand will: acknowledge_gaps=true mit ehrlicher gap_acknowledgement.
+6. SYNTHESE: Verknüpfe jede zentrale Aussage per link_claim_to_source mit Quelle + wörtlicher Belegstelle — widersprechende Quellen ausdrücklich als support_type=contrasts. Lege den Bericht mit add_report_version nur aus human_signed-Quellen ab; Aussagen tragen [S#]/[@citekey]. Offene Ordner nennen und nicht zitieren. Der Server lehnt unsignierte Zitate und offene Coverage-Lücken ab. Nur wenn der Nutzer ausdrücklich einen Zwischenstand will: acknowledge_gaps=true mit ehrlicher gap_acknowledgement.
 
 7. ABSCHLUSS: re_verify mit depth=deterministic aufrufen und das Ergebnis zusammenfassen. Protokolliere den Verlauf per add_chat_log. Weise den Nutzer darauf hin, dass (a) eine geblindete Verify-Session (Werkzeug start_verify_session in einer NEUEN Unterhaltung) und (b) sein menschlicher Sign-off in der App noch ausstehen.
 

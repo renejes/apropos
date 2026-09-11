@@ -12,7 +12,7 @@ import type { JournalMode } from '../../shared/types'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 17 // v17 Screening-Tisch — Treffer sichten bevor Volltext
+export const SCHEMA_VERSION = 18 // v18 Träger/Fundstelle — Quellenkontext und Watchlist
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -210,6 +210,88 @@ CREATE INDEX IF NOT EXISTS idx_screening_project_status ON screening_candidates(
 CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_doi ON screening_candidates(project_id, doi) WHERE doi IS NOT NULL AND doi != '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_url ON screening_candidates(project_id, url);
 
+-- v18: Träger + Fundstelle. Work-Dokument, Landing-Seite und Publisher bleiben getrennt.
+CREATE TABLE IF NOT EXISTS carriers (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  registrable_domain TEXT NOT NULL,
+  canonical_url      TEXT NOT NULL,
+  display_name       TEXT,
+  carrier_kind       TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (carrier_kind IN (
+      'academic_publisher','journal','government','ngo','thinktank',
+      'news','blog','party_media','commercial','personal','unknown'
+    )),
+  created_at         TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_carriers_domain ON carriers(project_id, registrable_domain);
+
+CREATE TABLE IF NOT EXISTS carrier_profiles (
+  id                           TEXT PRIMARY KEY,
+  carrier_id                   TEXT NOT NULL REFERENCES carriers(id) ON DELETE CASCADE,
+  project_id                   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  observed                     TEXT NOT NULL,
+  interpretation               TEXT NOT NULL,
+  uncertainty                  TEXT NOT NULL,
+  evidence_basis               TEXT NOT NULL
+    CHECK (evidence_basis IN ('imprint','about','landing','literature_register','domain_list','insufficient')),
+  confidence                   TEXT CHECK (confidence IN ('low','medium','high')),
+  self_description_document_id TEXT REFERENCES documents(id),
+  self_description_start       INTEGER,
+  self_description_end         INTEGER,
+  review_status                TEXT NOT NULL DEFAULT 'pending'
+    CHECK (review_status IN ('pending','ai_checked','human_signed','rejected')),
+  created_at                   TEXT NOT NULL,
+  created_by                   TEXT NOT NULL DEFAULT 'unknown'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_carrier_profile ON carrier_profiles(carrier_id);
+
+CREATE TABLE IF NOT EXISTS carrier_signals (
+  id                 TEXT PRIMARY KEY,
+  carrier_profile_id TEXT NOT NULL REFERENCES carrier_profiles(id) ON DELETE CASCADE,
+  signal_kind        TEXT NOT NULL
+    CHECK (signal_kind IN (
+      'imprint_missing','imprint_quote','about_quote','ownership',
+      'funding','list_hit','undisclosed_affiliation','other'
+    )),
+  label              TEXT NOT NULL,
+  detail             TEXT NOT NULL,
+  origin             TEXT NOT NULL CHECK (origin IN ('document','domain_list','manual')),
+  document_id        TEXT REFERENCES documents(id),
+  quote_start        INTEGER,
+  quote_end          INTEGER,
+  watchlist_id       TEXT,
+  created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_carrier_signals_profile ON carrier_signals(carrier_profile_id);
+
+CREATE TABLE IF NOT EXISTS document_contexts (
+  id                     TEXT PRIMARY KEY,
+  project_id             TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  document_id            TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  parent_document_id     TEXT REFERENCES documents(id),
+  carrier_id             TEXT NOT NULL REFERENCES carriers(id),
+  discovery_url          TEXT NOT NULL,
+  discovery_method       TEXT NOT NULL
+    CHECK (discovery_method IN ('web_search','literature','screening','upload','direct')),
+  search_log_id          TEXT REFERENCES search_log(id),
+  screening_candidate_id TEXT REFERENCES screening_candidates(id),
+  created_at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_contexts_doc ON document_contexts(document_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_contexts_discovery ON document_contexts(document_id, discovery_url);
+
+CREATE TABLE IF NOT EXISTS carrier_watchlist (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  list_kind   TEXT NOT NULL CHECK (list_kind IN ('exclude','caution','prefer')),
+  domain      TEXT NOT NULL,
+  note        TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  created_by  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_domain ON carrier_watchlist(project_id, domain);
+
 -- Recherchetiefe (v3): Teilfragen sind das, wogegen Abdeckung gemessen wird.
 -- Ohne sie kann niemand — auch kein Modell — sagen, ob eine Recherche vollständig ist.
 CREATE TABLE IF NOT EXISTS sub_questions (
@@ -268,7 +350,10 @@ CREATE TABLE IF NOT EXISTS documents (
   filename     TEXT,
   page_starts_json TEXT,
   -- v16: Paywall/Zugang — Stub bleibt status=open (Gate zählt mit). Text kommt vom Menschen.
-  capture_reason TEXT
+  capture_reason TEXT,
+  -- v18: work = zitiertes Dokument; landing/imprint/about = Trägerkontext (zählen nicht ins Pending-Gate).
+  document_role TEXT NOT NULL DEFAULT 'work'
+    CHECK (document_role IN ('work','landing','imprint','about','other'))
 );
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(project_id, status);
@@ -560,6 +645,18 @@ function migrate(db: DB): void {
       db.exec(`CREATE INDEX IF NOT EXISTS idx_screening_project_status ON screening_candidates(project_id, status, created_at)`)
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_doi ON screening_candidates(project_id, doi) WHERE doi IS NOT NULL AND doi != ''`)
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_screening_url ON screening_candidates(project_id, url)`)
+      // v18: Träger/Fundstelle — Spalten auf bestehenden Tabellen + Indexe der neuen Tabellen.
+      addColumnIfMissing(db, 'documents', 'document_role', "TEXT NOT NULL DEFAULT 'work'")
+      addColumnIfMissing(db, 'sources', 'context_id', 'TEXT REFERENCES document_contexts(id)')
+      addColumnIfMissing(db, 'sources', 'carrier_id', 'TEXT REFERENCES carriers(id)')
+      addColumnIfMissing(db, 'excluded_sources', 'carrier_id', 'TEXT REFERENCES carriers(id)')
+      addColumnIfMissing(db, 'screening_candidates', 'parent_url', 'TEXT')
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_carriers_domain ON carriers(project_id, registrable_domain)`)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_carrier_profile ON carrier_profiles(carrier_id)`)
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_carrier_signals_profile ON carrier_signals(carrier_profile_id)`)
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_doc_contexts_doc ON document_contexts(document_id)`)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_contexts_discovery ON document_contexts(document_id, discovery_url)`)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_domain ON carrier_watchlist(project_id, domain)`)
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

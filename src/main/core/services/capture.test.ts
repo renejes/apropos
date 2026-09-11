@@ -11,6 +11,7 @@ import {
   recordExclusion,
   recordSource,
 } from './research'
+import { assessCarrier } from './carriers'
 import { adoptMinimalBrief } from './brief'
 import { projectWorkspace } from '../agent/workspace'
 import { buildMinimalPdf } from '../enforce/minimal-pdf'
@@ -183,6 +184,20 @@ describe('Paywall-Capture und PDF-Bindung', () => {
     const doc = repo.getDocument(res.document_id)!
     const start = doc.text.indexOf(QUOTE)
     expect(start).toBeGreaterThanOrEqual(0)
+    if (!res.carrier_id) throw new Error('carrier_id fehlt nach fetch')
+    await assessCarrier(
+      repo,
+      {
+        project_id: project.id,
+        carrier_id: res.carrier_id,
+        observed: 'Testdomain ohne erkennbares Impressum in dieser Fixture.',
+        interpretation: 'Lokaler Testträger ohne redaktionellen Rahmen.',
+        uncertainty: 'Impressum wurde nicht gelesen.',
+        carrier_kind: 'unknown',
+        evidence_basis: 'insufficient',
+      },
+      ACTOR
+    )
 
     const added = await recordSource(
       repo,
