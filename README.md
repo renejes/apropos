@@ -90,6 +90,7 @@ Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen
 | **Unfälschbare Zitate** | Der Server speichert den Text und schneidet das Zitat an Zeichenpositionen. Das Modell tippt nichts ab. |
 | **Seed-Korpus** | Eigene PDFs unter Plan, im Kopf oder per Büroklammer ablegen — die KI prüft sie zusätzlich zur Online-Suche. |
 | **Verwandte Research** | Andere Projekte verknüpfen. Die KI darf dort lesen; was hier zitiert werden soll, kopiert sie her — du übernimmst erneut. |
+| **Arbeitsnotizen** | Eine `NOTES.md` unter Plan. Die KI hängt Querverweise und Sackgassen an; du liest und kürzt. Kein Beleg — Bericht und BibTeX ignorieren die Datei. |
 | **Arbeitstisch** | Agent-Desk zum Zuschauen, Human Desk zum Übernehmen. Sign-off nur du. |
 | **Such-Lage** | Nach jeder Welle: was getroffen ist, was fehlt, was als Nächstes passiert. |
 | **Messbare Tiefe** | Teilfragen und Lückenliste, keine globale Stückzahl. |
@@ -187,6 +188,7 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `draft_research_brief` / `adopt_research_brief` | Blickwinkel, bevor gesucht wird (Research) |
 | `list_corpus` / `search_documents` / `read_document` | Seed-PDFs, YouTube-Transkripte, abgerufene Texte |
 | `list_related_research` / `read_related_document` / `import_related_source` | In verknüpfte Research-Projekte schauen; Kopie landet pending |
+| `read_project_notes` / `append_project_notes` | Gemeinsames Pad (`NOTES.md` unter Plan). Kein Beleg |
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `save_note` / `list_notes` / `update_note` | Notebook-Notizen (Offsets schneidet der Server) |
 | `list_artifacts` | Dateien unter `artifacts/` |

@@ -99,6 +99,11 @@ async function main(): Promise<void> {
       tools.tools.map((t) => t.name)
     )
     check(
+      'Arbeitsnotizen-Tools vorhanden (read_project_notes, append_project_notes)',
+      ['read_project_notes', 'append_project_notes'].every((n) => tools.tools.some((t) => t.name === n)),
+      tools.tools.map((t) => t.name)
+    )
+    check(
       'Träger-Tool assess_carrier vorhanden',
       tools.tools.some((t) => t.name === 'assess_carrier'),
       tools.tools.map((t) => t.name)

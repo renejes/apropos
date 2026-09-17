@@ -280,6 +280,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             <strong>Verwandte Research</strong> — andere Projekte verknüpfen (z. B. drei Teile einer Hausarbeit). Die KI
             darf dort lesen; was in <em>diesen</em> Bericht soll, kopiert sie hierher. Du übernimmst erneut.
           </li>
+          <li>
+            <strong>Arbeitsnotizen</strong> — ein gemeinsames Markdown-Pad (NOTES.md). Die KI hängt Querverweise und
+            Sackgassen an; du liest und kürzt. Kein Beleg — Bericht und BibTeX ignorieren die Datei.
+          </li>
         </Ul>
         <H>Was du tust</H>
         <Ul>
@@ -774,6 +778,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           <li>
             <Code>list_related_research</Code> / <Code>read_related_document</Code> / <Code>import_related_source</Code> —
             in verknüpfte Research-Projekte schauen; Kopie landet pending, Übernehmen nur du.
+          </li>
+          <li>
+            <Code>read_project_notes</Code> / <Code>append_project_notes</Code> — gemeinsames Pad unter Plan. Kein Beleg.
           </li>
           <li>
             <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Danach{' '}

@@ -65,6 +65,8 @@ const api = {
   removeRelatedResearch: (fromProjectId: string, toProjectId: string, bothWays?: boolean): Promise<{ related: RelatedResearch[]; removed: boolean }> =>
     ipcRenderer.invoke('research:removeRelated', fromProjectId, toProjectId, bothWays),
   listRelatedResearch: (projectId: string): Promise<RelatedResearch[]> => ipcRenderer.invoke('research:listRelated', projectId),
+  writeProjectNotes: (projectId: string, markdown: string): Promise<{ markdown: string }> =>
+    ipcRenderer.invoke('projectNotes:write', projectId, markdown),
 
   signSource: (sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null): Promise<Source> =>
     ipcRenderer.invoke('sources:sign', sourceId, verdict, note),

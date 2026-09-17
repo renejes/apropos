@@ -212,6 +212,7 @@ export default function PlanTab({
         </div>
         <div className="mx-auto mt-8 w-full max-w-2xl space-y-6">
           <StepList steps={steps} />
+          <ProjectNotesCard state={state} onReload={onReload} />
           <SeedFilesCard state={state} onReload={onReload} />
           <RelatedResearchCard state={state} onReload={onReload} onOpenProject={onOpenProject} />
         </div>
@@ -267,6 +268,7 @@ export default function PlanTab({
           <StepList steps={steps} />
         </Card>
 
+        <ProjectNotesCard state={state} onReload={onReload} />
         <SeedFilesCard state={state} onReload={onReload} />
         <RelatedResearchCard state={state} onReload={onReload} onOpenProject={onOpenProject} />
 
@@ -524,6 +526,58 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">{label}</div>
       {children}
     </div>
+  )
+}
+
+function ProjectNotesCard({ state, onReload }: { state: ProjectState; onReload: () => void }) {
+  const [draft, setDraft] = useState(state.project_notes)
+  const [dirty, setDirty] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dirty) setDraft(state.project_notes)
+  }, [state.project_notes, dirty])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await window.api.writeProjectNotes(state.project.id, draft)
+      setDirty(false)
+      onReload()
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err).replace(/^Error:\s*/, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <SectionTitle>Arbeitsnotizen</SectionTitle>
+      <p className="mb-3 text-xs leading-relaxed text-muted">
+        Gemeinsames Pad für dich und die KI (NOTES.md). Querverweise, Sackgassen, nächste Vermutung —{' '}
+        <strong>kein Beleg</strong>. Bericht und BibTeX ignorieren diese Datei. Die KI hängt Einträge an; du kannst den
+        ganzen Text hier kürzen.
+      </p>
+      <textarea
+        className="field min-h-[10rem] w-full font-sans text-sm leading-relaxed"
+        value={draft}
+        placeholder="# Arbeitsnotizen"
+        onChange={(e) => {
+          setDraft(e.target.value)
+          setDirty(true)
+        }}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button variant="primary" disabled={busy || !dirty} onClick={() => void save()}>
+          Speichern
+        </Button>
+        {dirty && <span className="text-xs text-muted">ungespeichert</span>}
+      </div>
+      {error && <p className="mt-2 text-xs text-warn">{error}</p>}
+    </Card>
   )
 }
 

@@ -2061,6 +2061,7 @@ export class Repo {
       notes: this.listNotes(projectId),
       linked_research: null,
       related_research: [],
+      project_notes: '',
     }
   }
 

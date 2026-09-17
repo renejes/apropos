@@ -736,6 +736,11 @@ export interface ProjectState {
    * Der Agent liest dort; Berichte zitieren nur lokale, übernommene Quellen.
    */
   related_research: RelatedResearch[]
+  /**
+   * Inhalt von NOTES.md — Arbeitsnotizen von KI und Mensch.
+   * Kein Beleg; Bericht und BibTeX ignorieren die Datei. Leer im Notebook.
+   */
+  project_notes: string
 }
 
 /** Verknüpftes Research-Projekt — der Agent darf dort lesen, nicht direkt zitieren. */

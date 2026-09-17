@@ -35,6 +35,8 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'plan_research',
     'get_coverage_gaps',
     'list_related_research',
+    'read_project_notes',
+    'append_project_notes',
   ],
   research: [
     'search_literature',
@@ -55,6 +57,8 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'list_related_research',
     'read_related_document',
     'import_related_source',
+    'read_project_notes',
+    'append_project_notes',
   ],
   synthesis: [
     'get_project_state',
@@ -71,6 +75,8 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'list_related_research',
     'read_related_document',
     'import_related_source',
+    'read_project_notes',
+    'append_project_notes',
   ],
 }
 

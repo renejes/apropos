@@ -25,6 +25,7 @@ import {
   listRelatedSummaries,
   removeRelatedResearch,
 } from './core/services/related-research'
+import { writeProjectNotes } from './core/services/project-notes'
 import { inspectDocumentOpen, readDocumentPdfBytes, resolveDocumentDiskPath } from './core/services/reader'
 import { projectWorkspace } from './core/agent/workspace'
 import { createNote, deleteNote, updateNote } from './core/services/notes'
@@ -141,6 +142,13 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('research:listRelated', (_e, projectId: string) => {
     try {
       return listRelatedSummaries(repo, projectId)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('projectNotes:write', (_e, projectId: string, markdown: string) => {
+    try {
+      return writeProjectNotes(repo, { project_id: projectId, markdown }, HUMAN)
     } catch (err) {
       throw ipcError(err)
     }

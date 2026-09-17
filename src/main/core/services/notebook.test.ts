@@ -149,12 +149,17 @@ describe('Notebook: Gates, Notizen, Artefakte', () => {
       search_documents: 1,
       save_note: 1,
       draft_research_brief: 1,
+      append_project_notes: 1,
+      read_project_notes: 1,
     }
     const nb = toolsForKind(all, 'notebook')
     expect(nb.save_note).toBe(1)
     expect(nb.draft_research_brief).toBeUndefined()
+    expect(nb.append_project_notes).toBeUndefined()
     const rs = toolsForKind(all, 'research')
     expect(rs.save_note).toBeUndefined()
     expect(rs.draft_research_brief).toBe(1)
+    expect(rs.append_project_notes).toBe(1)
+    expect(rs.read_project_notes).toBe(1)
   })
 })

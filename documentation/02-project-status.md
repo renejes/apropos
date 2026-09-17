@@ -36,7 +36,7 @@ Zwei Lieferformen im Research-Modus, ein Korpus: Blogs (Frame) und wissenschaftl
 | | |
 |---|---|
 | Schema | **v19** (`research_links`: gerichtete Research-zu-Research-Kopplung; davor u. a. Träger/Fundstelle, Screening, `linked_research_id`, `kind`) |
-| Tests | **369** (Vitest) |
+| Tests | **372** (Vitest) |
 | MCP-SDK | `@modelcontextprotocol/sdk` **1.30** |
 | Agent | `@cursor/sdk` **1.0.28**, Runtime `local` |
 | Runtime | Electron **39** (Node-22-ABI für `better-sqlite3`) |
@@ -52,7 +52,7 @@ Typecheck und Unit-Tests sind grün. Smoke (`npm run smoke`) prüft den MCP-HTTP
 2. Projekt anlegen → **Research**. Optional verwandte Research-Projekte anhaken (Hausarbeit in Teilen).
 3. PDFs als mögliche Quellen ablegen — unter **Plan**, über **PDFs reinlegen** im Kopf, oder die Büroklammer im Chat. Kein Brief nötig. Keine Paywall nötig.
 4. Im Chat den Brief erarbeiten; er erscheint unter **Plan**. Du bestätigst (`adopt_research_brief`). **YOLO** (Composer-Menü): Briefing bleibt, danach Suche ohne Nachfragen — Offsets und Sign-off bleiben.
-5. Erst danach suchen: eigener Korpus und verwandte Projekte zuerst, dann Literaturregister und WebSearch gegen den Plan. Pro offener Teilfrage wenige passende Treffer holen, nicht die ganze Welle, keine feste Stückzahl. Nach jeder Welle `reflect_search`, **bevor** erneut gesucht wird.
+5. Erst danach suchen: eigener Korpus und verwandte Projekte zuerst, dann Literaturregister und WebSearch gegen den Plan. Pro offener Teilfrage wenige passende Treffer holen, nicht die ganze Welle, keine feste Stückzahl. Nach jeder Welle `reflect_search`, **bevor** erneut gesucht wird. Querverweise und Sackgassen: **Arbeitsnotizen** unter Plan (`NOTES.md`) — kein Beleg.
 6. Ordner landen auf dem **Agent-Desk** (zuschauen) und dem **Human Desk** (**Übernehmen** / Ablehnen). Nur du setzt Übernehmen.
 7. Bericht nur aus `human_signed`. Offene Ordner werden nicht zitiert. Export: Provenienz-Markdown, **BibTeX (nur übernommen)**, Easy Writing.
 
@@ -92,6 +92,7 @@ reflect_search  (Lage: covered / underrepresented / next_action)
         ▼
 fetch_source / read_document → assess_carrier → add_source (Offset)
         │     oder exclude_source; Ordner auf den Arbeitstisch
+        │     daneben: append_project_notes (NOTES.md, kein Beleg)
         ▼
 Coverage / next_round  (Plan und get_coverage_gaps, nicht „5 Quellen“)
         │
@@ -108,7 +109,7 @@ Paywall: Capture-Auftrag, Volltext nachlegen, dann `read_document` — nicht `ve
 
 ## Was der Server erzwingt (Research)
 
-Alles unterhalb der Schleife liegt in `services/research.ts` (plus `related-research.ts` für Kopplung). MCP-Handler und In-App-Agent rufen dieselben Services. Wer `repo.*` direkt schreibt, umgeht die Garantien.
+Alles unterhalb der Schleife liegt in `services/research.ts` (plus `related-research.ts` für Kopplung, `project-notes.ts` für `NOTES.md`). MCP-Handler und In-App-Agent rufen dieselben Services. Wer `repo.*` direkt schreibt, umgeht die Garantien.
 
 Bei `kind === 'notebook'` überspringen `requireAdoptedBrief`, `requireSearchReflection` und `evaluateSearchGate`. Offset-Zitate und `add_source` gelten weiter. Verknüpftes Notebook: Korpus nur lesen.
 
@@ -121,6 +122,8 @@ Bei `kind === 'notebook'` überspringen `requireAdoptedBrief`, `requireSearchRef
 **Tiefe.** Teilfragen, Sättigung, `add_report_version` lehnt unsignierte Zitate und blockierende Lücken ab.
 
 **Verwandte Research.** Gerichtete Links (`research_links`). Der Agent liest dort (`list_related_research`, `read_related_document`). Was in *dieses* Projekt soll: `import_related_source` (Kopie, pending). Fremde `document_id` in `add_source` wird abgewiesen. Übernehmen erneut hier.
+
+**Arbeitsnotizen.** Eine `NOTES.md` im Workspace (Tab Plan). Der Agent liest und hängt an (`read_project_notes` / `append_project_notes`). Du ersetzt denselben Text in der UI. Kein Beleg — Bericht und BibTeX ignorieren die Datei. Nur Research; Notebook bleibt bei `save_note`.
 
 **Fehler.** `status: "FEHLER …"` und `next_action` im Imperativ (`ServiceError` erzwingt den Hinweis).
 
@@ -137,7 +140,7 @@ Electron
               oder NotebookView
   Main        CursorAgentHost ── customTools (gefiltert nach kind) ── ToolBridge
               HTTP-MCP 127.0.0.1:8790
-              research.ts / related-research.ts / notes.ts / youtube.ts
+              research.ts / related-research.ts / project-notes.ts / notes.ts / youtube.ts
               → SQLite (WAL lokal / DELETE im Sync-Ordner) + FTS5
 ```
 
@@ -153,7 +156,7 @@ Chrome wie Easy Writing: Linie, Invert, Farbe nur für Bedeutung.
 |---|---|
 | Neues Projekt | Research vs Notebook; Research: optional verwandte Projekte |
 | Agent-Chat | Stream, Sessions, `@`, Büroklammer (sofort Korpus); Denken/MCP eingeklappt; Notebook: „Als Notiz speichern“ |
-| Plan | Briefing, Stand, **eigene PDFs**, **verwandte Research** |
+| Plan | Briefing, Stand, **Arbeitsnotizen** (`NOTES.md`), **eigene PDFs**, **verwandte Research** |
 | Agent-Desk | Ordner der KI (in Arbeit) — zuschauen, nicht signieren |
 | Human Desk | Offene Ordner **Übernehmen** oder Ablehnen; BibTeX wenn Übernommene da sind |
 | Bericht | Fassungen; nur `human_signed` zitierbar |
@@ -176,7 +179,7 @@ Schreibweg: [Easy Writing](https://github.com/renejes/easy-writing), Satz option
 
 ## Was belegt ist — und was nicht
 
-**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate (Research), Coverage-Gate, Arbeitsbuffer, Sign-off nur UI, Berichte und BibTeX nur signiert, Rebinding-Schutz, PDF-Offsets, Seed-Korpus, Such-Lage, Easy-Writing-Ordner, Biblio/Citekey, Sayable, Chat-Sessions, Projekt-Löschen, verwandte Research (Link, Lesen, Import als pending), **Notebook:** `kind`, Notizen+Datei, YouTube-ID-Parsing, Gates aus, Tool-Filter, lebender Korpus (`linked_research_id`), Ingest-Ablehnung, Research-Lösch-Guard, Lock/Journal.
+**Belegt (automatisiert):** Schema-Zwang, Offset-Zitate, Brief-Gate (Research), Coverage-Gate, Arbeitsbuffer, Sign-off nur UI, Berichte und BibTeX nur signiert, Rebinding-Schutz, PDF-Offsets, Seed-Korpus, Such-Lage, Easy-Writing-Ordner, Biblio/Citekey, Sayable, Chat-Sessions, Projekt-Löschen, verwandte Research (Link, Lesen, Import als pending), Arbeitsnotizen (`NOTES.md`: lesen, anhängen, ersetzen; kein Beleg), **Notebook:** `kind`, Notizen+Datei, YouTube-ID-Parsing, Gates aus, Tool-Filter, lebender Korpus (`linked_research_id`), Ingest-Ablehnung, Research-Lösch-Guard, Lock/Journal.
 
 **Nicht belegt:** Ob ein echtes Cursor-Modell den Research-Vertrag hält (Brief, Lage, richtige Offsets, verwandte Projekte, Seed-PDFs). Ob der Notebook-Agent Notizen mit Offsets speichert statt Freitext. Die Maschine ist gegen Fixtures verifiziert, nicht gegen eine echte Recherche.
 
@@ -196,6 +199,7 @@ Nächster Schritt Research: [03](03-next-steps.md). Notebook-Vertrag: [08](08-no
 | Menge | Plan / Coverage, nicht eine globale Stückzahl |
 | Bericht / BibTeX | nur `human_signed` dieses Projekts |
 | Verwandte Research | gerichtete Links; lesen ja, zitieren erst nach lokaler Kopie + Sign-off |
+| Arbeitsnotizen | eine `NOTES.md` unter Plan; kein Beleg; Agent hängt an, Mensch ersetzt |
 | Schreibweg | Easy-Writing-Ordner, nicht Zotero; kein Artikelgenerator |
 | Korpus | Research besitzt ihn; Notebook darf ihn lesen (`linked_research_id`) |
 | PDF | Lesen (pdf.js), nicht markieren; Seed-Upload ohne Brief |

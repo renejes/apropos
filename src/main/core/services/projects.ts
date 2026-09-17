@@ -3,6 +3,7 @@ import { removeProjectWorkspace } from '../agent/workspace'
 import { ServiceError, resolveCorpusProjectId } from './research'
 import type { Project, ProjectKind, ProjectMode, ProjectState } from '../../../shared/types'
 import { listRelatedSummaries } from './related-research'
+import { loadProjectNotesText } from './project-notes'
 
 function assertProject(repo: Repo, projectId: string) {
   const project = repo.getProject(projectId)
@@ -20,13 +21,15 @@ export function loadProjectState(repo: Repo, projectId: string): ProjectState {
   const state = repo.getProjectState(projectId)
   const corpusId = resolveCorpusProjectId(repo, projectId)
   const related = listRelatedSummaries(repo, projectId)
-  if (corpusId === projectId) return { ...state, linked_research: null, related_research: related }
+  const project_notes = loadProjectNotesText(repo, projectId)
+  if (corpusId === projectId) return { ...state, linked_research: null, related_research: related, project_notes }
   const linked = repo.getProject(corpusId)
   return {
     ...state,
     documents: repo.listDocuments(corpusId),
     linked_research: linked ? { id: linked.id, title: linked.title } : null,
     related_research: related,
+    project_notes,
   }
 }
 

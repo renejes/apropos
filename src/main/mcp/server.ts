@@ -27,6 +27,7 @@ import {
   readRelatedDocument,
   importRelatedSource,
 } from '../core/services/related-research'
+import { appendProjectNotes, readProjectNotes, MAX_APPEND_CHARS } from '../core/services/project-notes'
 import {
   createProject,
   linkNotebookToResearch,
@@ -344,6 +345,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '    Inbox-Dateien (Chat-Klammer): list_inbox, ingest_local_file. Visuals: describe_evidence_map, prepare_view, toggle_mark, ask_narrative.',
         '12. VERWANDTE RESEARCH: list_related_research (optional query). Lesen: read_related_document. Was in DIESEN Bericht soll: import_related_source',
         '    (Kopie, pending). Nicht fremde document_id in add_source. Übernehmen nur der Mensch.',
+        '13. ARBEITSNOTIZEN: read_project_notes / append_project_notes (NOTES.md unter Plan). Querverweise und Sackgassen, kein Beleg.',
         '   Keine erfundenen Knoten — nur vorhandene Quellen, Aussagen, Teilfragen.',
         '',
         'Der menschliche Sign-off (Übernehmen auf dem Arbeitstisch) ist ausschließlich in der App möglich. Kein Werkzeug kann human_signed setzen.',
@@ -451,7 +453,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       inputSchema: {
         project_id: z.string().describe('ID des Projekts'),
         include: z
-          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes', 'screening', 'carriers']))
+          .array(z.enum(['sources', 'extractions', 'claims', 'links', 'reports', 'chat', 'reviews', 'flags', 'subquestions', 'rounds', 'documents', 'search_reflections', 'notes', 'screening', 'carriers', 'project_notes']))
           .optional()
           .describe('Optional: nur bestimmte Teile zurückgeben (Standard: alles)'),
       },
@@ -478,6 +480,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         if (include.includes('documents')) filtered.documents = state.documents
         if (include.includes('search_reflections')) filtered.searchReflections = state.searchReflections
         if (include.includes('notes')) filtered.notes = state.notes
+        if (include.includes('project_notes')) filtered.project_notes = state.project_notes
         if (include.includes('screening')) filtered.screeningCandidates = state.screeningCandidates
         if (include.includes('carriers')) {
           filtered.carriers = state.carriers
@@ -1188,6 +1191,51 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     async (args) => {
       try {
         return ok(importRelatedSource(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'read_project_notes',
+    {
+      title: 'Arbeitsnotizen lesen (NOTES.md)',
+      description:
+        'Liest die gemeinsamen Arbeitsnotizen dieses Research-Projekts (NOTES.md, Tab Plan). ' +
+        'Kein Beleg — Bericht und BibTeX ignorieren die Datei. Querverweise, Sackgassen, nächste Vermutung. ' +
+        'Neue Einträge: append_project_notes. Ersetzen nur der Mensch unter Plan.',
+      inputSchema: {
+        project_id: z.string(),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(readProjectNotes(repo, args))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'append_project_notes',
+    {
+      title: 'Arbeitsnotiz anhängen (NOTES.md)',
+      description:
+        'Hängt einen Eintrag an NOTES.md (sichtbar unter Plan). Zeitstempel setzt der Server. ' +
+        'Nur Arbeitsgedächtnis: Widersprüche zwischen Quellen, Sackgassen, nächste Vermutung — keine Zitate, kein Bericht. ' +
+        'Lesen: read_project_notes. Der Mensch darf denselben Text unter Plan kürzen.',
+      inputSchema: {
+        project_id: z.string(),
+        text: z.string().min(8).max(MAX_APPEND_CHARS).describe('Neuer Eintrag, kein Beleg'),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(appendProjectNotes(repo, args, actor()))
       } catch (err) {
         return failFrom(err)
       }
@@ -2045,6 +2093,7 @@ ${
    - Quellen aus dem Netz liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text und gibt ein Fenster mit Zeichenpositionen. PDF auf einer Website: parent_url der Fundstelle. Danach assess_carrier (carrier_id), dann SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id. Der Server schneidet das Zitat selbst heraus. Direkt-PDF ohne Landing: evidence_basis=insufficient, kein erfundenes Impressum.
    - Hochgeladene PDFs/Texte des Menschen sind Seed-Quellen: ZUERST list_corpus und search_documents, dann read_document (nicht WebFetch, nicht file://). Danach SOFORT add_source mit Offsets.
    - Verwandte Research-Projekte (Hausarbeit in Teilen): list_related_research, read_related_document. Was hier zitiert werden soll: import_related_source (Kopie, pending). Nicht fremde document_id in add_source.
+   - Arbeitsnotizen (NOTES.md, sichtbar unter Plan): read_project_notes zu Beginn, append_project_notes für Querverweise und Sackgassen. Kein Beleg, kein Bericht.
    - Chat-Anhänge in der Inbox: list_inbox, dann ingest_local_file, falls sie noch nicht im Korpus liegen.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
    - Nur wenn fetch_source scheitert (Scan ohne Textschicht, Binärformat): add_source mit verbatim_quote statt document_id — menschlicher Sign-off. Bei Paywall legt fetch_source einen Capture-Auftrag an (needs_capture): NICHT verbatim_quote, auf den Menschen warten, dann read_document.

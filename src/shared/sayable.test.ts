@@ -113,6 +113,7 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     ...over,
     linked_research: over.linked_research ?? null,
     related_research: over.related_research ?? [],
+    project_notes: over.project_notes ?? '',
   }
 }
 
