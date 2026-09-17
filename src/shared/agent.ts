@@ -70,6 +70,8 @@ export type AgentChatEvent =
   | { type: 'request'; text: string }
   | { type: 'usage'; inputTokens?: number; outputTokens?: number; totalTokens?: number }
   | { type: 'run_end'; status: 'finished' | 'error' | 'cancelled'; error?: string }
+  /** Laufendes oder abgeschlossenes Kontext-Zusammenfassen (SDK onDelta). */
+  | { type: 'summary'; phase: 'started' | 'completed' }
   /** Korpus-Follow nach fetch/read/ingest — nicht im Chat-Verlauf speichern. */
   | { type: 'follow_doc'; documentId: string; start: number; end: number; capture: boolean }
 

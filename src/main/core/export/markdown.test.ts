@@ -38,10 +38,12 @@ function state(over: Partial<ProjectState> = {}): ProjectState {
     marks: [],
     visualVersions: [],
     researchBrief: null,
+    pendingBriefDraft: null,
     documents: [],
     notes: [],
     ...over,
     linked_research: over.linked_research ?? null,
+    related_research: over.related_research ?? [],
   }
 }
 

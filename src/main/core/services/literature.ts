@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Repo } from '../repo'
-import { ServiceError, requireAdoptedBrief, requireSearchReflection } from './research'
+import { ServiceError, requireAdoptedBrief, requireSearchReflection, FETCH_PICK_HINT } from './research'
 import { contactUserAgent, resolveContactEmail } from '../contact-email'
 
 /**
@@ -708,8 +708,8 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       '. ' +
       'Die Suchen sind bereits protokolliert — log_search ist hier NICHT nötig. ' +
       `${hits.length} Treffer identifiziert. NICHT alle fetchen und NICHT aus Abstracts belegen. ` +
-      'Hole wenige passende mit fetch_source (Pending-Deckel), dann assess_carrier und add_source — Ordner landen auf dem Arbeitstisch. ' +
-      'Ausgeschlossene Treffer bleiben gesperrt. Nicht auf Abstract-Rein warten, nicht wait_for_screening. ' +
+      FETCH_PICK_HINT +
+      ' Ausgeschlossene Treffer bleiben gesperrt. Nicht auf Abstract-Rein warten, nicht wait_for_screening. ' +
       'Bevor du erneut suchst: reflect_search (covered / underrepresented / next_action). Die nächste Query kommt aus dieser Lage, nicht aus einem Algorithmus. ' +
       'url ist die Landing-Page/DOI — nicht automatisch die PDF. ' +
       'Ohne oa_url führt die url auf die Verlagsseite (evtl. Paywall) — fetch_source legt dann einen Capture-Auftrag an; ' +

@@ -1,10 +1,12 @@
 import type { ProjectState, ReviewStatus, ScreeningCandidate, ScreeningStatus, Source } from './types'
 import { isWorkDocument } from './types'
 
+export type DeskSurface = 'agent' | 'human'
 export type DeskPile = 'open' | 'accepted' | 'rejected'
 
 export type DeskFolder = {
   id: string
+  surface: DeskSurface
   pile: DeskPile
   title: string
   origin: string
@@ -51,6 +53,14 @@ function claimSource(source: Source, docs: Set<string>, urls: Set<string>, dois:
   if (source.doi) dois.add(source.doi.toLowerCase())
 }
 
+function claimedBySources(sources: Source[]): { docs: Set<string>; urls: Set<string>; dois: Set<string> } {
+  const docs = new Set<string>()
+  const urls = new Set<string>()
+  const dois = new Set<string>()
+  for (const source of sources) claimSource(source, docs, urls, dois)
+  return { docs, urls, dois }
+}
+
 function screeningClaimed(candidate: ScreeningCandidate, docs: Set<string>, urls: Set<string>, dois: Set<string>): boolean {
   if (candidate.document_id && docs.has(candidate.document_id)) return true
   if (urls.has(candidate.url)) return true
@@ -59,64 +69,7 @@ function screeningClaimed(candidate: ScreeningCandidate, docs: Set<string>, urls
   return false
 }
 
-/** Eine Akte auf dem Arbeitstisch: Quelle, sonst Screening-Karte, sonst unzugeordnetes Dokument. */
-export function buildDeskFolders(
-  state: Pick<ProjectState, 'sources' | 'screeningCandidates' | 'documents'>
-): DeskFolder[] {
-  const claimedDocs = new Set<string>()
-  const claimedUrls = new Set<string>()
-  const claimedDois = new Set<string>()
-  const folders: DeskFolder[] = []
-
-  for (const source of state.sources) {
-    folders.push({
-      id: `source:${source.id}`,
-      pile: pileFromReview(source.review_status),
-      title: source.title,
-      origin: source.url,
-      year: source.year,
-      source,
-      candidate: null,
-      documentId: source.document_id,
-    })
-    claimSource(source, claimedDocs, claimedUrls, claimedDois)
-  }
-
-  for (const candidate of state.screeningCandidates) {
-    if (screeningClaimed(candidate, claimedDocs, claimedUrls, claimedDois)) continue
-    folders.push({
-      id: `screening:${candidate.id}`,
-      pile: pileFromScreening(candidate.status),
-      title: candidate.title,
-      origin: candidate.venue || candidate.url,
-      year: candidate.year,
-      source: null,
-      candidate,
-      documentId: candidate.document_id,
-    })
-    if (candidate.document_id) claimedDocs.add(candidate.document_id)
-    claimedUrls.add(candidate.url)
-    if (candidate.oa_url) claimedUrls.add(candidate.oa_url)
-    if (candidate.doi) claimedDois.add(candidate.doi.toLowerCase())
-  }
-
-  for (const doc of state.documents) {
-    if (!isWorkDocument(doc) || doc.status === 'excluded') continue
-    if (claimedDocs.has(doc.id) || claimedUrls.has(doc.url)) continue
-    folders.push({
-      id: `document:${doc.id}`,
-      pile: 'open',
-      title: doc.title || doc.filename || doc.url,
-      origin: doc.url,
-      year: null,
-      source: null,
-      candidate: null,
-      documentId: doc.id,
-    })
-    claimedDocs.add(doc.id)
-    claimedUrls.add(doc.url)
-  }
-
+function sortFolders(folders: DeskFolder[]): DeskFolder[] {
   const order: Record<DeskPile, number> = { open: 0, accepted: 1, rejected: 2 }
   return folders.sort((a, b) => {
     const pile = order[a.pile] - order[b.pile]
@@ -125,6 +78,69 @@ export function buildDeskFolders(
     const tb = b.source?.created_at ?? b.candidate?.updated_at ?? b.candidate?.created_at ?? ''
     return tb.localeCompare(ta)
   })
+}
+
+/** Desk: nur angelegte Quellen — hier übernimmt oder lehnt der Mensch ab. */
+export function buildHumanDeskFolders(state: Pick<ProjectState, 'sources'>): DeskFolder[] {
+  const folders: DeskFolder[] = state.sources.map((source) => ({
+    id: `source:${source.id}`,
+    surface: 'human',
+    pile: pileFromReview(source.review_status),
+    title: source.title,
+    origin: source.url,
+    year: source.year,
+    source,
+    candidate: null,
+    documentId: source.document_id,
+  }))
+  return sortFolders(folders)
+}
+
+/** Agent-Desk: Suchtreffer und gelesene Texte, noch ohne Quelle — nur zuschauen. */
+export function buildAgentDeskFolders(
+  state: Pick<ProjectState, 'sources' | 'screeningCandidates' | 'documents'>
+): DeskFolder[] {
+  const claimed = claimedBySources(state.sources)
+  const folders: DeskFolder[] = []
+
+  for (const candidate of state.screeningCandidates) {
+    if (screeningClaimed(candidate, claimed.docs, claimed.urls, claimed.dois)) continue
+    folders.push({
+      id: `screening:${candidate.id}`,
+      surface: 'agent',
+      pile: pileFromScreening(candidate.status),
+      title: candidate.title,
+      origin: candidate.venue || candidate.url,
+      year: candidate.year,
+      source: null,
+      candidate,
+      documentId: candidate.document_id,
+    })
+    if (candidate.document_id) claimed.docs.add(candidate.document_id)
+    claimed.urls.add(candidate.url)
+    if (candidate.oa_url) claimed.urls.add(candidate.oa_url)
+    if (candidate.doi) claimed.dois.add(candidate.doi.toLowerCase())
+  }
+
+  for (const doc of state.documents) {
+    if (!isWorkDocument(doc) || doc.status === 'excluded') continue
+    if (claimed.docs.has(doc.id) || claimed.urls.has(doc.url)) continue
+    folders.push({
+      id: `document:${doc.id}`,
+      surface: 'agent',
+      pile: 'open',
+      title: doc.title || doc.filename || doc.url,
+      origin: doc.url,
+      year: null,
+      source: null,
+      candidate: null,
+      documentId: doc.id,
+    })
+    claimed.docs.add(doc.id)
+    claimed.urls.add(doc.url)
+  }
+
+  return sortFolders(folders)
 }
 
 export function findDeskFolder(
@@ -137,4 +153,13 @@ export function findDeskFolder(
   }
   if (focus.documentId) return folders.find((f) => f.documentId === focus.documentId)
   return undefined
+}
+
+export function deskSurfaceForFocus(
+  state: Pick<ProjectState, 'sources' | 'screeningCandidates' | 'documents'>,
+  focus: { sourceId?: string | null; documentId?: string | null }
+): DeskSurface {
+  if (focus.sourceId && state.sources.some((s) => s.id === focus.sourceId)) return 'human'
+  if (focus.documentId && state.sources.some((s) => s.document_id === focus.documentId)) return 'human'
+  return 'agent'
 }

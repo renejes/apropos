@@ -69,6 +69,7 @@ import type {
   CarrierWatchlistEntry,
   WatchlistKind,
 } from '../../shared/types'
+import { pendingBriefDraft } from '../../shared/plan'
 
 /**
  * Datenzugriff + Append-only-Event-Log.
@@ -166,6 +167,48 @@ export class Repo {
       .prepare(`SELECT * FROM projects WHERE linked_research_id = ? ORDER BY updated_at DESC`)
       .all(researchId) as ProjectRow[]
     return rows.map(mapProject)
+  }
+
+  addResearchLink(fromProjectId: string, toProjectId: string, actor: string): { id: string; created: boolean } {
+    const existing = this.db
+      .prepare(`SELECT id FROM research_links WHERE from_project_id = ? AND to_project_id = ?`)
+      .get(fromProjectId, toProjectId) as { id: string } | undefined
+    if (existing) return { id: existing.id, created: false }
+    const id = randomUUID()
+    this.db
+      .prepare(
+        `INSERT INTO research_links (id, from_project_id, to_project_id, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(id, fromProjectId, toProjectId, nowIso(), actor)
+    this.touchProject(fromProjectId)
+    this.logEvent(fromProjectId, actor, 'research.linked', { to_project_id: toProjectId, link_id: id })
+    return { id, created: true }
+  }
+
+  removeResearchLink(fromProjectId: string, toProjectId: string, actor: string): boolean {
+    const row = this.db
+      .prepare(`SELECT id FROM research_links WHERE from_project_id = ? AND to_project_id = ?`)
+      .get(fromProjectId, toProjectId) as { id: string } | undefined
+    if (!row) return false
+    this.db.prepare(`DELETE FROM research_links WHERE id = ?`).run(row.id)
+    this.touchProject(fromProjectId)
+    this.logEvent(fromProjectId, actor, 'research.unlinked', { to_project_id: toProjectId, link_id: row.id })
+    return true
+  }
+
+  hasResearchLink(fromProjectId: string, toProjectId: string): boolean {
+    const row = this.db
+      .prepare(`SELECT 1 FROM research_links WHERE from_project_id = ? AND to_project_id = ?`)
+      .get(fromProjectId, toProjectId)
+    return Boolean(row)
+  }
+
+  listResearchLinkTargetIds(fromProjectId: string): string[] {
+    const rows = this.db
+      .prepare(`SELECT to_project_id FROM research_links WHERE from_project_id = ? ORDER BY created_at ASC`)
+      .all(fromProjectId) as Array<{ to_project_id: string }>
+    return rows.map((r) => r.to_project_id)
   }
 
   deleteProject(projectId: string, actor: string): boolean {
@@ -1593,6 +1636,16 @@ export class Repo {
     return row ? mapBrief(row) : undefined
   }
 
+  getLatestDraftBrief(projectId: string): ResearchBrief | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM research_briefs WHERE project_id = ? AND status = 'draft'
+         ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(projectId) as BriefRow | undefined
+    return row ? mapBrief(row) : undefined
+  }
+
   markBriefAdopted(id: string, actor: string): ResearchBrief {
     const ts = nowIso()
     const existing = this.getResearchBrief(id)
@@ -2003,9 +2056,11 @@ export class Repo {
       marks: this.listMarks(projectId),
       visualVersions: this.listVisualVersions(projectId),
       researchBrief: this.getAdoptedBrief(projectId) ?? this.getLatestBrief(projectId) ?? null,
+      pendingBriefDraft: pendingBriefDraft(this.getAdoptedBrief(projectId), this.getLatestDraftBrief(projectId)),
       documents: this.listDocuments(projectId),
       notes: this.listNotes(projectId),
       linked_research: null,
+      related_research: [],
     }
   }
 

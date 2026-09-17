@@ -6,8 +6,8 @@
 |---|---|
 | **Projekt** | apROPos |
 | **Dokument** | 08 — Notebook-Modus |
-| **Stand** | 2026-09-03 |
-| **Schema** | v15 (`linked_research_id`: Notebook liest Research-Korpus) |
+| **Stand** | 2026-09-17 |
+| **Schema** | v19 (`linked_research_id`: Notebook liest Research-Korpus; `research_links` sind Research-zu-Research und gehören nicht hierher) |
 
 **Dokument-Set:** [01](01-implementationplan.md) · [02](02-project-status.md) · [03](03-next-steps.md) · [08 diese Datei](08-notebook.md) · [HANDOVER](../HANDOVER.md)
 
@@ -23,7 +23,7 @@ Beim Anlegen wählt der Mensch **Research** oder **Notebook**. Das ist `projects
 | Brief | Pflicht vor Suche und Netzabruf | keiner |
 | Agent-Preamble | `sessionPreamble` + Skill `focused-research` | `notebookPreamble` + Skill `notebook-sources` |
 | MCP-Werkzeuge am Agenten | alle außer Notebook-only | Whitelist in `notebook-tools.ts` |
-| UI | `ProjectView`: Chat links, Tabs rechts | `NotebookView`: Quellen/Notizen/Artefakte links, Chat+Notiz-Tabs Mitte |
+| UI | `ProjectView`: Chat links; Plan, Agent-Desk, Human Desk, Bericht rechts | `NotebookView`: Quellen/Notizen/Artefakte links, Chat+Notiz-Tabs Mitte |
 | Zitat im Bericht | immer Offset (`add_source`) | unverknüpft: Offset via `add_source`; verknüpft: Belege nur im Research |
 | Notizen | Tabelle existiert, UI nutzt sie nicht | Markdown, bearbeitbar, Datei unter `notes/` |
 

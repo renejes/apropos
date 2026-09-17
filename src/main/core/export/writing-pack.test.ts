@@ -55,6 +55,7 @@ describe('Schreibpaket (Phase G)', () => {
       quote_locator: 'S. 12',
       actor: ACTOR,
     })
+    repo.signSourceHuman(src.id, 'human_signed', 'übernommen', ACTOR)
     const linked = linkClaim(
       repo,
       {

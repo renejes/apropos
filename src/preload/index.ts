@@ -11,7 +11,10 @@ import type {
   Project,
   ProjectState,
   ProjectSummary,
+  RelatedResearch,
   ReportVersion,
+  ResearchBrief,
+  ResearchBriefFields,
   ServerInfo,
   Source,
   VisualGraph,
@@ -57,6 +60,11 @@ const api = {
   getProjectState: (projectId: string): Promise<ProjectState> => ipcRenderer.invoke('projects:state', projectId),
   listEvents: (projectId: string): Promise<EventLogEntry[]> => ipcRenderer.invoke('projects:events', projectId),
   searchSources: (projectId: string, query: string): Promise<Source[]> => ipcRenderer.invoke('projects:search', projectId, query),
+  addRelatedResearch: (fromProjectId: string, toProjectId: string, bothWays?: boolean): Promise<{ related: RelatedResearch[]; added: boolean }> =>
+    ipcRenderer.invoke('research:addRelated', fromProjectId, toProjectId, bothWays),
+  removeRelatedResearch: (fromProjectId: string, toProjectId: string, bothWays?: boolean): Promise<{ related: RelatedResearch[]; removed: boolean }> =>
+    ipcRenderer.invoke('research:removeRelated', fromProjectId, toProjectId, bothWays),
+  listRelatedResearch: (projectId: string): Promise<RelatedResearch[]> => ipcRenderer.invoke('research:listRelated', projectId),
 
   signSource: (sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null): Promise<Source> =>
     ipcRenderer.invoke('sources:sign', sourceId, verdict, note),
@@ -91,6 +99,10 @@ const api = {
   removeCarrierWatchlist: (id: string): Promise<{ removed: boolean }> => ipcRenderer.invoke('carriers:watchlistRemove', id),
 
   getCoverage: (projectId: string): Promise<CoverageReport> => ipcRenderer.invoke('coverage:get', projectId),
+  adoptBrief: (projectId: string, briefId: string): Promise<ResearchBrief> =>
+    ipcRenderer.invoke('briefs:adopt', projectId, briefId),
+  saveBrief: (projectId: string, fields: ResearchBriefFields, adopt: boolean): Promise<ResearchBrief> =>
+    ipcRenderer.invoke('briefs:save', projectId, fields, adopt),
   describeMap: (
     projectId: string,
     layoutKind?: VisualLayoutKind
@@ -159,8 +171,10 @@ const api = {
     ipcRenderer.invoke('export:markdown', projectId, versionId),
   copyMarkdown: (projectId: string, versionId: string | null): Promise<{ copied: boolean }> =>
     ipcRenderer.invoke('export:copy', projectId, versionId),
-  exportBibliography: (projectId: string): Promise<{ saved: boolean; filePath?: string }> =>
-    ipcRenderer.invoke('export:bibliography', projectId),
+  exportBibliography: (projectId: string, sourceIds?: string[] | null): Promise<{ saved: boolean; filePath?: string }> =>
+    ipcRenderer.invoke('export:bibliography', projectId, sourceIds),
+  copyBibliography: (projectId: string, sourceIds?: string[] | null): Promise<{ copied: boolean }> =>
+    ipcRenderer.invoke('export:copyBibliography', projectId, sourceIds),
   exportWritingPack: (input: {
     project_id: string
     visual_version_id?: string

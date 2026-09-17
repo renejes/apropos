@@ -56,42 +56,43 @@ Alltagsweg: **Cursor-Agent in der App**. Chat links, Beweis rechts. Goose oder C
 
 ```
 PDFs in den Korpus  (optional, ohne Brief)
+Verwandte Research verknüpfen  (optional, Hausarbeit in Teilen)
         │
         ▼
-Brief entwerfen → du bestätigst
+Brief entwerfen → du bestätigst  (Tab Plan)
         │
         ▼
 Teilfragen aus dem Brief
         │
         ▼
-Suche  (Korpus, dann Literaturregister + WebSearch)
-        │
-        ▼
-Sichtungstisch  (du: Rein / Raus / Unsicher)
+Suche  (Korpus und verwandte Projekte, dann Literaturregister + WebSearch)
         │
         ▼
 Lage nach jeder Welle  (reflect_search)
         │
         ▼
-wait_for_screening / include_screening → add_source
+Wenige passende Treffer lesen → add_source  (Ordner auf den Arbeitstisch)
         │
         ▼
-Server misst Lücken  — „ich bin fertig“ zählt nicht
+Server misst Lücken gegen den Plan  — „ich bin fertig“ zählt nicht
         │
         ▼
-Karte, Marks, Sign-off → Easy Writing
+Human Desk: Übernehmen  →  Bericht nur aus übernommenen Quellen
+        │
+        ▼
+Export  (Markdown · BibTeX · Easy Writing)
 ```
 
-Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen.
+Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen. Berichte und BibTeX zitieren nur Quellen, die du übernommen hast.
 
 | Mechanismus | Was es bedeutet |
 |---|---|
 | **Unfälschbare Zitate** | Der Server speichert den Text und schneidet das Zitat an Zeichenpositionen. Das Modell tippt nichts ab. |
-| **Seed-Korpus** | Hochgeladene PDFs zuerst durchsuchen, dann belegen. |
-| **Sichtungstisch** | Die KI legt Treffer hin. Du sagst Rein, Raus oder Unsicher — erst dann kommt der Volltext in den Korpus. |
+| **Seed-Korpus** | Eigene PDFs unter Plan, im Kopf oder per Büroklammer ablegen — die KI prüft sie zusätzlich zur Online-Suche. |
+| **Verwandte Research** | Andere Projekte verknüpfen. Die KI darf dort lesen; was hier zitiert werden soll, kopiert sie her — du übernimmst erneut. |
+| **Arbeitstisch** | Agent-Desk zum Zuschauen, Human Desk zum Übernehmen. Sign-off nur du. |
 | **Such-Lage** | Nach jeder Welle: was getroffen ist, was fehlt, was als Nächstes passiert. |
-| **Messbare Tiefe** | Teilfragen, Lückenliste, Sättigung pro Runde. |
-| **Was darfst du sagen** | Grün = signiert und Quote ok. Gelb = belegt, unsigniert. Rot = Widerspruch, Flag, Lücke, Tabu. |
+| **Messbare Tiefe** | Teilfragen und Lückenliste, keine globale Stückzahl. |
 
 ## Wie Notebook funktioniert
 
@@ -124,7 +125,7 @@ flowchart TB
         MCP[MCP-Server · HTTP + stdio]
         Enforce[Services<br/>Research-Gates · Notizen · YouTube]
         DB[(SQLite WAL · FTS5)]
-        UI[Research-Tabs oder NotebookView]
+        UI[Plan / Arbeitstisch / Bericht oder NotebookView]
     end
 
     Cursor -->|customTools, Filter nach kind| MCP
@@ -141,7 +142,7 @@ Die Oberfläche ist Familie zu Easy Writing: weiße Fläche, schwarze Linie, Inv
 
 ## Schnellstart
 
-Voraussetzungen: Node.js 20+, npm, ein [Cursor](https://cursor.com)-Konto (für den Agent-Chat).
+Voraussetzungen: Node.js 22+, npm, ein [Cursor](https://cursor.com)-Konto (für den Agent-Chat). Electron 39 nutzt dieselbe Node-22-ABI für `better-sqlite3`.
 
 ```bash
 git clone https://github.com/renejes/apropos.git
@@ -185,13 +186,14 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 |---|---|
 | `draft_research_brief` / `adopt_research_brief` | Blickwinkel, bevor gesucht wird (Research) |
 | `list_corpus` / `search_documents` / `read_document` | Seed-PDFs, YouTube-Transkripte, abgerufene Texte |
+| `list_related_research` / `read_related_document` / `import_related_source` | In verknüpfte Research-Projekte schauen; Kopie landet pending |
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `save_note` / `list_notes` / `update_note` | Notebook-Notizen (Offsets schneidet der Server) |
 | `list_artifacts` | Dateien unter `artifacts/` |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
-| `search_literature` | OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE — Treffer auf den Sichtungstisch |
-| `list_screening` / `wait_for_screening` / `include_screening` | Offene Karten lesen, auf den Menschen warten, Chat-Rein; `fetch_source` auf offenen Karten gesperrt |
+| `search_literature` | OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE |
 | `reflect_search` | Lage nach einer Suchwelle |
+| `export_bibliography` | BibTeX nur aus `human_signed` |
 | `export_easy_writing` / `export_writing_pack` | Easy-Writing-Ordner bzw. Markdown-Schreibpaket |
 
 Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` …), weil die meisten Clients Prompts nicht ausführen.
@@ -213,7 +215,7 @@ Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` 
 src/main/core/        DB, Repo, Enforcement, Cursor-Agent, Notizen, YouTube
 src/main/mcp/         MCP-Server, HTTP, stdio, Such-Gate
 src/preload/          Typisierte IPC-Brücke
-src/renderer/         React-UI: Chat, Research-Tabs, NotebookView
+src/renderer/         React-UI: Chat, Plan, Arbeitstisch, Bericht, NotebookView
 .cursor/              mcp.json, permissions.json, hooks.json, Rule
 skills/               Claude-Code-Skill + Such-Ingest-Hook
 documentation/        Plan, Status, Next Steps, Notebook-Verdrahtung · Archiv in done/
@@ -228,7 +230,7 @@ HANDOVER.md           Einstieg für einen neuen Chat / Contributor
 |---|---|
 | [HANDOVER.md](HANDOVER.md) | Kurz: Produkt, Regeln, Fallstricke — für den nächsten Chat |
 | [01 Implementation-Plan](documentation/01-implementationplan.md) | Architektur und Phasen (A/B/E–I gebaut) |
-| [02 Projekt-Status](documentation/02-project-status.md) | Aktueller Stand (2026-08-30) |
+| [02 Projekt-Status](documentation/02-project-status.md) | Aktueller Stand der Anwendung |
 | [03 Next Steps](documentation/03-next-steps.md) | Echter Modell-Lauf (Research) |
 | [08 Notebook](documentation/08-notebook.md) | Unterschiede Research/Notebook, Dateien, Gates |
 | Archiv | [04](documentation/done/04-feasability.md) · [05](documentation/done/05-market-research.md) · [06](documentation/done/06-eigene-research-engine.md) · [07](documentation/done/07-clients.md) |

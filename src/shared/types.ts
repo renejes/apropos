@@ -108,6 +108,24 @@ export interface ResearchBrief {
   adopted_by: string | null
 }
 
+/** Pflichtfelder für Entwurf und Adoption — ohne id/status. */
+export type ResearchBriefFields = {
+  deliverable: BriefDeliverable
+  audience: string
+  goal: string
+  frames: ResearchFrame[]
+  chosen_frame_key?: string
+  inclusion: string
+  exclusion: string
+  sub_questions: string[]
+  stop_rule: string
+  taboos: string
+  year_from?: number | null
+  year_to?: number | null
+  min_empirical?: number | null
+  discipline?: BriefDiscipline | null
+}
+
 export type DocumentStatus = 'open' | 'used' | 'excluded'
 /** fetched = Netz/OA; upload = vom Menschen in den Projekt-Korpus gelegt; youtube = Transkript. */
 export type DocumentOrigin = 'fetched' | 'upload' | 'youtube'
@@ -706,11 +724,28 @@ export interface ProjectState {
   marks: Mark[]
   visualVersions: VisualVersion[]
   researchBrief: ResearchBrief | null
+  /** Neuer Entwurf, der nach dem bindenden Plan liegt — noch nicht bestätigt. */
+  pendingBriefDraft: ResearchBrief | null
   /** Korpus ohne Volltext — der Text kommt über documents:text / search_documents. */
   documents: Array<Omit<FetchedDocument, 'text'>>
   notes: Note[]
   /** Gesetzt, wenn ein Notebook den Korpus eines Research-Projekts liest. */
   linked_research: { id: string; title: string } | null
+  /**
+   * Research, in das dieses Projekt schauen darf (gerichtete Links).
+   * Der Agent liest dort; Berichte zitieren nur lokale, übernommene Quellen.
+   */
+  related_research: RelatedResearch[]
+}
+
+/** Verknüpftes Research-Projekt — der Agent darf dort lesen, nicht direkt zitieren. */
+export interface RelatedResearch {
+  project_id: string
+  title: string
+  research_question: string
+  signed_count: number
+  source_count: number
+  upload_count: number
 }
 
 export interface ProjectSummary extends Project {

@@ -12,7 +12,7 @@ import type { JournalMode } from '../../shared/types'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 18 // v18 Träger/Fundstelle — Quellenkontext und Watchlist
+export const SCHEMA_VERSION = 19 // v19 verwandte Research-Projekte (gerichtete Links)
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -484,6 +484,21 @@ CREATE TABLE IF NOT EXISTS search_reflections (
 );
 CREATE INDEX IF NOT EXISTS idx_search_reflections_project ON search_reflections(project_id, created_at);
 
+-- v19: Research darf in andere Research-Projekte schauen (gerichtet).
+-- Der Mensch setzt den Link in der App. Der Agent liest signierte Quellen und
+-- Seed-PDFs dort; Zitate im Bericht brauchen eine lokale Kopie + Sign-off.
+CREATE TABLE IF NOT EXISTS research_links (
+  id TEXT PRIMARY KEY,
+  from_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  to_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'unknown',
+  CHECK (from_project_id != to_project_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_research_links_pair ON research_links(from_project_id, to_project_id);
+CREATE INDEX IF NOT EXISTS idx_research_links_from ON research_links(from_project_id);
+CREATE INDEX IF NOT EXISTS idx_research_links_to ON research_links(to_project_id);
+
 -- Append-only Audit-Trail (Event Sourcing light): nichts wird gelöscht,
 -- Korrekturen sind neue Events.
 CREATE TABLE IF NOT EXISTS event_log (
@@ -657,6 +672,10 @@ function migrate(db: DB): void {
       db.exec(`CREATE INDEX IF NOT EXISTS idx_doc_contexts_doc ON document_contexts(document_id)`)
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_contexts_discovery ON document_contexts(document_id, discovery_url)`)
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_domain ON carrier_watchlist(project_id, domain)`)
+      // v19: gerichtete Research-zu-Research-Links (CREATE IF NOT EXISTS in SCHEMA).
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_research_links_pair ON research_links(from_project_id, to_project_id)`)
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_research_links_from ON research_links(from_project_id)`)
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_research_links_to ON research_links(to_project_id)`)
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

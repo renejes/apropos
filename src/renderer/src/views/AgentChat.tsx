@@ -9,7 +9,7 @@ import type {
   AgentSessionsSnapshot,
   AgentSettings,
 } from '../../../shared/agent'
-import { formatUsageLine, mergeStreamText, shortToolName } from '../../../shared/agentStream'
+import { activitySummaryLine, formatUsageLine, groupChatActivity, reduceChatEvents, shortToolName, type DisplayChatItem } from '../../../shared/agentStream'
 import { Badge, Button, Icon } from '../components/ui'
 import { ModelPicker, useCursorAccount } from '../components/CursorSettings'
 
@@ -30,93 +30,17 @@ const STARTERS = [
   {
     id: 'start',
     label: 'Research starten',
-    text: 'Arbeite den Research-Brief aus, bevor du suchst. Rufe get_research_brief auf. Fehlt ein adoptierter Plan: kläre Lieferform, Adressat, Ziel, Frames, Einschluss/Ausschluss, Teilfragen, Stopp-Regel und Tabus, dann draft_research_brief. Suche nicht, bis ich den Plan bestätigt habe.',
+    text: 'Arbeite den Research-Brief aus, bevor du suchst. Rufe get_research_brief auf. Fehlt ein adoptierter Plan: kläre Lieferform, Adressat, Ziel, Frames, Einschluss/Ausschluss, Teilfragen, Stopp-Regel und Tabus, dann draft_research_brief. Der Plan erscheint rechts unter Plan. Suche nicht, bis ich den Plan bestätigt habe.',
   },
   {
     id: 'report',
-    label: 'Bericht aus übernommenen Quellen',
-    text: 'Schreibe jetzt einen Bericht nur aus Quellen mit review_status human_signed (übernommene Ordner auf dem Arbeitstisch). Zitiere mit [@citekey] oder [S#]. Offene Ordner nicht zitieren — wenn noch keine übernommenen da sind, nenne die offenen und lege keinen Bericht an. add_report_version. Keine Fakten aus dem Gedächtnis.',
+    label: 'Bericht erstellen',
+    text: 'Schreibe jetzt einen Bericht nur aus Quellen mit review_status human_signed (übernommene Ordner auf dem Human Desk). Zitiere mit [@citekey] oder [S#]. Offene Ordner nicht zitieren — wenn noch keine übernommenen da sind, nenne die offenen und lege keinen Bericht an. add_report_version. Keine Fakten aus dem Gedächtnis.',
   },
 ] as const
 
 const MAX_ATTACH = 8
 const STALL_AFTER_SEC = 45
-
-type ChatItem =
-  | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string }
-  | { kind: 'thinking'; text: string }
-  | { kind: 'tool'; callId: string; name: string; status: 'running' | 'completed' | 'error' }
-  | { kind: 'status'; text: string }
-  | { kind: 'request'; text: string }
-  | { kind: 'run_end'; status: 'finished' | 'error' | 'cancelled'; error?: string }
-
-function reduceEvents(events: AgentChatEvent[]): ChatItem[] {
-  const items: ChatItem[] = []
-  const toolAt = new Map<string, number>()
-  for (const e of events) {
-    switch (e.type) {
-      case 'user':
-        items.push({ kind: 'user', text: e.text })
-        break
-      case 'assistant': {
-        const last = items[items.length - 1]
-        if (last?.kind === 'assistant') last.text = mergeStreamText(last.text, e.text)
-        else items.push({ kind: 'assistant', text: e.text })
-        break
-      }
-      case 'thinking': {
-        const last = items[items.length - 1]
-        if (last?.kind === 'thinking') last.text = mergeStreamText(last.text, e.text)
-        else items.push({ kind: 'thinking', text: e.text })
-        break
-      }
-      case 'tool': {
-        const idx = toolAt.get(e.callId)
-        const next: ChatItem = { kind: 'tool', callId: e.callId, name: e.name, status: e.status }
-        if (idx != null && items[idx]?.kind === 'tool') items[idx] = next
-        else {
-          toolAt.set(e.callId, items.length)
-          items.push(next)
-        }
-        break
-      }
-      case 'status':
-        items.push({ kind: 'status', text: e.text })
-        break
-      case 'request':
-        items.push({ kind: 'request', text: e.text })
-        break
-      case 'usage':
-        break
-      case 'run_end':
-        items.push({ kind: 'run_end', status: e.status, error: e.error })
-        break
-      case 'follow_doc':
-        break
-      default: {
-        const _never: never = e
-        void _never
-      }
-    }
-  }
-  return items
-}
-
-function toolTone(status: 'running' | 'completed' | 'error'): 'slate' | 'emerald' | 'red' | 'amber' {
-  switch (status) {
-    case 'running':
-      return 'amber'
-    case 'completed':
-      return 'emerald'
-    case 'error':
-      return 'red'
-    default: {
-      const _never: never = status
-      return _never
-    }
-  }
-}
 
 function sessionTitle(title: string): string {
   const t = title.trim()
@@ -328,7 +252,7 @@ export default function AgentChat({
     }
   }, [mentionQuery, projectId])
 
-  const items = useMemo(() => reduceEvents(events), [events])
+  const items = useMemo(() => groupChatActivity(reduceChatEvents(events)), [events])
   const lastAssistantIdx = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i]
@@ -336,8 +260,8 @@ export default function AgentChat({
     }
     return -1
   }, [items])
-  const runningTool = [...items].reverse().find((i) => i.kind === 'tool' && i.status === 'running')
   const hasAssistantText = items.some((i) => i.kind === 'assistant' && i.text)
+  const hasLiveActivity = running && items[items.length - 1]?.kind === 'activity'
   const stalling = running && quietSec >= STALL_AFTER_SEC
   const signedIn = !!auth?.signedIn
   const expired = !!auth?.expired
@@ -530,12 +454,8 @@ export default function AgentChat({
                   }
                 />
               ))}
-              {running && !hasAssistantText && (
-                <p className="text-xs text-muted">
-                  {runningTool && runningTool.kind === 'tool'
-                    ? `Nutzt ${shortToolName(runningTool.name)}…`
-                    : `Arbeitet${elapsedSec > 0 ? ` · ${elapsedSec}s` : '…'}`}
-                </p>
+              {running && !hasAssistantText && !hasLiveActivity && (
+                <p className="text-xs text-muted">Arbeitet{elapsedSec > 0 ? ` · ${elapsedSec}s` : '…'}</p>
               )}
               {stalling && <p className="text-xs text-warn">Keine neue Ausgabe seit {quietSec}s — der Lauf läuft noch.</p>}
             </div>
@@ -645,7 +565,7 @@ export default function AgentChat({
                   </div>
                 )}
               </div>
-              <Button type="button" variant="ghost" icon="attach_file" title="PDF oder Text in den Korpus" onClick={() => void attach()} />
+              <Button type="button" variant="ghost" icon="attach_file" title="PDF oder Text als Quelle in den Korpus" onClick={() => void attach()} />
               <span className="flex-1" />
               {running ? (
                 <Button type="button" variant="danger" icon="stop" onClick={() => void window.api.agentCancel(projectId)}>
@@ -739,7 +659,7 @@ function ChatBubble({
   elapsedSec,
   onSaveNote,
 }: {
-  item: ChatItem
+  item: DisplayChatItem
   busy: boolean
   elapsedSec: number
   onSaveNote?: () => void
@@ -764,31 +684,45 @@ function ChatBubble({
           )}
         </div>
       ) : null
-    case 'thinking':
+    case 'activity':
       return (
         <details className="border border-hairline px-3 py-1.5 text-xs text-muted">
           <summary className="cursor-pointer select-none font-mono">
-            Denken{busy && elapsedSec > 0 ? ` · ${elapsedSec}s` : ''}
+            {activitySummaryLine(item, { live: busy, elapsedSec: busy ? elapsedSec : undefined })}
           </summary>
-          {item.text && (
+          {item.tools.length > 0 && (
+            <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto">
+              {item.tools.map((t) => (
+                <li key={t.callId} className="flex items-center gap-2 font-mono">
+                  <span className={t.status === 'running' ? 'text-warn' : t.status === 'error' ? 'text-bad' : 'text-muted'}>
+                    {t.status === 'running' ? '·' : t.status === 'error' ? '×' : '·'}
+                  </span>
+                  <span>{shortToolName(t.name)}</span>
+                  <span className="text-muted">
+                    {t.status === 'running' ? 'läuft' : t.status === 'error' ? 'Fehler' : 'fertig'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {item.thinking && (
             <p className="mt-1">
-              <ChatMarkdown text={item.text} />
+              <ChatMarkdown text={item.thinking} />
             </p>
           )}
+          {item.statuses.map((s, i) => (
+            <p key={i} className="mt-0.5">
+              {s}
+            </p>
+          ))}
         </details>
       )
-    case 'tool':
+    case 'summary':
       return (
-        <div className="flex items-center gap-2 font-mono text-xs">
-          {item.status === 'running' && <span className="text-warn">·</span>}
-          <Badge tone={toolTone(item.status)}>{shortToolName(item.name)}</Badge>
-          <span className="text-muted">
-            {item.status === 'running' ? 'läuft' : item.status === 'error' ? 'Fehler' : 'fertig'}
-          </span>
-        </div>
+        <p className="text-xs text-muted">
+          {item.phase === 'completed' ? 'Kontext zusammengefasst' : 'Kontext wird zusammengefasst…'}
+        </p>
       )
-    case 'status':
-      return <p className="text-xs text-muted">{item.text}</p>
     case 'request':
       return <p className="border border-warn bg-warn-bg px-3 py-2 text-xs text-warn">{item.text}</p>
     case 'run_end':

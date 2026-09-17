@@ -186,8 +186,9 @@ const CONTRACT = `Du recherchierst über eine Plattform, die Provenienz ERZWINGT
   auf den Menschen warten, dann read_document.
 - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE):
   liefert DOI, Autoren, Jahr und wo vorhanden einen frei zugänglichen Volltext (oa_url).
-  Abstracts sind keine Quelle. Wenige passende Treffer selbst mit fetch_source lesen (Pending-Deckel),
-  dann assess_carrier und add_source — Ordner auf den Arbeitstisch. Nicht wait_for_screening.
+  Abstracts sind keine Quelle. Pro offener Teilfrage den besten Treffer mit fetch_source lesen,
+  dann assess_carrier und add_source — Ordner auf den Arbeitstisch. Nicht eine feste Stückzahl.
+  Nicht wait_for_screening.
   Diese Suchen protokollieren sich selbst; log_search ist dafür nicht nötig.
   Nach reflect_search darf WebSearch zusätzlich auch für Wissenschaft entdecken.
 - Nach jeder Suchwelle reflect_search, BEVOR du erneut suchst: covered, underrepresented

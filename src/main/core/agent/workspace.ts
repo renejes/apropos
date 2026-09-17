@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'path'
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { defaultAgentRoot } from '../paths'
 import { FOCUSED_RESEARCH_SKILL } from './focused-research-skill'
 import { NOTEBOOK_SKILL } from './notebook-skill'
@@ -87,4 +87,15 @@ export function removeProjectWorkspace(projectId: string, root = defaultAgentRoo
 /** Speicherschlüssel für add_source — muss z.string().url() erfüllen. */
 export function localInboxUrl(filename: string): string {
   return `local://inbox/${encodeURIComponent(basename(filename))}`
+}
+
+/** Kollisionsfreier Dateiname in einem Inbox-Ordner. */
+export function uniqueInboxName(dir: string, original: string): string {
+  const name = basename(original)
+  if (!existsSync(join(dir, name))) return name
+  const ext = extname(name)
+  const stem = basename(name, ext)
+  let i = 2
+  while (existsSync(join(dir, `${stem}-${i}${ext}`))) i += 1
+  return `${stem}-${i}${ext}`
 }

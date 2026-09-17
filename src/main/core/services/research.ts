@@ -236,8 +236,8 @@ export function requireAdoptedBrief(repo: Repo, projectId: string): void {
 
 /**
  * Ausgeschlossene Treffer kommen nicht per fetch_source in den Korpus.
- * Offene Karten darf der Agent selbst lesen — der Pending-Deckel begrenzt die Menge.
- * URLs, die nicht auf dem Tisch liegen (genannte Adresse, Upload), bleiben frei.
+ * Offene Karten darf der Agent selbst lesen — der Arbeitsbuffer begrenzt nur
+ * gleichzeitig ungelesene Volltexte, nicht die Quellenmenge des Projekts.
  */
 export function requireScreeningAllowsFetch(repo: Repo, projectId: string, url: string): void {
   if (repo.getProject(projectId)?.kind === 'notebook') return
@@ -426,10 +426,95 @@ export function reflectSearch(
   return { reflection, attached_search_ids, hint }
 }
 
-// ---------------------------------------------------------------- Dokumente
+// ---------------------------------------------------------------- Arbeitsbuffer (ungelesene Volltexte)
 
-/** Wie viele abgerufene, aber undokumentierte Dokumente gleichzeitig offen sein dürfen. */
-const MAX_OPEN_DOCUMENTS = Number(process.env.ROP_MAX_PENDING ?? 5)
+/** Fallback, wenn plan_research kein min_sources setzt — gleich dem DB-Default. */
+export const DEFAULT_MIN_SOURCES = 2
+const WORK_BUFFER_FLOOR = 2
+const WORK_BUFFER_CEILING = Math.max(WORK_BUFFER_FLOOR, Number(process.env.ROP_MAX_PENDING ?? 8) || 8)
+
+export const FETCH_PICK_HINT =
+  'Pro offener Teilfrage den besten Treffer mit fetch_source lesen und add_source anlegen, bis min_sources dort steht. ' +
+  'Nicht die ganze Welle, keine feste Stückzahl. Ungelesene Volltexte zuerst dokumentieren (Arbeitsbuffer). ' +
+  'Stopp: Plan/Stopp-Regel und get_coverage_gaps — nicht „n Quellen reichen“.'
+
+export type UnreadWorkBuffer = {
+  cap: number
+  open: number
+  remainingNeed: number
+  free: number
+}
+
+/** Wie viele Belege gegenüber Plan/Brief noch fehlen — Desk-Bestand, nicht Verify. */
+export function remainingCoverageNeed(repo: Repo, projectId: string): number {
+  const subQs = repo.listSubQuestions(projectId).filter((s) => s.status !== 'dropped')
+  let remaining = 0
+  if (subQs.length > 0) {
+    const assigned = repo.countAssignedPerSubQuestion(projectId)
+    for (const sq of subQs) remaining += Math.max(0, sq.min_sources - (assigned.get(sq.id) ?? 0))
+  } else {
+    const briefQs = repo.getAdoptedBrief(projectId)?.sub_questions.length ?? 0
+    remaining = briefQs * DEFAULT_MIN_SOURCES
+  }
+  const brief = repo.getAdoptedBrief(projectId)
+  if (brief?.min_empirical != null && brief.min_empirical > 0) {
+    const empirical = repo
+      .listSources(projectId)
+      .filter((s) => s.review_status !== 'rejected' && s.source_kind === 'empirical').length
+    remaining = Math.max(remaining, Math.max(0, brief.min_empirical - empirical))
+  }
+  return remaining
+}
+
+export function unreadWorkBuffer(repo: Repo, projectId: string): UnreadWorkBuffer {
+  const open = repo.listOpenDocuments(projectId).length
+  const remainingNeed = remainingCoverageNeed(repo, projectId)
+  const cap = Math.min(WORK_BUFFER_CEILING, Math.max(WORK_BUFFER_FLOOR, remainingNeed || WORK_BUFFER_FLOOR))
+  return { cap, open, remainingNeed, free: Math.max(0, cap - open) }
+}
+
+export function nextCoverageHint(repo: Repo, projectId: string): string {
+  const subQs = repo.listSubQuestions(projectId).filter((s) => s.status !== 'dropped')
+  const assigned = repo.countAssignedPerSubQuestion(projectId)
+  const next = subQs.find((sq) => (assigned.get(sq.id) ?? 0) < sq.min_sources)
+  if (next) {
+    const have = assigned.get(next.id) ?? 0
+    return `Nächste Lücke: „${next.question}“ (${have}/${next.min_sources}). Ein passender Treffer, nicht die ganze Welle.`
+  }
+  const remaining = remainingCoverageNeed(repo, projectId)
+  if (remaining > 0) {
+    return `Noch ${remaining} Belege gegenüber dem Brief (z. B. empirisches Minimum). get_coverage_gaps ist die Liste.`
+  }
+  return 'Teilfragen zahlenmäßig bedient. Stopp-Regel und get_coverage_gaps prüfen — nur bei Widerspruch oder offener Lücke weiter holen.'
+}
+
+function assertUnreadWorkBuffer(repo: Repo, projectId: string): void {
+  const buf = unreadWorkBuffer(repo, projectId)
+  if (buf.open < buf.cap) return
+  const open = repo.listOpenDocuments(projectId)
+  throw new ServiceError(
+    'open_documents_limit',
+    `${open.length} abgerufene Volltexte sind noch nicht dokumentiert (Arbeitsbuffer ${buf.cap}, Beleglücke gegenüber Plan: ${buf.remainingNeed}):\n` +
+      open.map((d) => `- ${d.url}`).join('\n'),
+    'Dokumentiere jede URL mit add_source (document_id + Offsets) oder exclude_source. Der Buffer begrenzt nur gleichzeitig ungelesene Volltexte — nicht, wie viele Quellen das Projekt braucht. Danach weiter für offene Teilfragen.'
+  )
+}
+
+function workBufferHint(buf: UnreadWorkBuffer): string {
+  if (buf.free <= 0) {
+    return (
+      ' ACHTUNG: Zu viele ungelesene Volltexte gleichzeitig — der nächste fetch_source oder ingest_local_file wird ABGELEHNT, ' +
+      'bis add_source oder exclude_source. Das ist der Arbeitsbuffer, kein Forschungs-Soll.'
+    )
+  }
+  const gap =
+    buf.remainingNeed > 0
+      ? ` Offene Beleglücke gegenüber den Teilfragen: ${buf.remainingNeed} (nicht dasselbe wie dieser Buffer).`
+      : ' Die Teilfragen sind zahlenmäßig bedient — weiteren Volltext nur bei Widerspruch oder Stopp-Regel.'
+  return ` Ungelesene Volltexte: ${buf.open}/${buf.cap}.${gap}`
+}
+
+// ---------------------------------------------------------------- Dokumente
 /** Wie viel Text ein einzelner Abruf zurückgibt (Kontext-Budget des Modells). */
 const WINDOW_DEFAULT = 8000
 const WINDOW_MAX = 30000
@@ -493,17 +578,8 @@ export async function fetchDocument(repo: Repo, rawInput: unknown, actor: string
     )
   }
 
-  // Gate: erst dokumentieren, dann weiterlesen.
-  const open = repo.listOpenDocuments(input.project_id)
-  if (open.length >= MAX_OPEN_DOCUMENTS) {
-    throw new ServiceError(
-      'open_documents_limit',
-      `${open.length} abgerufene Quelle(n) sind noch nicht dokumentiert:\n` +
-        open.map((d) => `- ${d.url}`).join('\n'),
-      'Dokumentiere JEDE dieser URLs, bevor du erneut abrufst: entweder add_source (mit document_id + quote_start/quote_end) ' +
-        'oder exclude_source mit Begründung. Erst danach lässt fetch_source dich weiterlesen.'
-    )
-  }
+  // Gate: erst dokumentieren, dann weiterlesen. Menge folgt der Plan-Lücke, nicht einer festen 5.
+  assertUnreadWorkBuffer(repo, input.project_id)
 
   const fetched = await fetchSourceText(input.url)
   if (!fetched.ok || !fetched.text.trim()) {
@@ -655,7 +731,7 @@ function isAccessBlocked(status: number | null): boolean {
 }
 
 const CAPTURE_HINT =
-  'ZUGANG GESPERRT — Capture-Auftrag. NICHT add_source mit verbatim_quote. Der Mensch legt die Volltext-PDF auf diesen Auftrag im Korpus-Tab (URL/DOI bleibt). Warte, dann read_document. Oder exclude_source, wenn die Quelle wegfällt.'
+  'ZUGANG GESPERRT — Capture-Auftrag. NICHT add_source mit verbatim_quote. Der Mensch legt die Volltext-PDF unter Plan oder am Human Desk nach (URL/DOI bleibt). Warte, dann read_document. Oder exclude_source, wenn die Quelle wegfällt.'
 
 function windowOf(
   doc: FetchedDocument,
@@ -665,13 +741,8 @@ function windowOf(
   projectId: string,
   cached: boolean
 ): FetchDocumentResult {
-  const openCount = repo.listOpenDocuments(projectId).length
-  const free = MAX_OPEN_DOCUMENTS - openCount
-  const budget =
-    free <= 0
-      ? ' ACHTUNG: Dein Abruf-Kontingent ist damit aufgebraucht — der nächste Abruf (fetch_source oder ingest_local_file) wird ABGELEHNT, ' +
-        'bis du die offenen Quellen mit add_source oder exclude_source dokumentiert hast.'
-      : ` Noch ${free} Abruf(e) frei, bevor du dokumentieren musst.`
+  const buf = unreadWorkBuffer(repo, projectId)
+  const budget = workBufferHint(buf)
 
   if (isCapturePending(doc)) {
     return {
@@ -681,7 +752,7 @@ function windowOf(
       content_hash: doc.content_hash,
       window: { offset: 0, length: 0, text: '' },
       has_more: false,
-      open_documents: openCount,
+      open_documents: buf.open,
       needs_capture: true,
       capture_reason: doc.capture_reason,
       hint: (cached ? 'Bereits als Capture-Auftrag gespeichert — kein erneuter Netzabruf. ' : '') + CAPTURE_HINT + budget,
@@ -697,7 +768,7 @@ function windowOf(
     content_hash: doc.content_hash,
     window: { offset: start, length: end - start, text: doc.text.slice(start, end) },
     has_more: end < doc.char_len,
-    open_documents: openCount,
+    open_documents: buf.open,
     hint:
       (cached ? 'Bereits abgerufen — Text aus dem Projektspeicher. ' : '') +
       `Zeichen ${start}–${end} von ${doc.char_len}. ` +
@@ -801,14 +872,7 @@ export async function ingestLocalFile(repo: Repo, rawInput: unknown, actor: stri
     return windowOf(repo.getDocument(existing.id)!, input.offset ?? 0, input.limit ?? WINDOW_DEFAULT, repo, input.project_id, true)
   }
 
-  const open = repo.listOpenDocuments(input.project_id)
-  if (open.length >= MAX_OPEN_DOCUMENTS) {
-    throw new ServiceError(
-      'open_documents_limit',
-      `${open.length} abgerufene Quelle(n) sind noch nicht dokumentiert:\n` + open.map((d) => `- ${d.url}`).join('\n'),
-      'Dokumentiere JEDE dieser URLs, bevor du erneut liest: add_source (document_id + Offsets) oder exclude_source. Erst danach lässt ingest_local_file / fetch_source dich weiterlesen.'
-    )
-  }
+  assertUnreadWorkBuffer(repo, input.project_id)
 
   const bytes = readFileSync(absPath)
   if (bytes.length > MAX_PDF_BYTES) {
@@ -1031,7 +1095,8 @@ export function readDocumentWindow(repo: Repo, rawInput: unknown): FetchDocument
     throw new ServiceError(
       'document_missing',
       'Dokument nicht gefunden.',
-      'Rufe list_corpus oder search_documents auf und verwende eine document_id aus diesem Projekt.'
+        'Rufe list_corpus oder search_documents auf und verwende eine document_id aus diesem Projekt. ' +
+        'Dokumente aus verwandtem Research: list_related_research, dann import_related_source — nicht die fremde ID in add_source.'
     )
   }
   if (doc.status === 'excluded') {
@@ -1093,7 +1158,7 @@ export function listProjectCorpus(
     documents,
     next_action:
       documents.length === 0
-        ? 'Der Korpus ist leer. Der Mensch lädt PDFs im Tab „Korpus“ hoch oder hängt sie im Chat an.'
+        ? 'Der Korpus ist leer. Der Mensch legt PDFs unter Plan ab oder hängt sie im Chat an (Büroklammer). Verwandte Projekte: list_related_research.'
         : captures > 0
           ? `${documents.length} Dokument(e), davon ${captures} Capture-Auftrag(e) ohne Volltext. NICHT verbatim_quote. Warte, bis der Mensch die PDF auf den Auftrag legt, dann read_document.`
           : `${documents.length} Dokument(e), davon ${uploads} Upload(s). Suche mit search_documents, lies mit read_document, belege mit add_source.`,
@@ -1181,14 +1246,14 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
       throw new ServiceError(
         'document_project_mismatch',
         `Dokument ${input.document_id} gehört zu Projekt ${doc.project_id}, nicht zu ${input.project_id}.`,
-        'Rufe die Quelle mit fetch_source im richtigen Projekt erneut ab und nimm die dabei zurückgegebene document_id.'
+        'Wenn das Dokument aus einem verwandten Research stammt: import_related_source, dann add_source mit der neuen lokalen document_id. Sonst fetch_source in DIESEM Projekt und die dabei zurückgegebene document_id nehmen.'
       )
     }
     if (isCapturePending(doc)) {
       throw new ServiceError(
         'document_needs_capture',
         'Dieses Dokument hat noch keinen Volltext — der Mensch muss die PDF nachlegen.',
-        'Warte auf den Capture im Korpus-Tab. Danach read_document und add_source mit Offsets. Nicht verbatim_quote verwenden.'
+        'Warte auf den Capture. Der Mensch legt die PDF unter Plan oder am Human Desk nach. Danach read_document und add_source mit Offsets. Nicht verbatim_quote verwenden.'
       )
     }
     const start = input.quote_start!
@@ -1326,7 +1391,7 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
           `Für weitere Erkenntnisse aus derselben Quelle log_extraction statt add_source nutzen.`
         : undefined,
     hint: doc
-      ? 'Weiter zur nächsten offenen Lücke aus get_coverage_gaps. Den menschlichen Sign-off holt der Mensch in der App — dich betrifft er nicht.'
+      ? `Weiter zur nächsten offenen Lücke. ${nextCoverageHint(repo, input.project_id)} Den menschlichen Sign-off holt der Mensch in der App — dich betrifft er nicht.`
       : failed
         ? 'TU JETZT: Rufe die Quelle mit fetch_source ab, suche die Stelle im zurückgegebenen Text und erfasse sie erneut ' +
           'mit document_id + quote_start + quote_end. Dann schneidet der Server das Zitat selbst und der Fehler ist ausgeschlossen. ' +
@@ -1334,8 +1399,7 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
         : unchecked
           ? 'TU JETZT: Suche eine frei zugängliche HTML-Fassung und erfasse sie mit fetch_source + document_id + Offsets erneut. ' +
             'Gibt es keine, belasse es dabei und nenne die Quelle im Bericht ausdrücklich als menschlich zu prüfen.'
-          : 'Weiter zur nächsten offenen Lücke aus get_coverage_gaps. Künftig besser: fetch_source + document_id + Offsets — ' +
-            'dann kann die Zitatprüfung gar nicht erst durchfallen.',
+          : `Weiter zur nächsten offenen Lücke. ${nextCoverageHint(repo, input.project_id)} Künftig besser: fetch_source + document_id + Offsets — dann kann die Zitatprüfung gar nicht erst durchfallen.`,
   }
 }
 

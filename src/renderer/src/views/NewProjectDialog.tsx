@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../components/ui'
-import type { ProjectKind, ProjectMode } from '../../../shared/types'
+import type { ProjectKind, ProjectMode, ProjectSummary } from '../../../shared/types'
 
 export default function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [kind, setKind] = useState<ProjectKind | null>(null)
@@ -8,6 +8,12 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
   const [question, setQuestion] = useState('')
   const [mode, setMode] = useState<ProjectMode>('academic')
   const [busy, setBusy] = useState(false)
+  const [peers, setPeers] = useState<ProjectSummary[]>([])
+  const [relatedIds, setRelatedIds] = useState<string[]>([])
+
+  useEffect(() => {
+    void window.api.listProjects().then((list) => setPeers(list.filter((p) => p.kind === 'research')))
+  }, [])
 
   const create = async () => {
     if (!kind || title.trim().length < 3) return
@@ -20,6 +26,15 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
         mode: kind === 'research' ? mode : 'academic',
         kind,
       })
+      if (kind === 'research') {
+        for (const id of relatedIds) {
+          try {
+            await window.api.addRelatedResearch(p.id, id, true)
+          } catch {
+            /* Projekt steht; Verknüpfung kann unter Plan nachgeholt werden */
+          }
+        }
+      }
       onCreated(p.id)
     } finally {
       setBusy(false)
@@ -116,6 +131,39 @@ export default function NewProjectDialog({ onClose, onCreated }: { onClose: () =
                 </button>
               ))}
             </div>
+
+            {peers.length > 0 && (
+              <div className="mb-5">
+                <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
+                  Verwandte Research (optional)
+                </p>
+                <p className="mb-2 text-xs text-muted">
+                  Die KI darf in übernommene Quellen und PDFs dieser Projekte schauen — z. B. andere Teile einer Hausarbeit.
+                </p>
+                <ul className="max-h-32 space-y-1 overflow-y-auto border border-hairline p-2">
+                  {peers.map((p) => (
+                    <li key={p.id}>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={relatedIds.includes(p.id)}
+                          onChange={() =>
+                            setRelatedIds((cur) => (cur.includes(p.id) ? cur.filter((id) => id !== p.id) : [...cur, p.id]))
+                          }
+                        />
+                        <span>
+                          {p.title}
+                          {p.research_question ? (
+                            <span className="block text-xs text-muted">{p.research_question}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         )}
 

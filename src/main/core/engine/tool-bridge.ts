@@ -34,6 +34,7 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'adopt_research_brief',
     'plan_research',
     'get_coverage_gaps',
+    'list_related_research',
   ],
   research: [
     'search_literature',
@@ -51,6 +52,9 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'list_corpus',
     'search_documents',
     'read_document',
+    'list_related_research',
+    'read_related_document',
+    'import_related_source',
   ],
   synthesis: [
     'get_project_state',
@@ -64,6 +68,9 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'describe_evidence_map',
     'prepare_view',
     'ask_narrative',
+    'list_related_research',
+    'read_related_document',
+    'import_related_source',
   ],
 }
 

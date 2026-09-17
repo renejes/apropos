@@ -1,6 +1,6 @@
 # Handover — apROPos
 
-> Kontext für einen neuen Chat. Stand: **2026-09-03**.
+> Kontext für einen neuen Chat. Stand: **2026-09-17**.
 > Danach ohne die Git-History lesen zu müssen weiterarbeiten können.
 
 **Zuerst lesen:** [02 Status](documentation/02-project-status.md) · [08 Notebook](documentation/08-notebook.md) · bei Research-Läufen [03](documentation/03-next-steps.md).
@@ -17,7 +17,7 @@ Local-first **Electron-App**. Die KI (Cursor-Abo, `@cursor/sdk`) arbeitet **in d
 
 **Zwei Projektarten** (`projects.kind`):
 
-- **Research** — Brief, Offset-Zitate, Lücken, Karte, Sign-off, Easy-Writing-Export. Vertrag unverändert. Besitzt den Korpus.
+- **Research** — Brief, Offset-Zitate, Lücken, Arbeitstisch, Sign-off, Easy-Writing-Export. Vertrag unverändert. Besitzt den Korpus. Darf in verknüpfte Research-Projekte schauen (`research_links`).
 - **Notebook** — Chat, bearbeitbare Markdown-Notizen, HTML unter `artifacts/`. Kein Brief. Kann den Korpus eines Research **lesen** (`linked_research_id`), ohne ihn zu besitzen.
 
 Zielgruppe Research: akademisch *und* Business. Notebook: Quellenarbeit ohne Forschungs-Gate.
@@ -36,7 +36,7 @@ Alles andere ist Infrastruktur. In `services/research.ts`, unter MCP und Agent.
 
 ### (b) Vollständigkeit
 
-Weitere `fetch_source`, solange Pending-Dokumente offen (`ROP_MAX_PENDING`, Default 5). Uploads zählen nicht. Hooks in Subagenten feuern nicht verlässlich — deshalb der Server.
+Weitere `fetch_source`, solange zu viele Volltexte ungelesen sind (Arbeitsbuffer aus Plan-Lücke, Floor 2, Ceiling `ROP_MAX_PENDING` Default 8). Uploads zählen nicht. Hooks in Subagenten feuern nicht verlässlich — deshalb der Server.
 
 ### (c) Tiefe
 
@@ -63,20 +63,21 @@ Eine Werkzeugdefinition (`mcp/server.ts`). Filter nur beim Spawn (`notebook-tool
 
 **Electron · React 18 · Tailwind v4 · better-sqlite3 (WAL lokal / DELETE im Sync-Ordner, FTS5) · `@cursor/sdk` 1.0.28 · MCP SDK 1.30 · Zod · Vitest · pdfjs-dist (Leser)**
 
-Schema **v15**. Tests **288**.
+Schema **v19**. Tests **369**.
 
 ```
 src/main/core/
   db.ts, repo.ts, paths.ts, data-root.ts, data-lock.ts
-  services/research.ts     Research-Enforcement + Korpus-Auflösung
-  services/projects.ts     Anlegen, Link, Löschen mit Notebook-Guard
-  services/notes.ts        Notizen + Offset-Schnitt
-  services/reader.ts       Datei am Dokument (PDF ja/nein, fehlt)
-  services/youtube.ts      Captions → Korpus
-  services/artifacts.ts    artifacts/ lesen
-  agent/host.ts            Spawn, Preamble, Tool-Filter
-  agent/workspace.ts       inbox/ notes/ artifacts/ unter defaultAgentRoot
-src/renderer/.../DocumentReader.tsx, NotebookView.tsx, CorpusTab.tsx, SettingsView.tsx
+  services/research.ts          Research-Enforcement + Korpus-Auflösung
+  services/related-research.ts  Gerichtete Links, Lesen, Import als pending
+  services/projects.ts          Anlegen, Link, Löschen mit Notebook-Guard
+  services/notes.ts             Notizen + Offset-Schnitt
+  services/reader.ts            Datei am Dokument (PDF ja/nein, fehlt)
+  services/youtube.ts           Captions → Korpus
+  services/artifacts.ts         artifacts/ lesen
+  agent/host.ts                 Spawn, Preamble, Tool-Filter
+  agent/workspace.ts            inbox/ notes/ artifacts/ unter defaultAgentRoot
+src/renderer/.../ProjectView.tsx, PlanTab.tsx, DeskTab.tsx, NotebookView.tsx, DocumentReader.tsx
 ```
 
 **Regel 1:** Neue Schreibpfade rufen Services, nie `repo.*` für Enforcement-Dinge.
@@ -119,7 +120,7 @@ Bewusst: WebSearch darf **entdecken**, Bericht nur aus `documents`. Suche über 
 2. Notebook-Modell-Lauf **danach** (ob `save_note` mit Offsets kommt).
 3. Phase C (`disallowedTools`) blockiert Spike 1 nicht.
 
-PDF-Leser, Notebook↔Research-Kopplung, Datenordner/Sync sind **gebaut**, nicht der nächste Spike.
+PDF-Leser, Notebook↔Research-Kopplung, verwandte Research-Projekte, Seed-PDFs, Arbeitstisch und Datenordner/Sync sind **gebaut**, nicht der nächste Spike.
 
 ---
 

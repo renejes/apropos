@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
-import { basename, extname, join } from 'path'
+import { copyFileSync, mkdirSync, statSync } from 'fs'
+import { extname, join } from 'path'
 import {
   Agent,
   AgentBusyError,
@@ -9,7 +9,7 @@ import {
   JsonlLocalAgentStore,
 } from '@cursor/sdk'
 import { disableIncompatibleSdkNatives } from './electron-natives'
-import type { ModelSelection, SDKAgent, SDKCustomTool, SDKJsonValue, SDKModel, Run } from '@cursor/sdk'
+import type { ModelSelection, SDKAgent, SDKCustomTool, SDKJsonValue, SDKModel, Run, InteractionUpdate } from '@cursor/sdk'
 import { MAX_PDF_BYTES } from '../enforce/pdf'
 import { ToolBridge } from '../engine/tool-bridge'
 import type { Repo } from '../repo'
@@ -51,7 +51,7 @@ import {
   rememberedAgentId,
   saveAgentSettings,
 } from './settings'
-import { listInboxFiles, projectWorkspace } from './workspace'
+import { listInboxFiles, projectWorkspace, uniqueInboxName } from './workspace'
 import {
   deleteTranscript,
   loadOrMigrateIndex,
@@ -100,16 +100,6 @@ function selectionFrom(settings: AgentSettings, models: SDKModel[]): ModelSelect
   const params = normalizeParamValues(meta?.parameters ?? [], settings.paramValues)
   const list = Object.entries(params).map(([pid, value]) => ({ id: pid, value }))
   return { id, params: list.length ? list : undefined }
-}
-
-function uniqueInboxName(dir: string, original: string): string {
-  const name = basename(original)
-  if (!existsSync(join(dir, name))) return name
-  const ext = extname(name)
-  const stem = basename(name, ext)
-  let i = 2
-  while (existsSync(join(dir, `${stem}-${i}${ext}`))) i += 1
-  return `${stem}-${i}${ext}`
 }
 
 function asMode(value: AgentMode | undefined): AgentMode {
@@ -172,7 +162,13 @@ export class CursorAgentHost {
     const persist = event.type !== 'usage' && event.type !== 'follow_doc'
     if (session && persist) {
       session.history.push(event)
-      if (event.type === 'user' || event.type === 'assistant' || event.type === 'run_end' || (event.type === 'tool' && event.status !== 'running')) {
+      if (
+        event.type === 'user' ||
+        event.type === 'assistant' ||
+        event.type === 'run_end' ||
+        event.type === 'summary' ||
+        (event.type === 'tool' && event.status !== 'running')
+      ) {
         saveTranscript(session.cwd, session.sessionId, session.history)
       }
     }
@@ -532,9 +528,18 @@ export class CursorAgentHost {
       const briefAdopted = Boolean(this.repo.getAdoptedBrief(projectId))
       const yoloBlock = yolo ? `${yoloDirective(kind, { briefAdopted })}\n\n` : ''
       const linked = project.linked_research_id ? this.repo.getProject(project.linked_research_id) : null
+      const related = this.repo.listResearchLinkTargetIds(projectId).flatMap((id) => {
+        const p = this.repo.getProject(id)
+        return p ? [{ id: p.id, title: p.title }] : []
+      })
       const preamble = notebook
         ? notebookPreamble({ projectId, title: project.title, linkedResearchTitle: linked?.title ?? null })
-        : sessionPreamble({ projectId, title: project.title, researchQuestion: project.research_question })
+        : sessionPreamble({
+            projectId,
+            title: project.title,
+            researchQuestion: project.research_question,
+            related,
+          })
       const body = session.fresh
         ? `${yoloBlock}${preamble}\n\n${followUpPrefix(projectId, attached, mentions)}${trimmed}`
         : `${yoloBlock}${followUpPrefix(projectId, attached, mentions)}${trimmed}`
@@ -543,13 +548,17 @@ export class CursorAgentHost {
       const models = this.modelsCache ?? (await Cursor.models.list(this.authOpts()).catch(() => [] as SDKModel[]))
       this.modelsCache = models.length ? models : this.modelsCache
       const model = selectionFrom(this.getSettings(), models)
+      const onDelta = ({ update }: { update: InteractionUpdate }) => {
+        if (update.type === 'summary-started') this.emit(projectId, { type: 'summary', phase: 'started' })
+        else if (update.type === 'summary-completed') this.emit(projectId, { type: 'summary', phase: 'completed' })
+      }
 
       let run: Run
       try {
-        run = await session.agent.send(body, { model, mode })
+        run = await session.agent.send(body, { model, mode, onDelta })
       } catch (err) {
         if (err instanceof AgentBusyError) {
-          run = await session.agent.send(body, { model, mode, local: { force: true } })
+          run = await session.agent.send(body, { model, mode, local: { force: true }, onDelta })
         } else {
           throw err
         }

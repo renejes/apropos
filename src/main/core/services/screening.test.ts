@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { openDb, SCHEMA_VERSION, type DB } from '../db'
 import { Repo, type ScreeningHitInput } from '../repo'
-import { ServiceError, fetchDocument, ingestSearch, recordExclusion } from './research'
+import { ServiceError, fetchDocument, ingestSearch, recordExclusion, unreadWorkBuffer } from './research'
 import { adoptMinimalBrief } from './brief'
 import {
   excludeScreeningCandidate,
@@ -291,14 +291,15 @@ describe('Sichtungstisch', () => {
   })
 
   it('bleibt included ohne Dokument, wenn das Abruf-Kontingent voll ist', async () => {
-    for (let i = 0; i < 5; i++) {
+    const cap = unreadWorkBuffer(repo, projectId).cap
+    for (let i = 0; i < cap; i++) {
       await fetchDocument(
         repo,
         { project_id: projectId, url: `${origin}/open/${i}`, purpose: 'Kontingent mit offener Quelle füllen.' },
         ACTOR
       )
     }
-    expect(repo.listOpenDocuments(projectId)).toHaveLength(5)
+    expect(repo.listOpenDocuments(projectId)).toHaveLength(cap)
     const screenUrl = `${origin}/screen`
     repo.upsertScreeningHits(projectId, [hit({ doi: '10.gate/x', url: screenUrl, oa_url: screenUrl })], {
       query: 'q',

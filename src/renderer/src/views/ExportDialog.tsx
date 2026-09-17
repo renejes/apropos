@@ -3,7 +3,7 @@ import type { ProjectState } from '../../../shared/types'
 import { Button } from '../components/ui'
 
 export type WritingScopeInput = { visual_version_id?: string; scope?: 'marked' }
-type ExportKind = 'provenance' | 'easy-writing'
+type ExportKind = 'provenance' | 'easy-writing' | 'bibtex'
 type EasyWritingDest = 'remembered' | 'new-blog' | 'new-paper' | 'existing'
 
 export function writingScopeFromState(state: ProjectState, visualVersionId?: string): WritingScopeInput | null {
@@ -27,9 +27,11 @@ export default function ExportDialog({
 }) {
   const remembered = state.project.easy_writing_dir
   const scope = writingScopeFromState(state, visualVersionId)
+  const signedCount = state.sources.filter((s) => s.review_status === 'human_signed').length
   const [kind, setKind] = useState<ExportKind>('provenance')
   const [dest, setDest] = useState<EasyWritingDest>(remembered ? 'remembered' : 'new-blog')
   const [busy, setBusy] = useState(false)
+  const bibEmpty = kind === 'bibtex' && signedCount === 0
 
   const runEasyWriting = async () => {
     if (!scope) {
@@ -89,6 +91,31 @@ export default function ExportDialog({
     }
   }
 
+  const runBibtex = async (mode: 'save' | 'copy') => {
+    if (signedCount === 0) {
+      onDone('Keine übernommenen Quellen — erst Übernehmen auf dem Human Desk.')
+      return
+    }
+    setBusy(true)
+    try {
+      if (mode === 'copy') {
+        await window.api.copyBibliography(state.project.id)
+        onDone('BibTeX der übernommenen Quellen in die Zwischenablage')
+        onClose()
+        return
+      }
+      const res = await window.api.exportBibliography(state.project.id)
+      if (res.saved) {
+        onDone(`Gespeichert: ${res.filePath}`)
+        onClose()
+      }
+    } catch (err) {
+      onDone(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const submit = async () => {
     switch (kind) {
       case 'provenance': {
@@ -108,6 +135,9 @@ export default function ExportDialog({
       }
       case 'easy-writing':
         await runEasyWriting()
+        return
+      case 'bibtex':
+        await runBibtex('save')
         return
       default: {
         const _never: never = kind
@@ -142,6 +172,10 @@ export default function ExportDialog({
           <label className="mt-1 flex items-center gap-2 text-sm">
             <input type="radio" name="export-kind" checked={kind === 'easy-writing'} onChange={() => setKind('easy-writing')} />
             Easy Writing
+          </label>
+          <label className="mt-1 flex items-center gap-2 text-sm">
+            <input type="radio" name="export-kind" checked={kind === 'bibtex'} onChange={() => setKind('bibtex')} />
+            BibTeX — übernommene Quellen
           </label>
         </fieldset>
 
@@ -203,10 +237,23 @@ export default function ExportDialog({
           </fieldset>
         )}
 
+        {kind === 'bibtex' && (
+          <p className="mt-4 text-sm leading-relaxed text-muted">
+            {signedCount > 0
+              ? `${signedCount} übernommene Quelle${signedCount === 1 ? '' : 'n'} — Citekeys nachnameJahrKurztitel. Dasselbe Set wie der Bericht.`
+              : 'Noch keine übernommenen Quellen. Erst auf dem Human Desk Übernehmen, dann die .bib für die Hausarbeit.'}
+          </p>
+        )}
+
         <div className="mt-5 flex justify-end gap-2">
           <Button onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" disabled={busy || destDisabled} onClick={() => void submit()}>
-            Exportieren
+          {kind === 'bibtex' && (
+            <Button disabled={busy || bibEmpty} onClick={() => void runBibtex('copy')}>
+              Kopieren
+            </Button>
+          )}
+          <Button variant="primary" disabled={busy || destDisabled || bibEmpty} onClick={() => void submit()}>
+            {kind === 'bibtex' ? 'Speichern' : 'Exportieren'}
           </Button>
         </div>
       </div>

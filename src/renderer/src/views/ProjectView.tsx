@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { type ProjectState, isCapturePending, isWorkDocument } from '../../../shared/types'
-import { buildDeskFolders } from '../../../shared/desk'
+import { type ProjectState } from '../../../shared/types'
+import { buildAgentDeskFolders, buildHumanDeskFolders, deskSurfaceForFocus } from '../../../shared/desk'
 import { Badge, Button } from '../components/ui'
 import AgentChat from './AgentChat'
 import NotebookView from './NotebookView'
 import DeskTab, { type DeskFocus } from './tabs/DeskTab'
+import PlanTab from './tabs/PlanTab'
 import ReportsTab from './tabs/ReportsTab'
 import ExportDialog from './ExportDialog'
 
-type PaneId = 'desk' | 'report'
+type PaneId = 'plan' | 'agent' | 'desk' | 'report'
 
 export default function ProjectView({
   projectId,
@@ -20,19 +21,21 @@ export default function ProjectView({
   onOpenProject?: (id: string) => void
 }) {
   const [state, setState] = useState<ProjectState | null>(null)
-  const [pane, setPane] = useState<PaneId>('desk')
+  const [pane, setPane] = useState<PaneId>('plan')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [deskFocus, setDeskFocus] = useState<DeskFocus | null>(null)
 
-  const openDocument = (documentId: string, start?: number, end?: number) => {
+  const openDocument = (documentId: string, start?: number, end?: number, snapshot: ProjectState | null = state) => {
     setDeskFocus({ documentId, start, end })
-    setPane('desk')
+    setPane(snapshot && deskSurfaceForFocus(snapshot, { documentId }) === 'human' ? 'desk' : 'agent')
   }
 
   const reload = useCallback(async () => {
-    setState(await window.api.getProjectState(projectId))
+    const next = await window.api.getProjectState(projectId)
+    setState(next)
     onChanged()
+    return next
   }, [projectId, onChanged])
 
   useEffect(() => {
@@ -42,9 +45,11 @@ export default function ProjectView({
   }, [reload])
 
   const deskCounts = useMemo(() => {
-    if (!state) return { open: 0, accepted: 0 }
-    const folders = buildDeskFolders(state)
-    return { open: folders.filter((f) => f.pile === 'open').length }
+    if (!state) return { agentOpen: 0, humanOpen: 0 }
+    return {
+      agentOpen: buildAgentDeskFolders(state).filter((f) => f.pile === 'open').length,
+      humanOpen: buildHumanDeskFolders(state).filter((f) => f.pile === 'open').length,
+    }
   }, [state])
 
   if (!state) {
@@ -54,8 +59,6 @@ export default function ProjectView({
   if (state.project.kind === 'notebook') {
     return <NotebookView projectId={projectId} state={state} onReload={reload} onOpenProject={onOpenProject} />
   }
-
-  const openDocs = state.documents.filter((d) => d.status === 'open' && isWorkDocument(d))
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -70,6 +73,26 @@ export default function ProjectView({
             {state.project.research_question && <p className="mt-1 truncate text-sm text-muted">{state.project.research_question}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <Button
+              onClick={async () => {
+                try {
+                  const res = await window.api.uploadCorpus(projectId)
+                  if (res.errors.length) {
+                    setExportMsg(res.errors.map((e) => `${e.filename}: ${e.message}`).join(' · '))
+                  } else if (res.filenames.length) {
+                    setExportMsg(`${res.filenames.length} Datei(en) im Korpus`)
+                    void reload()
+                  }
+                  setTimeout(() => setExportMsg(null), 4000)
+                } catch (err) {
+                  setExportMsg(err instanceof Error ? err.message : String(err))
+                  setTimeout(() => setExportMsg(null), 5000)
+                }
+              }}
+              title="PDF oder Text als mögliche Quelle ablegen"
+            >
+              PDFs reinlegen
+            </Button>
             <Button
               onClick={async () => {
                 try {
@@ -95,27 +118,32 @@ export default function ProjectView({
             >
               Kopieren
             </Button>
-            <Button variant="primary" onClick={() => setExportOpen(true)} title="Provenienz oder Easy Writing">
+            <Button variant="primary" onClick={() => setExportOpen(true)} title="Provenienz, Easy Writing oder BibTeX">
               Export
             </Button>
           </div>
         </div>
         {exportMsg && <div className="mt-2 text-xs text-ok">{exportMsg}</div>}
-        {openDocs.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">Offen</span>
-            {openDocs.map((d) => (
+        {(deskCounts.humanOpen > 0 || deskCounts.agentOpen > 0) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            {deskCounts.humanOpen > 0 && (
               <button
-                key={d.id}
                 type="button"
-                title={d.url}
-                onClick={() => openDocument(d.id)}
-                className="max-w-[220px] truncate border border-hairline px-2 py-0.5 text-xs text-fg hover:bg-fg hover:text-bg"
+                onClick={() => setPane('desk')}
+                className="border border-hairline px-2 py-0.5 text-fg hover:bg-fg hover:text-bg"
               >
-                {isCapturePending(d) ? 'Capture · ' : ''}
-                {d.title || d.filename || d.url}
+                Human Desk · {deskCounts.humanOpen} offen
               </button>
-            ))}
+            )}
+            {deskCounts.agentOpen > 0 && (
+              <button
+                type="button"
+                onClick={() => setPane('agent')}
+                className="border border-hairline px-2 py-0.5 text-muted hover:bg-fg hover:text-bg"
+              >
+                Agent-Desk · {deskCounts.agentOpen} in Arbeit
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -139,12 +167,14 @@ export default function ProjectView({
             onRunEnd={() => void reload()}
             onCorpusChange={() => void reload()}
             onFollowDoc={(follow) => {
-              void reload()
-              openDocument(
-                follow.documentId,
-                follow.start !== follow.end ? follow.start : undefined,
-                follow.start !== follow.end ? follow.end : undefined
-              )
+              void reload().then((next) => {
+                openDocument(
+                  follow.documentId,
+                  follow.start !== follow.end ? follow.start : undefined,
+                  follow.start !== follow.end ? follow.end : undefined,
+                  next
+                )
+              })
             }}
           />
         </div>
@@ -153,13 +183,33 @@ export default function ProjectView({
           <nav className="flex shrink-0 gap-0 border-b border-hairline px-4">
             <button
               type="button"
+              onClick={() => setPane('plan')}
+              className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
+                pane === 'plan' ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
+              }`}
+            >
+              Plan
+              {(state.researchBrief?.status === 'draft' || state.pendingBriefDraft) && <Badge tone="amber">Entwurf</Badge>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPane('agent')}
+              className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
+                pane === 'agent' ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
+              }`}
+            >
+              Agent-Desk
+              {deskCounts.agentOpen > 0 && <Badge tone="slate">{deskCounts.agentOpen}</Badge>}
+            </button>
+            <button
+              type="button"
               onClick={() => setPane('desk')}
               className={`inline-flex items-center gap-1.5 border-b px-3 py-2.5 text-sm whitespace-nowrap ${
                 pane === 'desk' ? 'border-line text-fg' : 'border-transparent text-muted hover:text-fg'
               }`}
             >
-              Arbeitstisch
-              {deskCounts.open > 0 && <Badge tone="amber">{deskCounts.open}</Badge>}
+              Human Desk
+              {deskCounts.humanOpen > 0 && <Badge tone="amber">{deskCounts.humanOpen}</Badge>}
             </button>
             <button
               type="button"
@@ -172,9 +222,35 @@ export default function ProjectView({
               {state.reportVersions.length > 0 && <Badge tone="slate">{state.reportVersions.length}</Badge>}
             </button>
           </nav>
-          <div className={`min-h-0 flex-1 ${pane === 'desk' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
+          <div className={`min-h-0 flex-1 ${pane === 'report' ? 'overflow-y-auto p-6' : 'overflow-hidden'}`}>
+            {pane === 'plan' && (
+              <PlanTab
+                state={state}
+                onReload={reload}
+                onOpenProject={onOpenProject}
+                onOpenSource={(sourceId) => {
+                  setDeskFocus({ sourceId })
+                  setPane('desk')
+                }}
+              />
+            )}
+            {pane === 'agent' && (
+              <DeskTab
+                surface="agent"
+                state={state}
+                onReload={reload}
+                focus={deskFocus}
+                onFocusConsumed={() => setDeskFocus(null)}
+              />
+            )}
             {pane === 'desk' && (
-              <DeskTab state={state} onReload={reload} focus={deskFocus} onFocusConsumed={() => setDeskFocus(null)} />
+              <DeskTab
+                surface="human"
+                state={state}
+                onReload={reload}
+                focus={deskFocus}
+                onFocusConsumed={() => setDeskFocus(null)}
+              />
             )}
             {pane === 'report' && <ReportsTab state={state} onReload={reload} />}
           </div>

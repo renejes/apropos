@@ -93,16 +93,17 @@ describe('Agenten-Schleife & Engine', () => {
     expect(addSourceParams.properties).toHaveProperty('quote_locator')
   })
 
-  it('gibt je Phase nur die passenden Werkzeuge heraus — unter der 15er-Grenze', async () => {
+  it('gibt je Phase nur die passenden Werkzeuge heraus — unter der 20er-Grenze', async () => {
     for (const phase of ['planning', 'research', 'synthesis'] as const) {
       const tools = await bridge.listForPhase(phase)
       expect(tools.length).toBeGreaterThan(0)
-      expect(tools.length).toBeLessThanOrEqual(15)
+      expect(tools.length).toBeLessThanOrEqual(20)
     }
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('assess_carrier')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('wait_for_screening')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('include_screening')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('reflect_search')
+    expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('list_related_research')
     // Der Bericht darf in der Recherche-Phase nicht schreibbar sein.
     expect((await bridge.listForPhase('research')).map((t) => t.name)).not.toContain('add_report_version')
   })

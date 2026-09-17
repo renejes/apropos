@@ -1,6 +1,6 @@
 import type { Repo } from '../repo'
 import type { FetchDocumentResult } from './research'
-import { fetchDocument, recordExclusion, ServiceError } from './research'
+import { fetchDocument, recordExclusion, ServiceError, FETCH_PICK_HINT } from './research'
 import type { ScreeningCandidate, ScreeningStatus } from '../../../shared/types'
 
 export const screenExcludeSchemaReasonMin = 10
@@ -20,7 +20,7 @@ function screeningNextAction(all: ScreeningCandidate[]): string {
   const included = all.filter((c) => c.status === 'included')
   const open = all.filter((c) => c.status === 'undecided' || c.status === 'maybe').length
   if (all.length === 0) {
-    return 'Noch keine Treffer. Nach search_literature liegen sie intern bereit. Abstracts sind keine Quelle — fetch_source auf wenige passende Treffer, dann add_source als Ordner auf den Arbeitstisch.'
+    return 'Noch keine Treffer. Nach search_literature liegen sie intern bereit. Abstracts sind keine Quelle. ' + FETCH_PICK_HINT
   }
   if (included.length > 0) {
     const withDoc = included.filter((c) => c.document_id).length
@@ -29,11 +29,11 @@ function screeningNextAction(all: ScreeningCandidate[]): string {
       withDoc > 0
         ? `Lies read_document auf die ${withDoc} document_id(s), dann add_source mit Offsets.`
         : 'included ohne Dokument: Capture im Korpus oder offene Quellen zuerst dokumentieren, dann fetch_source erneut.'
-    const rest = open > 0 ? ` ${open} weitere Treffer — hole wenige passende selbst, nicht die ganze Welle.` : ''
+    const rest = open > 0 ? ` ${open} weitere Treffer — ${FETCH_PICK_HINT}` : ''
     return `${included.length} bereits geholt.${capture > 0 ? ` ${capture} ohne Volltext.` : ''} ${read}${rest}`
   }
   if (open > 0) {
-    return `${open} Treffer bereit. Hole wenige passende mit fetch_source (Pending-Deckel), assess_carrier, add_source — Ordner landen auf dem Arbeitstisch. Abstracts sind keine Quelle. Nicht wait_for_screening. Treffer, die den Plan nicht treffen: exclude_source.`
+    return `${open} Treffer bereit. ${FETCH_PICK_HINT} Abstracts sind keine Quelle. Nicht wait_for_screening. Treffer, die den Plan nicht treffen: exclude_source.`
   }
   return 'Keine offenen Treffer. Eine neue Suche nach reflect_search — oder fetch_source auf URLs, die nicht schon ausgeschlossen sind.'
 }

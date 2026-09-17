@@ -108,11 +108,14 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             Projekt anlegen: zuerst <strong>Research</strong> oder <strong>Notebook</strong>. Bei Research Titel,
-            Forschungsfrage, Modus akademisch oder Business. PDFs kannst du in beiden Arten sofort in den Korpus legen.
+            Forschungsfrage, Modus akademisch oder Business. Optional verwandte Research-Projekte anhaken (Hausarbeit in
+            Teilen). PDFs kannst du sofort in den Korpus legen — unter Plan, über <strong>PDFs reinlegen</strong> oder die
+            Büroklammer im Chat.
           </li>
           <li>
-            <strong>Research:</strong> Im Agent-Chat den Research-Brief erarbeiten. Du bestätigst; erst die Adoption macht
-            den Plan verbindlich. Ohne adoptierten Brief lehnen Suche und Netzabruf ab.
+            <strong>Research:</strong> Im Agent-Chat den Research-Brief erarbeiten. Er erscheint rechts unter{' '}
+            <strong>Plan</strong>. Du bestätigst dort oder im Chat; erst die Adoption macht den Plan verbindlich. Ohne
+            adoptierten Brief lehnen Suche und Netzabruf ab.
           </li>
           <li>
             Erst danach suchen: zuerst den Korpus, dann Literaturregister und WebSearch gegen den Plan. Nach jeder
@@ -124,8 +127,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             ab. Unpassendes verwerfen.
           </li>
           <li>
-            Rechts prüfen: Arbeitstisch — Ordner öffnen, <strong>Übernehmen</strong> oder Ablehnen. Dann Bericht aus
-            übernommenen Quellen.
+            Rechts prüfen: <strong>Human Desk</strong> — Ordner öffnen, <strong>Übernehmen</strong> oder Ablehnen. Der{' '}
+            <strong>Agent-Desk</strong> ist nur zum Zuschauen, während die KI sucht. Dann Bericht aus übernommenen Quellen.
           </li>
           <li>
             Über <strong>Export</strong> nach Easy Writing schreiben. Artikel dort schreiben, Dossier beim Export in Easy
@@ -134,7 +137,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         </Ol>
         <Note>
           Starter im leeren Research-Chat: <strong>Research starten</strong>, später{' '}
-          <strong>Bericht aus übernommenen Quellen</strong>. Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
+          <strong>Bericht erstellen</strong> (nur übernommene Quellen). Im Notebook: <strong>Quellen zusammenfassen</strong>,{' '}
           <strong>Als HTML aufbereiten</strong>. Unter jeder Agenten-Antwort liegt <strong>Als Notiz speichern</strong> —
           dann öffnet sich die Notiz in der Mitte zum Bearbeiten.
         </Note>
@@ -152,15 +155,16 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             zeigt, ob der MCP-Server läuft (grün) oder nicht (rot).
           </li>
           <li>
-            <strong>Projektkopf:</strong> Titel, Modus, Forschungsfrage. Rechts <strong>Kopieren</strong> (Provenienz in die
-            Zwischenablage) und <strong>Export</strong> (Dialog).
+            <strong>Projektkopf:</strong> Titel, Modus, Forschungsfrage. Rechts <strong>PDFs reinlegen</strong>,{' '}
+            <strong>Kopieren</strong> (Provenienz in die Zwischenablage) und <strong>Export</strong> (Dialog).
           </li>
           <li>
             <strong>Links im Projekt (Research):</strong> Agent-Chat. <strong>Notebook:</strong> Quellen, Notizen,
             Artefakte; Chat und Notiz-Editor in der Mitte als Tabs.
           </li>
           <li>
-            <strong>Rechts (nur Research):</strong> Arbeitstisch (Ordner) und Bericht. Übernehmen setzt nur du.
+            <strong>Rechts (nur Research):</strong> Plan (Briefing und Stand), Agent-Desk (Zuschauen), Human Desk
+            (Übernehmen) und Bericht. Übernehmen setzt nur du, und nur auf dem Human Desk.
           </li>
           <li>
             <strong>Menüleiste (macOS):</strong> Unter dem App-Namen und unter <strong>Manual</strong> öffnet „Manual“ dieses
@@ -180,6 +184,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           Plus-Button in der Leiste. Zuerst <strong>Research</strong> oder <strong>Notebook</strong>. Titel (mindestens drei
           Zeichen). Nur Research: Forschungsfrage und Modus <strong>Akademisch</strong> oder{' '}
           <strong>Business / Marketing</strong>. Der Modus steuert die Erwartung an Zitate und Frame, nicht die Werkzeuge.
+          Optional verwandte Research-Projekte anhaken, wenn eine Arbeit in mehreren Projekten läuft.
         </P>
         <H>Kennzahlen in der Liste</H>
         <P>
@@ -205,7 +210,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
       <>
         <Lead>
           Hier läuft die Research. Der Agent darf nur über die Provenienz-Werkzeuge schreiben. Übernehmen bleibt rechts bei
-          dir auf dem Arbeitstisch.
+          dir auf dem Human Desk.
         </Lead>
         <H>Anmeldung</H>
         <P>
@@ -238,13 +243,57 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           <li>
             <Code>@</Code> hängt Quellen, Inbox-Dateien oder Teilfragen an. Pfeiltasten in der Trefferliste, Enter übernimmt.
           </li>
-          <li>Büroklammer: PDF oder Text in den Korpus (und in die Nachricht). Maximal acht Dateien pro Sendung.</li>
+          <li>Büroklammer: PDF oder Text landet sofort im Korpus (und in der nächsten Nachricht). Maximal acht Dateien pro Sendung. Unter Plan und oben im Header dasselbe: Dateien als mögliche Quellen ablegen, nicht nur bei Paywall.</li>
           <li>Enter sendet, Umschalt+Enter neue Zeile. Während eines Laufs: Stopp.</li>
         </Ul>
         <H>Was du siehst</H>
         <P>
           Stream der Antwort, Denken, Tool-Chips (läuft / fertig / Fehler), Token-Verbrauch, Hinweis wenn lange nichts
           kommt. Das ist der Arbeitschat.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'plan',
+    title: 'Tab Plan',
+    body: (
+      <>
+        <Lead>
+          Hier liegt das Research-Briefing, sobald der Agent es entworfen hat. Du siehst den Stand der Arbeit und kannst den
+          Plan nachschärfen.
+        </Lead>
+        <H>Was du siehst</H>
+        <Ul>
+          <li>
+            <strong>Briefing</strong> — Lieferform, Adressat, Ziel, Blickwinkel, Einschluss/Ausschluss, Teilfragen,
+            Stopp-Regel, Tabus. Derselbe Text, den die KI in der Datenbank speichert.
+          </li>
+          <li>
+            <strong>Stand</strong> — Briefing, Bestätigung, Teilfragen, Quellen, Übernehmen, Bericht. Darunter dieselbe
+            Recherchetiefe, die auch das Berichts-Gate benutzt.
+          </li>
+          <li>
+            <strong>Eigene PDFs</strong> — Dateien ziehen oder hochladen. Die KI prüft sie zusätzlich zur Online-Suche.
+          </li>
+          <li>
+            <strong>Verwandte Research</strong> — andere Projekte verknüpfen (z. B. drei Teile einer Hausarbeit). Die KI
+            darf dort lesen; was in <em>diesen</em> Bericht soll, kopiert sie hierher. Du übernimmst erneut.
+          </li>
+        </Ul>
+        <H>Was du tust</H>
+        <Ul>
+          <li>
+            <strong>Plan bestätigen</strong> — macht den Entwurf bindend. Ohne das darf die KI nicht suchen.
+          </li>
+          <li>
+            <strong>Bearbeiten</strong> — legt eine neue Fassung an, nichts wird überschrieben. Bestätigen macht sie
+            bindend.
+          </li>
+        </Ul>
+        <P>
+          Ein neuer Entwurf der KI, während schon ein Plan gilt, wartet hier als Entwurf. Der alte Plan bleibt bindend, bis
+          du den neuen bestätigst.
         </P>
       </>
     ),
@@ -287,7 +336,7 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             + Quelltext.
           </li>
           <li>
-            <strong>Mensch:</strong> Arbeitstisch, Übernehmen oder Ablehnen.
+            <strong>Mensch:</strong> Human Desk, Übernehmen oder Ablehnen.
           </li>
         </Ol>
         <H>Suchdokumentation</H>
@@ -301,37 +350,45 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   },
   {
     id: 'sichtung',
-    title: 'Arbeitstisch',
+    title: 'Agent-Desk und Human Desk',
     body: (
       <>
         <Lead>
-          Nach dem Briefing sucht der Agent und legt Treffer als Ordner ab. Du öffnest die Akte: Volltext, KI-Anmerkung,
-          Übernehmen oder Ablehnen. Abstracts allein sind keine Quelle.
+          Rechts gibt es drei Tabs: <strong>Agent-Desk</strong> (zuschauen), <strong>Human Desk</strong> (prüfen und
+          übernehmen) und <strong>Bericht</strong>. Abstracts allein sind keine Quelle.
         </Lead>
-        <H>Was ein Ordner ist</H>
+        <H>Agent-Desk</H>
         <P>
-          Eine Quelle mit Begründung, Einschätzung, Beitrag und Beleg — oder ein identifizierter Treffer, den der Agent
-          noch liest. Dieselbe Arbeit erscheint einmal (DOI, sonst URL).
+          Hier liegt, woran die KI gerade arbeitet: Suchtreffer und gelesene Texte, die noch keine Quelle sind. Du kannst
+          öffnen und mitlesen. Übernehmen gibt es hier nicht — das wäre zu früh.
+        </P>
+        <H>Human Desk</H>
+        <P>
+          Nur angelegte Quellen. Du öffnest die Akte: Volltext, KI-Anmerkung, <strong>Übernehmen</strong> oder Ablehnen.
+          Dieselbe Arbeit erscheint einmal (DOI, sonst URL). Sobald <Code>add_source</Code> gelaufen ist, wandert der
+          Ordner vom Agent-Desk hierher.
         </P>
         <H>Was du tust</H>
         <Ul>
           <li>
-            <strong>Übernehmen</strong> — nur bei angelegter Quelle. Setzt <Code>human_signed</Code>. Danach darf der
-            Bericht sie zitieren.
+            <strong>Übernehmen</strong> — nur auf dem Human Desk, nur bei angelegter Quelle. Setzt <Code>human_signed</Code>.
+            Danach darf der Bericht sie zitieren.
           </li>
           <li>
-            <strong>Ablehnen</strong> — legt den Ordner weg. Bei Treffern ohne Quelle: Ausschluss mit Grund.
+            <strong>Ablehnen</strong> — legt die Quelle weg. Nur auf dem Human Desk.
           </li>
         </Ul>
         <H>Was die KI darf</H>
         <P>
-          Nach adoptiertem Brief wenige passende Treffer selbst holen (<Code>fetch_source</Code>), nicht auf Abstract-Rein
-          warten, nicht <Code>wait_for_screening</Code>. Der Pending-Deckel begrenzt, wie viele ungelesene Volltexte
-          gleichzeitig offen sind. Kein Werkzeug setzt Übernehmen.
+          Nach adoptiertem Brief pro offener Teilfrage den besten Treffer selbst holen (
+          <Code>fetch_source</Code>), nicht auf Abstract-Rein warten, nicht <Code>wait_for_screening</Code>.
+          Wie viele Quellen überhaupt: die Balken im Tab Plan (min_sources je Teilfrage) plus Stopp-Regel — keine globale
+          Fünf. Der Arbeitsbuffer begrenzt nur, wie viele Volltexte gleichzeitig ungelesen sein dürfen. Kein Werkzeug setzt
+          Übernehmen.
         </P>
         <H>Bericht</H>
         <P>
-          Im Chat: „Bericht aus übernommenen Quellen“. Nur Ordner mit Übernehmen dürfen zitiert werden. Offene Ordner
+          Im Chat: „Bericht erstellen“. Nur Ordner mit Übernehmen dürfen zitiert werden. Offene Ordner
           nennt der Agent und legt keinen Bericht an.
         </P>
       </>
@@ -339,31 +396,30 @@ export const MANUAL_SECTIONS: ManualSection[] = [
   },
   {
     id: 'korpus',
-    title: 'Tab Korpus',
+    title: 'Eigene Dateien und Korpus',
     body: (
       <>
         <Lead>
-          Der Korpus ist der selbst gespeicherte Quelltext: Uploads und per Netz abgerufene Seiten. Zitate werden daraus
-          geschnitten, nicht aus dem Gedächtnis des Modells.
+          Der Korpus ist der selbst gespeicherte Quelltext: deine Uploads und per Netz abgerufene Seiten. Zitate werden
+          daraus geschnitten, nicht aus dem Gedächtnis des Modells.
         </Lead>
         <H>Hineinlegen</H>
         <Ul>
           <li>
-            <strong>Hochladen</strong> — Dateidialog.
+            Unter <strong>Plan</strong>: Dateien auf die Fläche ziehen oder <strong>PDFs reinlegen</strong>.
           </li>
-          <li>Dateien auf die Fläche ziehen (PDF, Text, Markdown, HTML, CSV).</li>
-          <li>Im Chat anhängen — landet ebenfalls hier, nicht nur in der Session.</li>
+          <li>Oben im Projekt: derselbe Button <strong>PDFs reinlegen</strong>.</li>
+          <li>Im Chat die Büroklammer — landet sofort im Korpus, nicht nur in der nächsten Nachricht.</li>
         </Ul>
-        <P>Uploads brauchen keinen Research-Brief und zählen nicht als offene Netzabrufe (Pending-Gate).</P>
+        <P>
+          Das sind mögliche Quellen, nicht nur Nachlegen bei Paywall. Uploads brauchen keinen Research-Brief und zählen
+          nicht als offene Netzabrufe (Pending-Gate). Die KI prüft sie mit der Online-Suche; Übernehmen bleibt bei dir.
+        </P>
         <H>Lesen</H>
         <P>
-          Liste links, Volltext rechts. Suche (ab zwei Zeichen) durchsucht den Korpus per Volltext. Sprung aus einer Quelle
-          mit Offset hebt die Stelle hervor. Originaldatei lässt sich öffnen, wenn sie noch auf der Platte liegt.
+          Die KI liest über <Code>list_corpus</Code> / <Code>search_documents</Code> / <Code>read_document</Code>. Du siehst
+          denselben Text in den Ordnern auf Agent-Desk und Human Desk.
         </P>
-        <Note>
-          Status: genutzt, offen (abgerufen aber noch nicht dokumentiert), ausgeschlossen. Offene Netzabrufe blockieren
-          weitere Fetches, bis sie als Quelle belegt oder verworfen sind.
-        </Note>
       </>
     ),
   },
@@ -533,6 +589,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           <li>
             <strong>Easy Writing:</strong> Ordner für die Schwester-App. Braucht Scope: markierte Punkte oder die neueste
             (bzw. gewählte) Karten-Version.
+          </li>
+          <li>
+            <strong>BibTeX:</strong> <Code>.bib</Code> nur aus übernommenen Quellen — dieselbe Grundlage wie der Bericht.
+            Citekeys <Code>nachnameJahrKurztitel</Code>. Auch auf dem Human Desk, sobald etwas übernommen ist.
           </li>
         </Ul>
         <P>Easy-Writing-Ziele im Dialog:</P>
@@ -710,6 +770,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           <li>
             <Code>list_corpus</Code> / <Code>search_documents</Code> / <Code>read_document</Code> — Seed und gespeicherter
             Text.
+          </li>
+          <li>
+            <Code>list_related_research</Code> / <Code>read_related_document</Code> / <Code>import_related_source</Code> —
+            in verknüpfte Research-Projekte schauen; Kopie landet pending, Übernehmen nur du.
           </li>
           <li>
             <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Danach{' '}

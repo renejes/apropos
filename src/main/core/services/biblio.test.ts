@@ -89,9 +89,20 @@ describe('Bibliografie (Phase F)', () => {
     expect(enriched.citekey).toBe('vaswani2017attention')
     expect(enriched.entry_type).toBe('article')
     expect(JSON.parse(enriched.authors_json ?? '[]')).toContain('Ashish Vaswani')
+    repo.signSourceHuman(enriched.id, 'human_signed', 'übernommen', ACTOR)
     const bib = exportBibliography(repo, projectId)
     expect(bib).toMatch(/@article\{vaswani2017attention/)
     expect(bib).toMatch(/journal = \{NeurIPS\}/)
+  })
+
+  it('exportiert nur übernommene Quellen, offene bleiben draußen', () => {
+    const open = add({ url: 'https://example.org/open', title: 'Noch offen' })
+    const taken = add({ url: 'https://example.org/taken', title: 'Übernommen' })
+    repo.signSourceHuman(taken.id, 'human_signed', 'übernommen', ACTOR)
+    const bib = exportBibliography(repo, projectId)
+    expect(bib).toMatch(/example\.org\/taken/)
+    expect(bib).not.toMatch(/example\.org\/open/)
+    expect(exportBibliography(repo, projectId, [open.id])).toMatch(/keine übernommenen Quellen/)
   })
 
   it('hängt bei Kollision ein Suffix an, statt den Key aus der Listenposition zu bauen', async () => {

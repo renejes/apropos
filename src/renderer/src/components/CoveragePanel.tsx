@@ -110,6 +110,10 @@ export default function CoveragePanel({
       </div>
 
       <p className="mb-4 text-sm text-muted">{cov.summary}</p>
+      <p className="mb-4 text-xs text-muted">
+        Die Balken sind das Soll je Teilfrage — nicht eine globale Stückzahl. Weiter, bis sie stehen oder die Stopp-Regel
+        greift.
+      </p>
 
       {activeSq.length > 0 && (
         <div className="mb-4 space-y-1.5">

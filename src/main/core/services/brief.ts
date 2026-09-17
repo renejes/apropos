@@ -232,7 +232,7 @@ export function draftResearchBrief(repo: Repo, rawInput: unknown, actor: string)
   return {
     brief,
     next_action:
-      'Zeige dem Menschen den Plan. Nach ausdrücklicher Bestätigung rufe adopt_research_brief mit dieser brief_id auf. Suche erst danach.',
+      'Der Plan liegt im Tab Plan. Nach ausdrücklicher Bestätigung dort oder mit adopt_research_brief (diese brief_id) suchen.',
   }
 }
 
@@ -300,7 +300,7 @@ export function getResearchBrief(
       brief: adopted,
       adopted: true,
       next_action:
-        'Der Plan gilt. Teilfragen mit plan_research übernehmen (sub_questions weglassen). Danach gezielt search_literature — nicht Deep Research.',
+        'Der Plan gilt (Tab Plan). Teilfragen mit plan_research übernehmen (sub_questions weglassen). Danach gezielt search_literature — nicht Deep Research.',
     }
   }
   const draft = repo.getLatestBrief(input.project_id)
@@ -309,7 +309,7 @@ export function getResearchBrief(
       brief: draft,
       adopted: false,
       next_action:
-        'Es gibt nur einen Entwurf. Zeige ihn dem Menschen. Nach Bestätigung adopt_research_brief mit dieser brief_id. Erst danach suchen.',
+        'Es gibt nur einen Entwurf — er liegt im Tab Plan. Nach Bestätigung dort oder adopt_research_brief mit dieser brief_id. Erst danach suchen.',
     }
   }
   return {

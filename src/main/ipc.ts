@@ -10,6 +10,7 @@ import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
 import { computeCoverage, ingestUploadedFiles, fulfillCaptureFromInbox, ServiceError, resolveCorpusProjectId, assertCorpusWritable, recordSource, recordExclusion, assertReportCitesOnlySigned } from './core/services/research'
+import { adoptResearchBrief, draftResearchBrief } from './core/services/brief'
 import { excludeScreeningCandidate, includeScreeningCandidate, maybeScreeningCandidate } from './core/services/screening'
 import { addWatchlistEntry, removeWatchlistEntry, signCarrierProfileHuman } from './core/services/carriers'
 import {
@@ -19,6 +20,11 @@ import {
   createNotebookFromResearch,
   linkNotebookToResearch,
 } from './core/services/projects'
+import {
+  addRelatedResearch,
+  listRelatedSummaries,
+  removeRelatedResearch,
+} from './core/services/related-research'
 import { inspectDocumentOpen, readDocumentPdfBytes, resolveDocumentDiskPath } from './core/services/reader'
 import { projectWorkspace } from './core/agent/workspace'
 import { createNote, deleteNote, updateNote } from './core/services/notes'
@@ -31,7 +37,7 @@ import {
   saveRootSettings,
 } from './core/data-root'
 import { describeContactEmail, setStoredContactEmail } from './core/contact-email'
-import type { ContactEmailInfo, DataRootInfo, ServerInfo } from '../shared/types'
+import type { ContactEmailInfo, DataRootInfo, ResearchBriefFields, ServerInfo } from '../shared/types'
 import type { AgentSendInput, AgentSettings } from '../shared/agent'
 import type { CursorAgentHost } from './core/agent/host'
 
@@ -112,6 +118,34 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('projects:events', (_e, projectId: string) => repo.listEvents(projectId))
   ipcMain.handle('projects:search', (_e, projectId: string, query: string) => repo.searchSources(projectId, query))
 
+  ipcMain.handle(
+    'research:addRelated',
+    (_e, fromProjectId: string, toProjectId: string, bothWays?: boolean) => {
+      try {
+        return addRelatedResearch(repo, fromProjectId, toProjectId, HUMAN, Boolean(bothWays))
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+  ipcMain.handle(
+    'research:removeRelated',
+    (_e, fromProjectId: string, toProjectId: string, bothWays?: boolean) => {
+      try {
+        return removeRelatedResearch(repo, fromProjectId, toProjectId, HUMAN, Boolean(bothWays))
+      } catch (err) {
+        throw ipcError(err)
+      }
+    }
+  )
+  ipcMain.handle('research:listRelated', (_e, projectId: string) => {
+    try {
+      return listRelatedSummaries(repo, projectId)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+
   ipcMain.handle('sources:sign', (_e, sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null) => {
     repo.signSourceHuman(sourceId, verdict, note, HUMAN)
     return repo.getSource(sourceId)
@@ -119,6 +153,23 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Recherchetiefe: serverseitig berechnete Abdeckung — dieselbe Rechnung wie für die KI.
   ipcMain.handle('coverage:get', (_e, projectId: string) => computeCoverage(repo, projectId))
+
+  ipcMain.handle('briefs:adopt', (_e, projectId: string, briefId: string) => {
+    try {
+      return adoptResearchBrief(repo, { project_id: projectId, brief_id: briefId }, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('briefs:save', (_e, projectId: string, fields: ResearchBriefFields, adopt: boolean) => {
+    try {
+      const payload = { project_id: projectId, ...fields }
+      if (adopt) return adoptResearchBrief(repo, payload, HUMAN)
+      return draftResearchBrief(repo, payload, HUMAN).brief
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
 
   ipcMain.handle('visual:describe', (_e, projectId: string, layoutKind?: 'theme_clusters' | 'argument_map') =>
     describeEvidenceMap(repo, { project_id: projectId, layout_kind: layoutKind })
@@ -449,12 +500,12 @@ export function registerIpc(deps: IpcDeps): void {
     return { copied: true }
   })
 
-  ipcMain.handle('export:bibliography', async (e, projectId: string) => {
+  ipcMain.handle('export:bibliography', async (e, projectId: string, sourceIds?: string[] | null) => {
     const state = repo.getProjectState(projectId)
-    const bibtex = exportBibliography(repo, projectId)
+    const bibtex = exportBibliography(repo, projectId, sourceIds)
     const win = BrowserWindow.fromWebContents(e.sender)
     const { canceled, filePath } = await dialog.showSaveDialog(win!, {
-      title: 'Für Easy Writing exportieren',
+      title: 'BibTeX speichern',
       defaultPath: `${state.project.title.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 60)}-references.bib`,
       filters: [{ name: 'BibTeX', extensions: ['bib'] }],
     })
@@ -462,6 +513,12 @@ export function registerIpc(deps: IpcDeps): void {
     writeFileSync(filePath, bibtex, 'utf-8')
     repo.logEvent(projectId, 'human:ui', 'export.bibliography', { file: filePath })
     return { saved: true, filePath }
+  })
+
+  ipcMain.handle('export:copyBibliography', (_e, projectId: string, sourceIds?: string[] | null) => {
+    clipboard.writeText(exportBibliography(repo, projectId, sourceIds))
+    repo.logEvent(projectId, 'human:ui', 'export.bibliography.copy', { count: sourceIds?.length ?? null })
+    return { copied: true }
   })
 
   ipcMain.handle('dialog:pickDirectory', async (e, title: string) => {

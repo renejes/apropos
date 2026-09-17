@@ -80,6 +80,24 @@ describe('Research-Brief (Phase E)', () => {
     expect(getResearchBrief(repo, { project_id: projectId }).adopted).toBe(true)
   })
 
+  it('legt einen späteren Entwurf neben den bindenden Plan, bis er bestätigt wird', () => {
+    const first = draftResearchBrief(repo, { project_id: projectId, ...MINIMAL_BRIEF_INPUT }, ACTOR).brief
+    adoptResearchBrief(repo, { project_id: projectId, brief_id: first.id }, ACTOR)
+    const { brief: next } = draftResearchBrief(
+      repo,
+      {
+        project_id: projectId,
+        ...MINIMAL_BRIEF_INPUT,
+        goal: 'Nach dem Lesen ist klar, welche Grenze die Studie hat und was offen bleibt.',
+      },
+      ACTOR
+    )
+    const state = repo.getProjectState(projectId)
+    expect(state.researchBrief?.id).toBe(first.id)
+    expect(state.pendingBriefDraft?.id).toBe(next.id)
+    expect(state.pendingBriefDraft?.status).toBe('draft')
+  })
+
   it('schreibt RESEARCH-PLAN.md in den Workspace bei Adoption', () => {
     projectWorkspace(projectId, root)
     const brief = adoptMinimalBrief(repo, projectId, ACTOR)

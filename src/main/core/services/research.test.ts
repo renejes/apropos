@@ -16,6 +16,8 @@ import {
   recordExclusion,
   recordSearch,
   recordSource,
+  remainingCoverageNeed,
+  unreadWorkBuffer,
 } from './research'
 import type { SourceKind } from '../../../shared/types'
 import { adoptMinimalBrief, adoptResearchBrief, MINIMAL_BRIEF_INPUT } from './brief'
@@ -166,6 +168,7 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(tables).toContain('carrier_profiles')
     expect(tables).toContain('document_contexts')
     expect(tables).toContain('carrier_watchlist')
+    expect(tables).toContain('research_links')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()
@@ -887,5 +890,100 @@ describe('Such-Ingest (Hook-Pfad)', () => {
       expect((err as ServiceError).code).toBe('no_project')
       expect((err as ServiceError).hint).toMatch(/create_project/)
     }
+  })
+})
+
+describe('Arbeitsbuffer folgt der Plan-Lücke', () => {
+  let db: DB
+  let repo: Repo
+  const ACTOR = 'test:buffer'
+
+  beforeEach(() => {
+    db = openDb(':memory:')
+    repo = new Repo(db)
+  })
+
+  const makeProject = () => {
+    const p = repo.createProject({
+      title: 'Buffer',
+      research_question: 'Trägt X?',
+      mode: 'academic',
+      policy_preset: null,
+      actor: ACTOR,
+    })
+    adoptMinimalBrief(repo, p.id, ACTOR)
+    return p
+  }
+
+  it('nimmt vor plan_research die Teilfragen aus dem Brief × Default-min_sources', () => {
+    const p = makeProject()
+    expect(remainingCoverageNeed(repo, p.id)).toBe(6)
+    const buf = unreadWorkBuffer(repo, p.id)
+    expect(buf.cap).toBe(6)
+    expect(buf.open).toBe(0)
+    expect(buf.free).toBe(6)
+  })
+
+  it('sinkt mit zugeordneten Quellen, ohne eine globale Fünf', () => {
+    const p = makeProject()
+    const { sub_questions } = planResearch(
+      repo,
+      {
+        project_id: p.id,
+        sub_questions: Array.from({ length: 3 }, (_, i) => ({
+          question: `Teilfrage Nummer ${i + 1} zum Sachverhalt?`,
+          min_sources: 1,
+        })),
+      },
+      ACTOR
+    )
+    expect(remainingCoverageNeed(repo, p.id)).toBe(3)
+    repo.addSource({
+      project_id: p.id,
+      url: 'https://example.org/a',
+      title: 'A',
+      retrieval_method: 'test',
+      accessed_at: new Date().toISOString(),
+      reason: 'Belegt die erste Teilfrage mit einer eigenständigen Studie.',
+      extraction: 'Die Studie zeigt den Effekt unter Bedingung Y.',
+      contribution: 'Deckt Teilfrage 1.',
+      verbatim_quote: 'Ein wörtliches Zitat mit ausreichender Länge.',
+      sub_question_id: sub_questions[0].id,
+      actor: ACTOR,
+    })
+    expect(remainingCoverageNeed(repo, p.id)).toBe(2)
+    expect(unreadWorkBuffer(repo, p.id).cap).toBe(2)
+  })
+
+  it('hält nach erfülltem Plan nur einen kleinen Extra-Buffer', () => {
+    const p = makeProject()
+    const { sub_questions } = planResearch(
+      repo,
+      {
+        project_id: p.id,
+        sub_questions: [
+          { question: 'Erste Teilfrage zum Sachverhalt der Studie?', min_sources: 1 },
+          { question: 'Zweite Teilfrage zum Sachverhalt der Studie?', min_sources: 1 },
+        ],
+      },
+      ACTOR
+    )
+    for (const sq of sub_questions) {
+      repo.addSource({
+        project_id: p.id,
+        url: `https://example.org/${sq.id}`,
+        title: 'Beleg',
+        retrieval_method: 'test',
+        accessed_at: new Date().toISOString(),
+        reason: 'Belegt diese Teilfrage mit einer eigenständigen Studie.',
+        extraction: 'Die Studie zeigt den Effekt unter Bedingung Y.',
+        contribution: 'Deckt die Teilfrage.',
+        verbatim_quote: 'Ein wörtliches Zitat mit ausreichender Länge.',
+        sub_question_id: sq.id,
+        actor: ACTOR,
+      })
+    }
+    expect(remainingCoverageNeed(repo, p.id)).toBe(0)
+    expect(unreadWorkBuffer(repo, p.id).cap).toBe(2)
   })
 })

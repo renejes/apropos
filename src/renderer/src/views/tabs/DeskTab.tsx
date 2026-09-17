@@ -1,20 +1,40 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { DeskFolder, DeskPile } from '../../../../shared/desk'
-import { buildDeskFolders, findDeskFolder } from '../../../../shared/desk'
+import type { DeskFolder, DeskPile, DeskSurface } from '../../../../shared/desk'
+import { buildAgentDeskFolders, buildHumanDeskFolders, findDeskFolder } from '../../../../shared/desk'
 import type { FetchedDocument, ProjectState } from '../../../../shared/types'
 import { Badge, Button, EmptyState, Icon, quoteBadge, statusBadge } from '../../components/ui'
 import DocumentReader from '../DocumentReader'
 
 export type DeskFocus = { sourceId?: string | null; documentId?: string | null; start?: number; end?: number }
 
-const FILTERS: Array<{ id: DeskPile | 'all'; label: string }> = [
+const HUMAN_FILTERS: Array<{ id: DeskPile | 'all'; label: string }> = [
   { id: 'all', label: 'Alle' },
   { id: 'open', label: 'Offen' },
   { id: 'accepted', label: 'Übernommen' },
   { id: 'rejected', label: 'Abgelehnt' },
 ]
 
-function pileBadge(pile: DeskPile) {
+const AGENT_FILTERS: Array<{ id: DeskPile | 'all'; label: string }> = [
+  { id: 'all', label: 'Alle' },
+  { id: 'open', label: 'In Arbeit' },
+  { id: 'rejected', label: 'Abgelegt' },
+]
+
+function pileBadge(pile: DeskPile, surface: DeskSurface) {
+  if (surface === 'agent') {
+    switch (pile) {
+      case 'open':
+        return <Badge tone="amber">in Arbeit</Badge>
+      case 'accepted':
+        return <Badge tone="emerald">Quelle</Badge>
+      case 'rejected':
+        return <Badge tone="slate">abgelegt</Badge>
+      default: {
+        const _never: never = pile
+        return _never
+      }
+    }
+  }
   switch (pile) {
     case 'open':
       return <Badge tone="amber">offen</Badge>
@@ -46,16 +66,21 @@ function pileIcon(pile: DeskPile): string {
 
 export default function DeskTab({
   state,
+  surface,
   onReload,
   focus,
   onFocusConsumed,
 }: {
   state: ProjectState
+  surface: DeskSurface
   onReload: () => void
   focus?: DeskFocus | null
   onFocusConsumed?: () => void
 }) {
-  const folders = useMemo(() => buildDeskFolders(state), [state])
+  const folders = useMemo(
+    () => (surface === 'human' ? buildHumanDeskFolders(state) : buildAgentDeskFolders(state)),
+    [state, surface]
+  )
   const [filter, setFilter] = useState<DeskPile | 'all'>('open')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [range, setRange] = useState<{ start: number; end: number } | null>(null)
@@ -81,15 +106,23 @@ export default function DeskTab({
     return c
   }, [folders])
 
+  const filters = surface === 'human' ? HUMAN_FILTERS : AGENT_FILTERS
   const visible = filter === 'all' ? folders : folders.filter((f) => f.pile === filter)
   const selected = folders.find((f) => f.id === selectedId) ?? null
+  const backLabel = surface === 'human' ? 'Human Desk' : 'Agent-Desk'
 
   if (folders.length === 0) {
-    return (
+    return surface === 'human' ? (
       <EmptyState
-        icon="folder_open"
-        title="Noch keine Ordner"
-        hint="Nach dem Briefing sucht der Agent und legt Treffer hier ab. Du öffnest die Akte und übernimmst oder lehnst ab."
+        icon="folder_special"
+        title="Noch keine Akten"
+        hint="Sobald der Agent eine Quelle anlegt, erscheint sie hier. Nur dieser Tisch ist zum Übernehmen da."
+      />
+    ) : (
+      <EmptyState
+        icon="visibility"
+        title="Die KI arbeitet noch nicht sichtbar"
+        hint="Suchtreffer und gelesene Texte ohne Quelle liegen hier, während die KI sucht. Was du prüfen sollst, liegt auf dem Human Desk."
       />
     )
   }
@@ -98,8 +131,10 @@ export default function DeskTab({
     return (
       <FolderOpen
         folder={selected}
+        surface={surface}
         state={state}
         range={range}
+        backLabel={backLabel}
         onBack={() => {
           setSelectedId(null)
           setRange(null)
@@ -112,7 +147,7 @@ export default function DeskTab({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-hairline px-5 py-3">
-        {FILTERS.map((f) => (
+        {filters.map((f) => (
           <button
             key={f.id}
             type="button"
@@ -125,10 +160,29 @@ export default function DeskTab({
             {f.id !== 'all' && counts[f.id] > 0 && <Badge tone={f.id === 'open' ? 'amber' : 'slate'}>{counts[f.id]}</Badge>}
           </button>
         ))}
+        {surface === 'human' && state.sources.some((s) => s.review_status === 'human_signed') && (
+          <span className="ml-auto">
+            <Button
+              title="BibTeX nur aus übernommenen Quellen"
+              onClick={() => void window.api.exportBibliography(state.project.id)}
+            >
+              BibTeX
+            </Button>
+          </span>
+        )}
       </div>
+      {surface === 'agent' && (
+        <p className="shrink-0 border-b border-hairline px-5 py-2 text-[12px] leading-relaxed text-muted">
+          Nur zum Zuschauen, während die KI sucht und liest. Übernehmen passiert auf dem Human Desk.
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {visible.length === 0 ? (
-          <EmptyState icon="folder" title="Keine Ordner in diesem Filter" hint="Wechsle den Filter oben, oder warte bis der Agent neue Treffer legt." />
+          <EmptyState
+            icon="folder"
+            title="Keine Ordner in diesem Filter"
+            hint={surface === 'human' ? 'Wechsle den Filter oben, oder warte bis der Agent eine Quelle anlegt.' : 'Wechsle den Filter oben, oder warte bis die KI neue Treffer legt.'}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {visible.map((folder) => (
@@ -143,7 +197,12 @@ export default function DeskTab({
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <Icon name={pileIcon(folder.pile)} className="!text-[22px] text-muted" />
-                  {pileBadge(folder.pile)}
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {surface === 'agent' && (
+                      <Badge tone="slate">{folder.documentId ? 'gelesen' : 'Treffer'}</Badge>
+                    )}
+                    {pileBadge(folder.pile, surface)}
+                  </div>
                 </div>
                 <div className="text-sm font-medium leading-snug">{folder.title}</div>
                 <div className="mt-1 truncate text-xs text-muted">
@@ -161,14 +220,18 @@ export default function DeskTab({
 
 function FolderOpen({
   folder,
+  surface,
   state,
   range,
+  backLabel,
   onBack,
   onReload,
 }: {
   folder: DeskFolder
+  surface: DeskSurface
   state: ProjectState
   range: { start: number; end: number } | null
+  backLabel: string
   onBack: () => void
   onReload: () => void
 }) {
@@ -178,6 +241,7 @@ function FolderOpen({
   const [busy, setBusy] = useState(false)
   const [full, setFull] = useState<FetchedDocument | null>(null)
   const meta = folder.documentId ? state.documents.find((d) => d.id === folder.documentId) ?? null : null
+  const watchOnly = surface === 'agent'
 
   useEffect(() => {
     if (!folder.documentId) {
@@ -205,34 +269,6 @@ function FolderOpen({
     }
   }
 
-  const rejectScreening = async () => {
-    if (!candidate) return
-    const reason = note.trim() || 'Passt nicht zum gewählten Blickwinkel.'
-    setBusy(true)
-    try {
-      await window.api.excludeScreening(candidate.id, reason)
-      setNote('')
-      onReload()
-      onBack()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const rejectDocument = async () => {
-    if (!folder.documentId || source) return
-    const reason = note.trim() || 'Passt nicht zum gewählten Blickwinkel.'
-    setBusy(true)
-    try {
-      await window.api.excludeSourceFromReader({ projectId: state.project.id, documentId: folder.documentId, reason })
-      setNote('')
-      onReload()
-      onBack()
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const flags = source ? state.uncertaintyFlags.filter((f) => f.entity_type === 'source' && f.entity_id === source.id) : []
   const carrier = source?.carrier_id ? state.carriers.find((c) => c.id === source.carrier_id) : undefined
   const profile = source?.carrier_id ? state.carrierProfiles.find((p) => p.carrier_id === source.carrier_id) : undefined
@@ -240,17 +276,18 @@ function FolderOpen({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-hairline px-4 py-2">
-        <Button variant="ghost" icon="arrow_back" onClick={onBack} title="Zurück zum Tisch">
-          Tisch
+        <Button variant="ghost" icon="arrow_back" onClick={onBack} title={`Zurück zum ${backLabel}`}>
+          {backLabel}
         </Button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{folder.title}</h2>
-        {pileBadge(folder.pile)}
+        {pileBadge(folder.pile, surface)}
       </div>
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-[min(380px,42%)] shrink-0 flex-col overflow-y-auto border-r border-hairline p-4">
           <div className="mb-3 flex flex-wrap gap-1.5">
             {source && statusBadge(source.review_status)}
             {source && quoteBadge(source.quote_verified, source.quote_match_score)}
+            {watchOnly && <Badge tone="slate">{folder.documentId ? 'gelesen' : 'Treffer'}</Badge>}
             {folder.year && <Badge tone="slate">{folder.year}</Badge>}
           </div>
           <Field label="Woher">
@@ -278,7 +315,7 @@ function FolderOpen({
           )}
           {!source && candidate?.abstract && <Field label="Abstract">{candidate.abstract}</Field>}
           {!source && !candidate && (
-            <p className="text-sm text-muted">Volltext liegt vor. Die KI-Anmerkung kommt, sobald der Agent den Ordner mit add_source füllt.</p>
+            <p className="text-sm text-muted">Volltext liegt vor. Die KI-Anmerkung kommt, sobald der Agent den Ordner mit add_source füllt — dann wandert er auf den Human Desk.</p>
           )}
           {flags.length > 0 && (
             <Field label="Unsicherheit">
@@ -291,48 +328,47 @@ function FolderOpen({
           )}
 
           <div className="mt-auto border-t border-hairline pt-4">
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              placeholder="Optionale Notiz …"
-              className="field mb-2 w-full text-sm"
-            />
-            {source ? (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="primary"
-                  icon="verified"
-                  onClick={() => void sign('human_signed')}
-                  disabled={busy || source.review_status === 'human_signed'}
-                >
-                  Übernehmen
-                </Button>
-                <Button
-                  variant="danger"
-                  icon="block"
-                  onClick={() => void sign('rejected')}
-                  disabled={busy || source.review_status === 'rejected'}
-                >
-                  Ablehnen
-                </Button>
-              </div>
+            {watchOnly ? (
+              <p className="text-[12px] leading-relaxed text-muted">
+                Zuschauen, während die KI arbeitet. Übernehmen und Ablehnen nur auf dem Human Desk, sobald eine Quelle
+                angelegt ist.
+              </p>
             ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] leading-relaxed text-muted">
-                  Übernehmen geht, sobald der Agent den Ordner als Quelle angelegt hat. Ablehnen legt ihn weg.
-                </p>
-                <Button
-                  variant="danger"
-                  icon="block"
-                  onClick={() => void (candidate ? rejectScreening() : rejectDocument())}
-                  disabled={busy || (!candidate && !folder.documentId)}
-                >
-                  Ablehnen
-                </Button>
-              </div>
+              <>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                  placeholder="Optionale Notiz …"
+                  className="field mb-2 w-full text-sm"
+                />
+                {source ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      icon="verified"
+                      onClick={() => void sign('human_signed')}
+                      disabled={busy || source.review_status === 'human_signed'}
+                    >
+                      Übernehmen
+                    </Button>
+                    <Button
+                      variant="danger"
+                      icon="block"
+                      onClick={() => void sign('rejected')}
+                      disabled={busy || source.review_status === 'rejected'}
+                    >
+                      Ablehnen
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-[12px] leading-relaxed text-muted">
+                    Übernehmen geht, sobald der Agent diesen Ordner als Quelle angelegt hat.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] leading-relaxed text-muted">Nur du setzt Übernehmen — die KI kann das nicht.</p>
+              </>
             )}
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">Nur du setzt Übernehmen — die KI kann das nicht.</p>
           </div>
         </aside>
         <section className="flex min-w-0 flex-1 flex-col">
@@ -350,7 +386,9 @@ function FolderOpen({
             <div className="flex flex-1 items-center justify-center font-mono text-xs text-muted">lädt …</div>
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted">
-              Noch kein Volltext. Abstracts allein sind kein Ordner-Inhalt — der Agent holt den Text, bevor du übernimmst.
+              {watchOnly
+                ? 'Noch kein Volltext — die KI hat bisher nur den Treffer, nicht den Text.'
+                : 'Noch kein Volltext. Abstracts allein sind kein Ordner-Inhalt — der Agent holt den Text, bevor du übernimmst.'}
             </div>
           )}
         </section>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDeskFolders, findDeskFolder } from './desk'
+import { buildAgentDeskFolders, buildHumanDeskFolders, deskSurfaceForFocus, findDeskFolder } from './desk'
 import type { FetchedDocument, ProjectState, ScreeningCandidate, Source } from './types'
 
 function source(over: Partial<Source> = {}): Source {
@@ -98,9 +98,9 @@ function state(over: Partial<Pick<ProjectState, 'sources' | 'screeningCandidates
   }
 }
 
-describe('Arbeitstisch-Ordner', () => {
-  it('zeigt eine Quelle einmal, auch wenn dieselbe DOI auf dem Screening-Tisch liegt', () => {
-    const folders = buildDeskFolders(
+describe('Human Desk', () => {
+  it('zeigt nur angelegte Quellen, nicht denselben Screening-Treffer', () => {
+    const folders = buildHumanDeskFolders(
       state({
         sources: [source()],
         screeningCandidates: [candidate()],
@@ -109,22 +109,12 @@ describe('Arbeitstisch-Ordner', () => {
     )
     expect(folders).toHaveLength(1)
     expect(folders[0]?.id).toBe('source:s1')
-    expect(folders[0]?.pile).toBe('open')
-  })
-
-  it('legt Screening ohne Quelle als offenen Ordner ab', () => {
-    const folders = buildDeskFolders(
-      state({
-        screeningCandidates: [candidate({ id: 'c2', doi: '10.2/b', url: 'https://example.org/b', document_id: null, status: 'undecided' })],
-      })
-    )
-    expect(folders).toHaveLength(1)
-    expect(folders[0]?.id).toBe('screening:c2')
+    expect(folders[0]?.surface).toBe('human')
     expect(folders[0]?.pile).toBe('open')
   })
 
   it('sortiert offen vor übernommen vor abgelehnt', () => {
-    const folders = buildDeskFolders(
+    const folders = buildHumanDeskFolders(
       state({
         sources: [
           source({ id: 'rej', review_status: 'rejected', url: 'https://example.org/r', doi: null, document_id: null, created_at: '2026-01-03' }),
@@ -135,9 +125,54 @@ describe('Arbeitstisch-Ordner', () => {
     )
     expect(folders.map((f) => f.source?.id)).toEqual(['pend', 'ok', 'rej'])
   })
+})
 
+describe('Agent-Desk', () => {
+  it('lässt Screening ohne Quelle als Treffer liegen', () => {
+    const folders = buildAgentDeskFolders(
+      state({
+        screeningCandidates: [candidate({ id: 'c2', doi: '10.2/b', url: 'https://example.org/b', document_id: null, status: 'undecided' })],
+      })
+    )
+    expect(folders).toHaveLength(1)
+    expect(folders[0]?.id).toBe('screening:c2')
+    expect(folders[0]?.surface).toBe('agent')
+    expect(folders[0]?.pile).toBe('open')
+  })
+
+  it('blendet Treffer aus, sobald dieselbe Arbeit eine Quelle ist', () => {
+    const folders = buildAgentDeskFolders(
+      state({
+        sources: [source()],
+        screeningCandidates: [candidate()],
+        documents: [doc()],
+      })
+    )
+    expect(folders).toHaveLength(0)
+  })
+
+  it('ordnet Fokus auf Quellen dem Desk zu, Treffer dem Agent-Desk', () => {
+    const withSource = state({ sources: [source()], documents: [doc()] })
+    expect(deskSurfaceForFocus(withSource, { sourceId: 's1' })).toBe('human')
+    expect(deskSurfaceForFocus(withSource, { documentId: 'd1' })).toBe('human')
+    expect(deskSurfaceForFocus(state({ screeningCandidates: [candidate({ doi: '10.9/x' })] }), { documentId: 'other' })).toBe('agent')
+  })
+
+  it('legt unzugeordnete Dokumente auf den Agent-Desk', () => {
+    const folders = buildAgentDeskFolders(
+      state({
+        documents: [doc({ id: 'orphan', url: 'https://example.org/x', title: 'Gelesen ohne Quelle' })],
+      })
+    )
+    expect(folders).toHaveLength(1)
+    expect(folders[0]?.id).toBe('document:orphan')
+    expect(folders[0]?.pile).toBe('open')
+  })
+})
+
+describe('findDeskFolder', () => {
   it('findet den Ordner über Quelle oder Dokument', () => {
-    const folders = buildDeskFolders(state({ sources: [source()] }))
+    const folders = buildHumanDeskFolders(state({ sources: [source()] }))
     expect(findDeskFolder(folders, { sourceId: 's1' })?.id).toBe('source:s1')
     expect(findDeskFolder(folders, { documentId: 'd1' })?.id).toBe('source:s1')
   })

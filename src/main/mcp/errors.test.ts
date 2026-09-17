@@ -6,6 +6,7 @@ import { ToolBridge } from '../core/engine/tool-bridge'
 import { installSelfCarryingProtocolErrors, translateProtocolError } from './server'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { adoptMinimalBrief } from '../core/services/brief'
+import { unreadWorkBuffer } from '../core/services/research'
 
 /**
  * Fehlerantworten müssen sich SELBST tragen.
@@ -267,29 +268,28 @@ Wer seine Quellen nicht zeigen kann, sollte keine starken Schlüsse ziehen.</p><
     expect(payload.status).toMatch(/^OK/)
   })
 
-  it('fetch_source nennt das verbleibende Abruf-Kontingent, bevor es aufgebraucht ist', async () => {
-    const first = JSON.parse((await bridge.call('fetch_source', {
-      project_id: projectId,
-      url: `${paperUrl}?a`,
-      purpose: 'Erste Quelle für die Teilfrage lesen.',
-    })).text) as { hint: string }
-    expect(first.hint).toMatch(/Noch 4 Abruf/)
+  it('fetch_source nennt den Arbeitsbuffer, bevor er voll ist', async () => {
+    const cap = unreadWorkBuffer(repo, projectId).cap
+    expect(cap).toBeGreaterThan(1)
 
-    await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?b`, purpose: 'Zweite Quelle lesen.' })
-    await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?c`, purpose: 'Dritte Quelle lesen.' })
-    await bridge.call('fetch_source', { project_id: projectId, url: `${paperUrl}?d`, purpose: 'Vierte Quelle lesen.' })
-    const fifth = JSON.parse((await bridge.call('fetch_source', {
-      project_id: projectId,
-      url: `${paperUrl}?e`,
-      purpose: 'Fünfte Quelle lesen.',
-    })).text) as { hint: string }
-    expect(fifth.hint).toMatch(/Kontingent ist damit aufgebraucht/)
+    for (let i = 0; i < cap; i++) {
+      const parsed = JSON.parse(
+        (
+          await bridge.call('fetch_source', {
+            project_id: projectId,
+            url: `${paperUrl}?n=${i}`,
+            purpose: 'Quelle für die Teilfrage lesen.',
+          })
+        ).text
+      ) as { hint: string }
+      if (i === 0) expect(parsed.hint).toMatch(/Ungelesene Volltexte/)
+      if (i === cap - 1) expect(parsed.hint).toMatch(/Arbeitsbuffer/)
+    }
 
-    // Und der nächste Abruf wird tatsächlich abgelehnt — die Warnung war keine Floskel.
     const { res, payload } = await callAndParse('fetch_source', {
       project_id: projectId,
-      url: `${paperUrl}?f`,
-      purpose: 'Sechste Quelle lesen.',
+      url: `${paperUrl}?overflow`,
+      purpose: 'Über den Arbeitsbuffer hinaus lesen.',
     })
     expect(res.isError).toBe(true)
     expect(payload.code).toBe('open_documents_limit')

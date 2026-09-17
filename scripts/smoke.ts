@@ -92,8 +92,10 @@ async function main(): Promise<void> {
       tools.tools.map((t) => t.name)
     )
     check(
-      'Korpus-Tools vorhanden (list_corpus, search_documents, read_document)',
-      ['list_corpus', 'search_documents', 'read_document'].every((n) => tools.tools.some((t) => t.name === n)),
+      'Verwandte-Research-Tools vorhanden (list_related_research, read_related_document, import_related_source)',
+      ['list_related_research', 'read_related_document', 'import_related_source'].every((n) =>
+        tools.tools.some((t) => t.name === n)
+      ),
       tools.tools.map((t) => t.name)
     )
     check(

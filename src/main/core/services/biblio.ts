@@ -7,6 +7,7 @@ import { contactUserAgent, resolveContactEmail } from '../contact-email'
 /**
  * Bibliografische Identität — Citekeys sind stabil (nachnameJahrKurztitel),
  * nie aus [S3] abgeleitet. Metadaten kommen aus Crossref/OpenAlex, nicht vom Modell.
+ * Die .bib fürs Schreiben enthält nur übernommene Quellen (human_signed).
  */
 const TIMEOUT_MS = 8_000
 
@@ -260,12 +261,12 @@ export function exportBibliography(repo: Repo, projectId: string, sourceIds?: st
       'Rufe list_projects auf und verwende eine der dort genannten project_id.'
     )
   }
-  let sources = repo.listSources(projectId).filter((s) => s.review_status !== 'rejected')
+  let sources = repo.listSources(projectId).filter((s) => s.review_status === 'human_signed')
   if (sourceIds?.length) {
     const want = new Set(sourceIds)
     sources = sources.filter((s) => want.has(s.id))
   }
-  if (sources.length === 0) return '% keine Quellen\n'
+  if (sources.length === 0) return '% keine übernommenen Quellen\n'
   return sources.map(sourceToBibtex).join('\n\n') + '\n'
 }
 
