@@ -1,6 +1,6 @@
 # Handover — apROPos
 
-> Kontext für einen neuen Chat. Stand: **2026-09-17**.
+> Kontext für einen neuen Chat. Stand: **2026-09-18**.
 > Danach ohne die Git-History lesen zu müssen weiterarbeiten können.
 
 **Zuerst lesen:** [02 Status](documentation/02-project-status.md) · [08 Notebook](documentation/08-notebook.md) · bei Research-Läufen [03](documentation/03-next-steps.md).
@@ -17,7 +17,7 @@ Local-first **Electron-App**. Die KI (Cursor-Abo, `@cursor/sdk`) arbeitet **in d
 
 **Zwei Projektarten** (`projects.kind`):
 
-- **Research** — Brief, Offset-Zitate, Lücken, Arbeitstisch, Sign-off, Easy-Writing-Export. Vertrag unverändert. Besitzt den Korpus. Darf in verknüpfte Research-Projekte schauen (`research_links`). Arbeitsnotizen: `NOTES.md` unter Plan, kein Beleg.
+- **Research** — Brief, Offset-Zitate, Lücken, Arbeitstisch, Sign-off, Easy-Writing-Export. Vertrag unverändert. Besitzt den Korpus. Darf in verknüpfte Research-Projekte schauen (`research_links`). Arbeitsnotizen: `NOTES.md` unter Plan, kein Beleg. Bibliografie: Citekey/Typ auf dem Human Desk; DOI-Vorschläge der KI, Übernehmen nur UI.
 - **Notebook** — Chat, bearbeitbare Markdown-Notizen, HTML unter `artifacts/`. Kein Brief. Kann den Korpus eines Research **lesen** (`linked_research_id`), ohne ihn zu besitzen.
 
 Zielgruppe Research: akademisch *und* Business. Notebook: Quellenarbeit ohne Forschungs-Gate.
@@ -63,7 +63,7 @@ Eine Werkzeugdefinition (`mcp/server.ts`). Filter nur beim Spawn (`notebook-tool
 
 **Electron · React 18 · Tailwind v4 · better-sqlite3 (WAL lokal / DELETE im Sync-Ordner, FTS5) · `@cursor/sdk` 1.0.28 · MCP SDK 1.30 · Zod · Vitest · pdfjs-dist (Leser)**
 
-Schema **v19**. Tests **372**.
+Schema **v20**. Tests **377**.
 
 ```
 src/main/core/
@@ -71,6 +71,7 @@ src/main/core/
   services/research.ts          Research-Enforcement + Korpus-Auflösung
   services/related-research.ts  Gerichtete Links, Lesen, Import als pending
   services/project-notes.ts     NOTES.md — Arbeitsnotizen, kein Beleg
+  services/biblio.ts            Citekey, BibTeX, DOI-Vorschlag (Crossref)
   services/projects.ts          Anlegen, Link, Löschen mit Notebook-Guard
   services/notes.ts             Notizen + Offset-Schnitt
   services/reader.ts            Datei am Dokument (PDF ja/nein, fehlt)

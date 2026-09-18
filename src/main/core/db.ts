@@ -12,7 +12,7 @@ import type { JournalMode } from '../../shared/types'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 19 // v19 verwandte Research-Projekte (gerichtete Links)
+export const SCHEMA_VERSION = 20 // v20 bibliografische Vorschläge (DOI nachschlagen, Mensch übernimmt)
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -499,6 +499,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_research_links_pair ON research_links(from
 CREATE INDEX IF NOT EXISTS idx_research_links_from ON research_links(from_project_id);
 CREATE INDEX IF NOT EXISTS idx_research_links_to ON research_links(to_project_id);
 
+-- v20: KI schlägt eine DOI vor; Crossref/OpenAlex füllt die Felder; der Mensch übernimmt.
+CREATE TABLE IF NOT EXISTS biblio_suggestions (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  proposed_doi TEXT NOT NULL,
+  proposed_title TEXT,
+  proposed_authors_json TEXT,
+  proposed_year INTEGER,
+  proposed_venue TEXT,
+  proposed_entry_type TEXT CHECK (proposed_entry_type IS NULL OR proposed_entry_type IN ('article','book','inproceedings','misc')),
+  proposed_source_kind TEXT CHECK (proposed_source_kind IS NULL OR proposed_source_kind IN ('empirical','review','textbook','grey','web')),
+  title_overlap REAL,
+  reason TEXT NOT NULL,
+  found_via TEXT NOT NULL CHECK (found_via IN ('doi','document_offset')),
+  document_id TEXT REFERENCES documents(id),
+  quote_start INTEGER,
+  quote_end INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'unknown',
+  decided_at TEXT,
+  decided_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_source ON biblio_suggestions(source_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_project ON biblio_suggestions(project_id, status);
+
 -- Append-only Audit-Trail (Event Sourcing light): nichts wird gelöscht,
 -- Korrekturen sind neue Events.
 CREATE TABLE IF NOT EXISTS event_log (
@@ -676,6 +703,9 @@ function migrate(db: DB): void {
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_research_links_pair ON research_links(from_project_id, to_project_id)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_research_links_from ON research_links(from_project_id)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_research_links_to ON research_links(to_project_id)`)
+      // v20: bibliografische Vorschläge (CREATE IF NOT EXISTS in SCHEMA).
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_source ON biblio_suggestions(source_id, status, created_at)`)
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_project ON biblio_suggestions(project_id, status)`)
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

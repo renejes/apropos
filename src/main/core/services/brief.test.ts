@@ -136,6 +136,8 @@ describe('Research-Brief (Phase E)', () => {
     const skill = readFileSync(existsSync(cursorSkill) ? cursorSkill : fallbackSkill, 'utf-8')
     expect(skill).toMatch(/draft_research_brief/)
     expect(skill).toMatch(/append_project_notes/)
+    expect(skill).toMatch(/search_biblio/)
+    expect(skill).toMatch(/propose_biblio/)
     expect(skill).toMatch(/reflect_search/)
     expect(skill).toMatch(/nicht suchen/i)
     expect(skill).toMatch(/YOLO/)

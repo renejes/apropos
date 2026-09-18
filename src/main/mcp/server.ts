@@ -46,7 +46,7 @@ import { searchLiterature, LITERATURE_BACKENDS } from '../core/services/literatu
 import { includeScreeningInProject, listScreeningDesk, waitForScreening } from '../core/services/screening'
 import { assessCarrier } from '../core/services/carriers'
 import { adoptResearchBrief, draftResearchBrief, getResearchBrief } from '../core/services/brief'
-import { exportBibliography } from '../core/services/biblio'
+import { exportBibliography, proposeBiblio, searchBiblioForSource } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
 import { writeEasyWriting } from '../core/export/easy-writing'
 import type { Source } from '../../shared/types'
@@ -346,6 +346,9 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         '12. VERWANDTE RESEARCH: list_related_research (optional query). Lesen: read_related_document. Was in DIESEN Bericht soll: import_related_source',
         '    (Kopie, pending). Nicht fremde document_id in add_source. Übernehmen nur der Mensch.',
         '13. ARBEITSNOTIZEN: read_project_notes / append_project_notes (NOTES.md unter Plan). Querverweise und Sackgassen, kein Beleg.',
+        '14. BIBLIOGRAFIE: Quellen ohne DOI (Campus-PDF, graue Literatur): search_biblio, dann propose_biblio mit einer Crossref-DOI',
+        '    oder mit Offsets auf die DOI im gespeicherten Text. Erfinde keine DOI und keine Autoren. Die .bib schreibt der Server.',
+        '    Metadaten übernimmt nur der Mensch auf dem Human Desk. human_signed setzt du nicht. Signierte Citekeys bleiben.',
         '   Keine erfundenen Knoten — nur vorhandene Quellen, Aussagen, Teilfragen.',
         '',
         'Der menschliche Sign-off (Übernehmen auf dem Arbeitstisch) ist ausschließlich in der App möglich. Kein Werkzeug kann human_signed setzen.',
@@ -1244,6 +1247,61 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 
   defineTool(
     server,
+    'search_biblio',
+    {
+      title: 'DOI bei Crossref nachschlagen',
+      description:
+        'Sucht bei Crossref nach Titel oder Autor für eine Quelle ohne DOI (Campus-PDF, graue Literatur, Upload). ' +
+        'Liefert Treffer mit DOI, Jahr, Venue und Titelüberlappung. Danach propose_biblio mit einer der dois. ' +
+        'Erfinde keine DOI. Schreibt die .bib nicht. Übernehmen nur der Mensch auf dem Human Desk.',
+      inputSchema: {
+        source_id: z.string().describe('source_id aus diesem Research-Projekt'),
+        query: z
+          .string()
+          .min(5)
+          .optional()
+          .describe('Titelstichworte, Autor, Jahr — sonst der gespeicherte Quellentitel'),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(await searchBiblioForSource(repo, args))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'propose_biblio',
+    {
+      title: 'Bibliografie-Vorschlag (DOI geprüft)',
+      description:
+        'Legt einen Vorschlag auf den Human Desk. Entweder doi aus search_biblio, oder document_id + quote_start + quote_end ' +
+        'auf die DOI im gespeicherten Text. Crossref/OpenAlex füllen Autoren, Jahr, Venue — du tippst sie nicht. ' +
+        'Erfinde keine DOI. Schreibe die .bib nicht. human_signed setzt dieses Werkzeug nicht. ' +
+        'Der Mensch übernimmt oder lehnt ab. Signierte Citekeys bleiben beim Übernehmen.',
+      inputSchema: {
+        source_id: z.string(),
+        doi: z.string().min(3).optional().describe('DOI der Form 10.xxxx/… aus search_biblio'),
+        document_id: z.string().optional().describe('Dokument, in dem die DOI steht'),
+        quote_start: z.number().int().min(0).optional(),
+        quote_end: z.number().int().min(1).optional(),
+        reason: z.string().min(10).describe('Warum dieser Treffer zur Quelle passt'),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(await proposeBiblio(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
     'describe_evidence_map',
     {
       title: 'Evidenzkarte aus Ist-Daten',
@@ -2094,6 +2152,7 @@ ${
    - Hochgeladene PDFs/Texte des Menschen sind Seed-Quellen: ZUERST list_corpus und search_documents, dann read_document (nicht WebFetch, nicht file://). Danach SOFORT add_source mit Offsets.
    - Verwandte Research-Projekte (Hausarbeit in Teilen): list_related_research, read_related_document. Was hier zitiert werden soll: import_related_source (Kopie, pending). Nicht fremde document_id in add_source.
    - Arbeitsnotizen (NOTES.md, sichtbar unter Plan): read_project_notes zu Beginn, append_project_notes für Querverweise und Sackgassen. Kein Beleg, kein Bericht.
+   - Quellen ohne DOI (Campus-PDF, Upload, graue Literatur): search_biblio, dann propose_biblio mit einer Crossref-DOI oder mit Offsets auf die DOI im gespeicherten Text. Erfinde keine DOI und keine Autoren. Die .bib schreibt der Server. Metadaten übernimmt nur der Mensch auf dem Human Desk.
    - Chat-Anhänge in der Inbox: list_inbox, dann ingest_local_file, falls sie noch nicht im Korpus liegen.
    - Der Server verweigert weitere fetch_source-Aufrufe, solange abgerufene Quellen undokumentiert sind. Lesen und Dokumentieren bleiben ein Schritt.
    - Nur wenn fetch_source scheitert (Scan ohne Textschicht, Binärformat): add_source mit verbatim_quote statt document_id — menschlicher Sign-off. Bei Paywall legt fetch_source einen Capture-Auftrag an (needs_capture): NICHT verbatim_quote, auf den Menschen warten, dann read_document.

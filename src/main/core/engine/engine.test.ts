@@ -105,6 +105,8 @@ describe('Agenten-Schleife & Engine', () => {
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('reflect_search')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('list_related_research')
     expect((await bridge.listForPhase('research')).map((t) => t.name)).toContain('append_project_notes')
+    expect((await bridge.listForPhase('synthesis')).map((t) => t.name)).toContain('search_biblio')
+    expect((await bridge.listForPhase('synthesis')).map((t) => t.name)).toContain('propose_biblio')
     // Der Bericht darf in der Recherche-Phase nicht schreibbar sein.
     expect((await bridge.listForPhase('research')).map((t) => t.name)).not.toContain('add_report_version')
   })

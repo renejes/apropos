@@ -5,7 +5,7 @@ import type { Repo } from './core/repo'
 import type { RunningHttpServer } from './mcp/http'
 import { reVerifyProject } from './core/enforce/verify'
 import { exportProjectMarkdown } from './core/export/markdown'
-import { exportBibliography } from './core/services/biblio'
+import { acceptBiblioSuggestion, exportBibliography, rejectBiblioSuggestion } from './core/services/biblio'
 import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
@@ -157,6 +157,20 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('sources:sign', (_e, sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null) => {
     repo.signSourceHuman(sourceId, verdict, note, HUMAN)
     return repo.getSource(sourceId)
+  })
+  ipcMain.handle('biblio:accept', (_e, suggestionId: string) => {
+    try {
+      return acceptBiblioSuggestion(repo, suggestionId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('biblio:reject', (_e, suggestionId: string) => {
+    try {
+      return rejectBiblioSuggestion(repo, suggestionId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
   })
 
   // Recherchetiefe: serverseitig berechnete Abdeckung — dieselbe Rechnung wie für die KI.

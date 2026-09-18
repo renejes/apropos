@@ -77,13 +77,13 @@ Wenige passende Treffer lesen → add_source  (Ordner auf den Arbeitstisch)
 Server misst Lücken gegen den Plan  — „ich bin fertig“ zählt nicht
         │
         ▼
-Human Desk: Übernehmen  →  Bericht nur aus übernommenen Quellen
+Human Desk: Übernehmen; fehlende DOI als Crossref-Vorschlag extra
         │
         ▼
-Export  (Markdown · BibTeX · Easy Writing)
+Export  (Markdown · BibTeX nur übernommen · Easy Writing)
 ```
 
-Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen. Berichte und BibTeX zitieren nur Quellen, die du übernommen hast.
+Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen. Berichte und BibTeX zitieren nur Quellen, die du übernommen hast. Die `.bib` schreibt der Server aus Crossref — nicht das Modell.
 
 | Mechanismus | Was es bedeutet |
 |---|---|
@@ -91,7 +91,8 @@ Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen
 | **Seed-Korpus** | Eigene PDFs unter Plan, im Kopf oder per Büroklammer ablegen — die KI prüft sie zusätzlich zur Online-Suche. |
 | **Verwandte Research** | Andere Projekte verknüpfen. Die KI darf dort lesen; was hier zitiert werden soll, kopiert sie her — du übernimmst erneut. |
 | **Arbeitsnotizen** | Eine `NOTES.md` unter Plan. Die KI hängt Querverweise und Sackgassen an; du liest und kürzt. Kein Beleg — Bericht und BibTeX ignorieren die Datei. |
-| **Arbeitstisch** | Agent-Desk zum Zuschauen, Human Desk zum Übernehmen. Sign-off nur du. |
+| **Arbeitstisch** | Agent-Desk zum Zuschauen, Human Desk zum Übernehmen. Citekey und Typ stehen in der Akte. Sign-off nur du. |
+| **Bibliografie** | Die `.bib` schreibt der Server, nur aus übernommenen Quellen. Ohne DOI (Campus-PDF, graue Literatur) schlägt die KI Crossref vor; **Metadaten übernehmen** ist extra, nicht dasselbe wie die Quelle zu übernehmen. Signierte Citekeys bleiben. |
 | **Such-Lage** | Nach jeder Welle: was getroffen ist, was fehlt, was als Nächstes passiert. |
 | **Messbare Tiefe** | Teilfragen und Lückenliste, keine globale Stückzahl. |
 
@@ -189,6 +190,7 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `list_corpus` / `search_documents` / `read_document` | Seed-PDFs, YouTube-Transkripte, abgerufene Texte |
 | `list_related_research` / `read_related_document` / `import_related_source` | In verknüpfte Research-Projekte schauen; Kopie landet pending |
 | `read_project_notes` / `append_project_notes` | Gemeinsames Pad (`NOTES.md` unter Plan). Kein Beleg |
+| `search_biblio` / `propose_biblio` | DOI bei Crossref nachschlagen; Vorschlag auf den Human Desk. Übernehmen nur du |
 | `fetch_source` / `add_source` / `exclude_source` | Quellen mit erzwungener Provenienz |
 | `save_note` / `list_notes` / `update_note` | Notebook-Notizen (Offsets schneidet der Server) |
 | `list_artifacts` | Dateien unter `artifacts/` |

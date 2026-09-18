@@ -140,6 +140,7 @@ MCP-HTTP-Anleitung bleibt darunter (Fremdclient).
 | `draft_research_brief` / `adopt_research_brief` / `get_research_brief` | Brief vor Suche |
 | `save_note` / `list_notes` / `update_note` / `list_artifacts` | Notebook: Markdown-Notizen und Artefaktliste |
 | `export_bibliography` / `export_writing_pack` | `.bib` und Schreibpaket |
+| `search_biblio` / `propose_biblio` | DOI nachschlagen; Vorschlag, Mensch übernimmt |
 
 Einstiege (Prompt + Spiegel-Werkzeug): `start_transparent_research` / `start_extend_research` / `start_discuss_research` / `start_verify_session`.
 

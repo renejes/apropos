@@ -127,7 +127,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
             ab. Unpassendes verwerfen.
           </li>
           <li>
-            Rechts prüfen: <strong>Human Desk</strong> — Ordner öffnen, <strong>Übernehmen</strong> oder Ablehnen. Der{' '}
+            Rechts prüfen: <strong>Human Desk</strong> — Ordner öffnen, Citekey und Typ sehen, <strong>Übernehmen</strong>{' '}
+            oder Ablehnen. Fehlt eine DOI, kann die KI einen Vorschlag legen — Metadaten übernimmst du in der Akte. Der{' '}
             <strong>Agent-Desk</strong> ist nur zum Zuschauen, während die KI sucht. Dann Bericht aus übernommenen Quellen.
           </li>
           <li>
@@ -368,9 +369,9 @@ export const MANUAL_SECTIONS: ManualSection[] = [
         </P>
         <H>Human Desk</H>
         <P>
-          Nur angelegte Quellen. Du öffnest die Akte: Volltext, KI-Anmerkung, <strong>Übernehmen</strong> oder Ablehnen.
-          Dieselbe Arbeit erscheint einmal (DOI, sonst URL). Sobald <Code>add_source</Code> gelaufen ist, wandert der
-          Ordner vom Agent-Desk hierher.
+          Nur angelegte Quellen. Du öffnest die Akte: Volltext, KI-Anmerkung, Citekey, Typ, DOI,{' '}
+          <strong>Übernehmen</strong> oder Ablehnen. Dieselbe Arbeit erscheint einmal (DOI, sonst URL). Sobald{' '}
+          <Code>add_source</Code> gelaufen ist, wandert der Ordner vom Agent-Desk hierher.
         </P>
         <H>Was du tust</H>
         <Ul>
@@ -380,6 +381,11 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             <strong>Ablehnen</strong> — legt die Quelle weg. Nur auf dem Human Desk.
+          </li>
+          <li>
+            <strong>Metadaten übernehmen</strong> — wenn die KI eine DOI vorgeschlagen hat (Campus-PDF, graue Literatur).
+            Crossref füllt Autoren, Jahr, Venue. Das ist nicht dasselbe wie die Quelle zu übernehmen. Ist die Quelle schon
+            übernommen, bleibt der Citekey.
           </li>
         </Ul>
         <H>Was die KI darf</H>
@@ -596,7 +602,8 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             <strong>BibTeX:</strong> <Code>.bib</Code> nur aus übernommenen Quellen — dieselbe Grundlage wie der Bericht.
-            Citekeys <Code>nachnameJahrKurztitel</Code>. Auch auf dem Human Desk, sobald etwas übernommen ist.
+            Citekeys <Code>nachnameJahrKurztitel</Code>. Auch auf dem Human Desk, sobald etwas übernommen ist. Die Datei
+            schreibt der Server, nicht die KI. Fehlende DOIs schlägt die KI vor; du übernimmst die Metadaten in der Akte.
           </li>
         </Ul>
         <P>Easy-Writing-Ziele im Dialog:</P>
@@ -781,6 +788,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           </li>
           <li>
             <Code>read_project_notes</Code> / <Code>append_project_notes</Code> — gemeinsames Pad unter Plan. Kein Beleg.
+          </li>
+          <li>
+            <Code>search_biblio</Code> / <Code>propose_biblio</Code> — DOI bei Crossref nachschlagen (Campus-PDF ohne DOI).
+            Vorschlag auf den Human Desk; Metadaten übernimmst nur du. Keine erfundene DOI.
           </li>
           <li>
             <Code>search_literature</Code> — OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE. Danach{' '}

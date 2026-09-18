@@ -52,6 +52,9 @@ import type {
   BriefStatus,
   SourceKind,
   BibEntryType,
+  BiblioSuggestion,
+  BiblioSuggestionStatus,
+  BiblioFoundVia,
   ProjectKind,
   Note,
   NoteCitation,
@@ -2062,7 +2065,91 @@ export class Repo {
       linked_research: null,
       related_research: [],
       project_notes: '',
+      biblio_suggestions: this.listBiblioSuggestions(projectId),
     }
+  }
+
+  // ---------- Bibliografie-Vorschläge (v20) ----------
+  addBiblioSuggestion(input: {
+    source_id: string
+    project_id: string
+    proposed_doi: string
+    proposed_title?: string | null
+    proposed_authors?: string[]
+    proposed_year?: number | null
+    proposed_venue?: string | null
+    proposed_entry_type?: BibEntryType | null
+    proposed_source_kind?: SourceKind | null
+    title_overlap?: number | null
+    reason: string
+    found_via: BiblioFoundVia
+    document_id?: string | null
+    quote_start?: number | null
+    quote_end?: number | null
+    actor: string
+  }): BiblioSuggestion {
+    this.db
+      .prepare(
+        `UPDATE biblio_suggestions SET status = 'rejected', decided_at = ?, decided_by = ? WHERE source_id = ? AND status = 'pending'`
+      )
+      .run(nowIso(), input.actor, input.source_id)
+    const id = randomUUID()
+    const ts = nowIso()
+    this.db
+      .prepare(
+        `INSERT INTO biblio_suggestions (
+           id, source_id, project_id, proposed_doi, proposed_title, proposed_authors_json,
+           proposed_year, proposed_venue, proposed_entry_type, proposed_source_kind, title_overlap,
+           reason, found_via, document_id, quote_start, quote_end, status, created_at, created_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      )
+      .run(
+        id,
+        input.source_id,
+        input.project_id,
+        input.proposed_doi,
+        input.proposed_title ?? null,
+        JSON.stringify(input.proposed_authors ?? []),
+        input.proposed_year ?? null,
+        input.proposed_venue ?? null,
+        input.proposed_entry_type ?? null,
+        input.proposed_source_kind ?? null,
+        input.title_overlap ?? null,
+        input.reason,
+        input.found_via,
+        input.document_id ?? null,
+        input.quote_start ?? null,
+        input.quote_end ?? null,
+        ts,
+        input.actor
+      )
+    this.logEvent(input.project_id, input.actor, 'biblio.suggested', { suggestion_id: id, source_id: input.source_id, doi: input.proposed_doi })
+    return this.getBiblioSuggestion(id)!
+  }
+
+  getBiblioSuggestion(id: string): BiblioSuggestion | undefined {
+    const row = this.db.prepare(`SELECT * FROM biblio_suggestions WHERE id = ?`).get(id) as BiblioSuggestionRow | undefined
+    return row ? mapBiblioSuggestion(row) : undefined
+  }
+
+  listBiblioSuggestions(projectId: string): BiblioSuggestion[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM biblio_suggestions WHERE project_id = ? ORDER BY created_at DESC`)
+      .all(projectId) as BiblioSuggestionRow[]
+    return rows.map(mapBiblioSuggestion)
+  }
+
+  decideBiblioSuggestion(id: string, status: 'accepted' | 'rejected', actor: string): BiblioSuggestion | undefined {
+    const existing = this.getBiblioSuggestion(id)
+    if (!existing) return undefined
+    this.db
+      .prepare(`UPDATE biblio_suggestions SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?`)
+      .run(status, nowIso(), actor, id)
+    this.logEvent(existing.project_id, actor, status === 'accepted' ? 'biblio.accepted' : 'biblio.rejected', {
+      suggestion_id: id,
+      source_id: existing.source_id,
+    })
+    return this.getBiblioSuggestion(id)
   }
 
   // ---------- Notizen (Notebook) ----------
@@ -2404,6 +2491,56 @@ function parseJsonStrings(raw: string | null | undefined): string[] {
     return parsed.filter((x): x is string => typeof x === 'string' && x.length > 0)
   } catch {
     return []
+  }
+}
+
+interface BiblioSuggestionRow {
+  id: string
+  source_id: string
+  project_id: string
+  proposed_doi: string
+  proposed_title: string | null
+  proposed_authors_json: string | null
+  proposed_year: number | null
+  proposed_venue: string | null
+  proposed_entry_type: BibEntryType | null
+  proposed_source_kind: SourceKind | null
+  title_overlap: number | null
+  reason: string
+  found_via: BiblioFoundVia
+  document_id: string | null
+  quote_start: number | null
+  quote_end: number | null
+  status: BiblioSuggestionStatus
+  created_at: string
+  created_by: string
+  decided_at: string | null
+  decided_by: string | null
+}
+
+function mapBiblioSuggestion(row: BiblioSuggestionRow): BiblioSuggestion {
+  return {
+    id: row.id,
+    source_id: row.source_id,
+    project_id: row.project_id,
+    proposed_doi: row.proposed_doi,
+    proposed_title: row.proposed_title,
+    proposed_authors: parseJsonStrings(row.proposed_authors_json),
+    proposed_year: row.proposed_year,
+    proposed_venue: row.proposed_venue,
+    proposed_entry_type: row.proposed_entry_type,
+    proposed_source_kind: row.proposed_source_kind,
+    title_overlap: row.title_overlap,
+    reason: row.reason,
+    found_via: row.found_via,
+    document_id: row.document_id,
+    quote_start: row.quote_start,
+    quote_end: row.quote_end,
+    status: row.status,
+    created_at: row.created_at,
+    created_by: row.created_by,
+    decided_at: row.decided_at,
+    decided_by: row.decided_by,
   }
 }
 

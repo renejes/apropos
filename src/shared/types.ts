@@ -76,6 +76,34 @@ export interface Source {
   created_by: string
 }
 
+export type BiblioSuggestionStatus = 'pending' | 'accepted' | 'rejected'
+export type BiblioFoundVia = 'doi' | 'document_offset'
+
+/** Vorschlag der KI: eine DOI, die Crossref/OpenAlex bestätigt hat. Übernehmen nur der Mensch. */
+export interface BiblioSuggestion {
+  id: string
+  source_id: string
+  project_id: string
+  proposed_doi: string
+  proposed_title: string | null
+  proposed_authors: string[]
+  proposed_year: number | null
+  proposed_venue: string | null
+  proposed_entry_type: BibEntryType | null
+  proposed_source_kind: SourceKind | null
+  title_overlap: number | null
+  reason: string
+  found_via: BiblioFoundVia
+  document_id: string | null
+  quote_start: number | null
+  quote_end: number | null
+  status: BiblioSuggestionStatus
+  created_at: string
+  created_by: string
+  decided_at: string | null
+  decided_by: string | null
+}
+
 export interface ResearchFrame {
   key: string
   label: string
@@ -741,6 +769,8 @@ export interface ProjectState {
    * Kein Beleg; Bericht und BibTeX ignorieren die Datei. Leer im Notebook.
    */
   project_notes: string
+  /** Offene und erledigte DOI-Vorschläge. Übernehmen nur in der UI. */
+  biblio_suggestions: BiblioSuggestion[]
 }
 
 /** Verknüpftes Research-Projekt — der Agent darf dort lesen, nicht direkt zitieren. */

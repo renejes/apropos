@@ -104,6 +104,11 @@ async function main(): Promise<void> {
       tools.tools.map((t) => t.name)
     )
     check(
+      'Bibliografie-Vorschlag-Tools vorhanden (search_biblio, propose_biblio)',
+      ['search_biblio', 'propose_biblio'].every((n) => tools.tools.some((t) => t.name === n)),
+      tools.tools.map((t) => t.name)
+    )
+    check(
       'Träger-Tool assess_carrier vorhanden',
       tools.tools.some((t) => t.name === 'assess_carrier'),
       tools.tools.map((t) => t.name)

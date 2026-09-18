@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { DeskFolder, DeskPile, DeskSurface } from '../../../../shared/desk'
 import { buildAgentDeskFolders, buildHumanDeskFolders, findDeskFolder } from '../../../../shared/desk'
-import type { FetchedDocument, ProjectState } from '../../../../shared/types'
+import type { BibEntryType, BiblioSuggestion, FetchedDocument, ProjectState, Source } from '../../../../shared/types'
 import { Badge, Button, EmptyState, Icon, quoteBadge, statusBadge } from '../../components/ui'
 import DocumentReader from '../DocumentReader'
 
@@ -61,6 +61,41 @@ function pileIcon(pile: DeskPile): string {
       const _never: never = pile
       return _never
     }
+  }
+}
+
+function entryTypeLabel(type: BibEntryType | string | null | undefined): string {
+  switch (type) {
+    case 'article':
+      return 'Artikel'
+    case 'book':
+      return 'Buch'
+    case 'inproceedings':
+      return 'Tagungsbeitrag'
+    case 'misc':
+      return 'Sonstiges'
+    default:
+      return type?.trim() ? type : 'noch offen'
+  }
+}
+
+function pendingBiblio(state: ProjectState, sourceId: string | undefined): BiblioSuggestion | undefined {
+  if (!sourceId) return undefined
+  return state.biblio_suggestions.find((s) => s.source_id === sourceId && s.status === 'pending')
+}
+
+function authorsLine(authors: string[] | null | undefined): string | null {
+  if (!authors?.length) return null
+  return authors.join(', ')
+}
+
+function sourceAuthors(source: Source): string | null {
+  if (!source.authors_json) return null
+  try {
+    const parsed = JSON.parse(source.authors_json) as unknown
+    return Array.isArray(parsed) ? authorsLine(parsed.filter((x): x is string => typeof x === 'string')) : null
+  } catch {
+    return null
   }
 }
 
@@ -201,11 +236,14 @@ export default function DeskTab({
                     {surface === 'agent' && (
                       <Badge tone="slate">{folder.documentId ? 'gelesen' : 'Treffer'}</Badge>
                     )}
+                    {pendingBiblio(state, folder.source?.id) && <Badge tone="sky">DOI-Vorschlag</Badge>}
                     {pileBadge(folder.pile, surface)}
                   </div>
                 </div>
                 <div className="text-sm font-medium leading-snug">{folder.title}</div>
                 <div className="mt-1 truncate text-xs text-muted">
+                  {folder.source?.citekey ? `${folder.source.citekey} · ` : ''}
+                  {folder.source?.entry_type ? `${entryTypeLabel(folder.source.entry_type)} · ` : ''}
                   {folder.year ? `${folder.year} · ` : ''}
                   {folder.origin}
                 </div>
@@ -240,6 +278,8 @@ function FolderOpen({
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [full, setFull] = useState<FetchedDocument | null>(null)
+  const [biblioBusy, setBiblioBusy] = useState(false)
+  const [biblioError, setBiblioError] = useState<string | null>(null)
   const meta = folder.documentId ? state.documents.find((d) => d.id === folder.documentId) ?? null : null
   const watchOnly = surface === 'agent'
 
@@ -272,6 +312,22 @@ function FolderOpen({
   const flags = source ? state.uncertaintyFlags.filter((f) => f.entity_type === 'source' && f.entity_id === source.id) : []
   const carrier = source?.carrier_id ? state.carriers.find((c) => c.id === source.carrier_id) : undefined
   const profile = source?.carrier_id ? state.carrierProfiles.find((p) => p.carrier_id === source.carrier_id) : undefined
+  const suggestion = pendingBiblio(state, source?.id)
+
+  const decideBiblio = async (verdict: 'accept' | 'reject') => {
+    if (!suggestion) return
+    setBiblioBusy(true)
+    setBiblioError(null)
+    try {
+      if (verdict === 'accept') await window.api.acceptBiblioSuggestion(suggestion.id)
+      else await window.api.rejectBiblioSuggestion(suggestion.id)
+      onReload()
+    } catch (err) {
+      setBiblioError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBiblioBusy(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -289,6 +345,7 @@ function FolderOpen({
             {source && quoteBadge(source.quote_verified, source.quote_match_score)}
             {watchOnly && <Badge tone="slate">{folder.documentId ? 'gelesen' : 'Treffer'}</Badge>}
             {folder.year && <Badge tone="slate">{folder.year}</Badge>}
+            {suggestion && <Badge tone="sky">DOI-Vorschlag</Badge>}
           </div>
           <Field label="Woher">
             <a href={source?.url ?? candidate?.url ?? folder.origin} target="_blank" rel="noreferrer" className="break-all underline decoration-dotted">
@@ -297,6 +354,23 @@ function FolderOpen({
           </Field>
           {source && (
             <>
+              <Field label="Citekey">
+                <span className="font-mono text-[13px]">{source.citekey || 'noch ohne Citekey'}</span>
+              </Field>
+              <Field label="Typ">
+                {entryTypeLabel(source.entry_type)}
+                {source.entry_type ? ` (@${source.doi ? source.entry_type : 'misc'})` : ''}
+              </Field>
+              <Field label="DOI">
+                {source.doi ? (
+                  <a href={`https://doi.org/${source.doi}`} target="_blank" rel="noreferrer" className="break-all underline decoration-dotted">
+                    {source.doi}
+                  </a>
+                ) : (
+                  <span className="text-muted">keine DOI — die KI kann Crossref vorschlagen</span>
+                )}
+              </Field>
+              {sourceAuthors(source) && <Field label="Autor:innen">{sourceAuthors(source)}</Field>}
               <Field label="Warum relevant">{source.reason}</Field>
               <Field label="Einschätzung">{source.extraction}</Field>
               <Field label="Beitrag">{source.contribution}</Field>
@@ -325,6 +399,48 @@ function FolderOpen({
                 </div>
               ))}
             </Field>
+          )}
+          {suggestion && (
+            <div className="mb-3 border border-hairline bg-wash p-3">
+              <div className="mb-1 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">DOI-Vorschlag der KI</div>
+              <p className="text-sm leading-relaxed">{suggestion.reason}</p>
+              <p className="mt-2 font-mono text-[13px]">
+                <a href={`https://doi.org/${suggestion.proposed_doi}`} target="_blank" rel="noreferrer" className="underline decoration-dotted">
+                  {suggestion.proposed_doi}
+                </a>
+              </p>
+              {suggestion.proposed_title && <p className="mt-1 text-sm">{suggestion.proposed_title}</p>}
+              {authorsLine(suggestion.proposed_authors) && (
+                <p className="text-xs text-muted">{authorsLine(suggestion.proposed_authors)}</p>
+              )}
+              <p className="mt-1 text-xs text-muted">
+                {suggestion.proposed_year ? `${suggestion.proposed_year} · ` : ''}
+                {entryTypeLabel(suggestion.proposed_entry_type)}
+                {suggestion.proposed_venue ? ` · ${suggestion.proposed_venue}` : ''}
+                {suggestion.found_via === 'document_offset' ? ' · aus dem gespeicherten Text' : ' · Crossref'}
+              </p>
+              {suggestion.title_overlap != null && suggestion.title_overlap < 0.25 && (
+                <p className="mt-2 text-xs text-warn">Titel weicht stark von der Quelle ab — vor dem Übernehmen gegenlesen.</p>
+              )}
+              {watchOnly ? (
+                <p className="mt-2 text-[12px] text-muted">Übernehmen nur auf dem Human Desk.</p>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="primary" icon="menu_book" onClick={() => void decideBiblio('accept')} disabled={biblioBusy}>
+                    Metadaten übernehmen
+                  </Button>
+                  <Button variant="ghost" onClick={() => void decideBiblio('reject')} disabled={biblioBusy}>
+                    Vorschlag ablehnen
+                  </Button>
+                </div>
+              )}
+              {biblioError && <p className="mt-2 text-xs text-warn">{biblioError}</p>}
+              {!watchOnly && source?.review_status === 'human_signed' && source.citekey && (
+                <p className="mt-2 text-[11px] leading-relaxed text-muted">
+                  Die Quelle ist schon übernommen — der Citekey {source.citekey} bleibt.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="mt-auto border-t border-hairline pt-4">
@@ -366,7 +482,9 @@ function FolderOpen({
                     Übernehmen geht, sobald der Agent diesen Ordner als Quelle angelegt hat.
                   </p>
                 )}
-                <p className="mt-2 text-[11px] leading-relaxed text-muted">Nur du setzt Übernehmen — die KI kann das nicht.</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted">
+                  Nur du setzt Übernehmen der Quelle — die KI kann das nicht. DOI-Metadaten übernimmst du oben gesondert.
+                </p>
               </>
             )}
           </div>

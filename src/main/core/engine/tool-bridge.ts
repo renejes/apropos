@@ -77,6 +77,8 @@ const PHASE_TOOLS: Record<EnginePhase, string[]> = {
     'import_related_source',
     'read_project_notes',
     'append_project_notes',
+    'search_biblio',
+    'propose_biblio',
   ],
 }
 

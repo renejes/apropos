@@ -169,6 +169,7 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(tables).toContain('document_contexts')
     expect(tables).toContain('carrier_watchlist')
     expect(tables).toContain('research_links')
+    expect(tables).toContain('biblio_suggestions')
 
     // Erneutes Öffnen ist idempotent.
     migrated.close()

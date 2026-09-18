@@ -17,6 +17,7 @@ import type {
   ResearchBriefFields,
   ServerInfo,
   Source,
+  BiblioSuggestion,
   VisualGraph,
   VisualLayoutKind,
   VisualVersion,
@@ -70,6 +71,9 @@ const api = {
 
   signSource: (sourceId: string, verdict: 'human_signed' | 'rejected', note: string | null): Promise<Source> =>
     ipcRenderer.invoke('sources:sign', sourceId, verdict, note),
+  acceptBiblioSuggestion: (suggestionId: string): Promise<{ source: Source; suggestion: BiblioSuggestion }> =>
+    ipcRenderer.invoke('biblio:accept', suggestionId),
+  rejectBiblioSuggestion: (suggestionId: string): Promise<BiblioSuggestion> => ipcRenderer.invoke('biblio:reject', suggestionId),
   addSourceFromReader: (input: {
     projectId: string
     documentId: string
