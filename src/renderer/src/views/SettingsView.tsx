@@ -53,6 +53,8 @@ export default function SettingsView({ onSeeded }: { onSeeded: () => void }) {
 
       <ContactEmailCard />
 
+      <ZoteroCard />
+
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between">
           <SectionTitle>Eingebauter MCP-Server (Streamable HTTP)</SectionTitle>
@@ -386,6 +388,51 @@ function hooksConfig(scriptPath: string): string {
     },
     null,
     2
+  )
+}
+
+function ZoteroCard() {
+  const [message, setMessage] = useState<string | null>(null)
+  const [running, setRunning] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const check = async () => {
+    setBusy(true)
+    try {
+      const status = await window.api.zoteroStatus()
+      setRunning(status.running)
+      setMessage(status.message)
+    } catch (err) {
+      setRunning(false)
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <SectionTitle>Zotero</SectionTitle>
+        {running == null ? null : running ? (
+          <Badge tone="emerald" icon="check_circle">
+            erreichbar
+          </Badge>
+        ) : (
+          <Badge tone="red" icon="error">
+            nicht erreichbar
+          </Badge>
+        )}
+      </div>
+      <p className="mb-3 text-sm leading-relaxed text-muted">
+        Die App liest die lokale Bibliothek und legt übernommene Quellen dort ab. Zotero muss laufen, unter Erweitert die
+        Verbindung für andere Programme erlauben. Better BibTeX hält die Citekeys für Penwright.
+      </p>
+      <Button disabled={busy} onClick={() => void check()}>
+        Verbindung prüfen
+      </Button>
+      {message && <p className="mt-3 text-sm leading-relaxed text-muted">{message}</p>}
+    </Card>
   )
 }
 

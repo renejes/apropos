@@ -640,10 +640,10 @@ export const MANUAL_SECTIONS: ManualSection[] = [
           Export ist ein <strong>Dossier</strong> neben leeren bzw. unangetasteten Schreibkapiteln.
         </P>
         <P>
-          Easy Writing spricht <Code>[@citekey]</Code> und <Code>[@citekey, p. 12]</Code> plus eine <Code>.bib</Code> im
-          Ordner. Diese App erzeugt dieselben Keys aus geprüften Metadaten (DOI, Autoren, Jahr, Venue) — nicht aus{' '}
-          <Code>[S#]</Code> und nicht aus dem Gedächtnis des Modells. Ohne DOI wird ehrlich <Code>@misc</Code> mit URL, nie
-          ein gefälschtes <Code>@article</Code>.
+          Easy Writing spricht <Code>[@citekey]</Code> und <Code>[@citekey, S. 12]</Code> (deutsch) bzw.{' '}
+          <Code>[@citekey, p. 12]</Code> plus eine <Code>.bib</Code> im Ordner. Dieselbe Menge liegt als <Code>.ris</Code>{' '}
+          für Citavi daneben. Die Keys kommen aus geprüften Metadaten — nicht aus <Code>[S#]</Code> und nicht aus dem
+          Gedächtnis des Modells. Ein gesetzter Typ bleibt auch ohne DOI. Was nicht vorliegt, bleibt leer.
         </P>
         <H>Was der Export schreibt</H>
         <Ul>

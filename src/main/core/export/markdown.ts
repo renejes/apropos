@@ -110,7 +110,7 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
       '> ⚠️ _Der folgende Berichtstext ist KI-generierter Inhalt und wird unverändert wiedergegeben. Verbindlich geprüfte Angaben stehen ausschließlich im Quellenverzeichnis unten._'
     )
     lines.push('')
-    lines.push(rewriteCiteMarkers(v.content_markdown.trim(), state.sources))
+    lines.push(rewriteCiteMarkers(v.content_markdown.trim(), state.sources, 'dgps'))
     lines.push('')
   }
 
@@ -131,7 +131,7 @@ export function exportProjectMarkdown(state: ProjectState, version?: ReportVersi
       for (const link of links) {
         const idx = sourceIndex.get(link.source_id)
         const src = state.sources.find((s) => s.id === link.source_id)
-        const marker = src ? citeMarker(src, idx, true) : `[S${idx ?? '?'}]`
+        const marker = src ? citeMarker(src, idx, true, 'dgps') : `[S${idx ?? '?'}]`
         lines.push(
           `  - ${marker} ${link.support_type} · Verifikation: **${link.verification_status}**${link.confidence ? ` (Konfidenz: ${link.confidence})` : ''}`
         )

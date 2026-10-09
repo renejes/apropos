@@ -8,6 +8,8 @@ import { graphToJpeg } from './graph-jpeg'
 import { graphToSvg } from './graph-svg'
 import { renderSearchDocumentation } from './markdown'
 import { mergeBibliography, rewriteCitekeys } from './bib-merge'
+import { sourcesToRis } from '../services/bibliography-format'
+import { locatorStyleForLang } from '../services/biblio'
 import {
   parseEwManifest,
   serializeEwManifest,
@@ -20,6 +22,13 @@ import { renderBericht, renderClaimsMd, renderDoNotClaim, resolveWritingScope } 
 
 export const RESEARCH_MDX = 'research.mdx'
 const BIB_NAME = 'references.bib'
+const DGPS_CSL = 'deutsche-gesellschaft-fur-psychologie'
+
+function cslFor(type: EwProjectType, lang: EwLang, current?: string): string {
+  if (current && current !== 'apa') return current
+  if (type === 'paper' && lang === 'de') return DGPS_CSL
+  return 'apa'
+}
 const KARTE_SVG = 'assets/research-karte.svg'
 const KARTE_JPG = 'assets/research-karte.jpg'
 
@@ -124,11 +133,10 @@ lang: ${lang}
 }
 
 function ensureCitation(manifest: EwManifest): EwManifest {
-  if (manifest.citation) return manifest
-  return {
-    ...manifest,
-    citation: { bibliography: BIB_NAME, csl: 'apa' },
-  }
+  const bibliography = manifest.citation?.bibliography ?? BIB_NAME
+  const csl = cslFor(manifest.type, manifest.lang, manifest.citation?.csl)
+  if (manifest.citation?.bibliography === bibliography && manifest.citation.csl === csl) return manifest
+  return { ...manifest, citation: { bibliography, csl } }
 }
 
 function ensureResearchChapter(manifest: EwManifest): EwManifest {
@@ -156,7 +164,7 @@ function scaffoldNew(
     title: title.trim(),
     lang,
     chapters: [RESEARCH_MDX],
-    citation: { bibliography: BIB_NAME, csl: 'apa' },
+    citation: { bibliography: BIB_NAME, csl: cslFor(type, lang) },
   }
 
   switch (type) {
@@ -236,9 +244,10 @@ function renderResearchMdx(input: {
   if (lage) {
     lines.push(lage.trimEnd(), '')
   }
-  lines.push(renderClaimsMd(input.state, input.claimIds, input.sources).trimEnd(), '')
+  const style = locatorStyleForLang(input.lang)
+  lines.push(renderClaimsMd(input.state, input.claimIds, input.sources, style).trimEnd(), '')
   lines.push('## Bericht dieser Sicht', '')
-  const bericht = renderBericht(input.state, input.claims, input.sources, input.visualVersionId).trim()
+  const bericht = renderBericht(input.state, input.claims, input.sources, input.visualVersionId, style).trim()
   const berichtBody = bericht.replace(/^# Bericht dieser Sicht\s*/, '').trim()
   lines.push(berichtBody.length > 0 ? berichtBody : '_Kein Bericht an diese Sicht gebunden._', '')
   lines.push(renderDoNotClaim(input.state, input.sources).trimEnd(), '')
@@ -264,7 +273,7 @@ export function rememberedEasyWritingDir(dir: string | null | undefined): string
 export function writeEasyWriting(repo: Repo, rawInput: unknown, actor: string): EasyWritingResult {
   const input = parseOrThrow(easyWritingSchema, rawInput, 'ew_invalid')
   const packed = resolveWritingScope(repo, input)
-  const lang: EwLang = input.lang ?? 'de'
+  const requestedLang: EwLang = input.lang ?? 'de'
   const files: string[] = []
 
   let root: string
@@ -272,7 +281,7 @@ export function writeEasyWriting(repo: Repo, rawInput: unknown, actor: string): 
   let target: 'new' | 'existing' = input.target
 
   if (input.target === 'new') {
-    const made = scaffoldNew(input.out_dir, packed.state.project.title, input.project_type!, lang)
+    const made = scaffoldNew(input.out_dir, packed.state.project.title, input.project_type!, requestedLang)
     root = made.root
     manifest = made.manifest
     files.push(...made.files)
@@ -291,6 +300,9 @@ export function writeEasyWriting(repo: Repo, rawInput: unknown, actor: string): 
   const merged = mergeBibliography(existingBib, packed.sources)
   writeUtf8(bibPath, merged.bib)
   files.push(bibRel)
+  const risRel = bibRel.replace(/\.bib$/i, '.ris')
+  writeUtf8(join(root, risRel === bibRel ? `${bibRel}.ris` : risRel), sourcesToRis(merged.sources))
+  files.push(risRel === bibRel ? `${bibRel}.ris` : risRel)
 
   let karte = false
   if (packed.graph) {
@@ -308,7 +320,7 @@ export function writeEasyWriting(repo: Repo, rawInput: unknown, actor: string): 
       claimIds: packed.claimIds,
       claims: packed.claims,
       visualVersionId: packed.visualVersionId,
-      lang,
+      lang: manifest.lang,
       hasKarte: karte,
     }),
     merged.remapped

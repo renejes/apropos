@@ -240,8 +240,8 @@ export default function ExportDialog({
         {kind === 'bibtex' && (
           <p className="mt-4 text-sm leading-relaxed text-muted">
             {signedCount > 0
-              ? `${signedCount} übernommene Quelle${signedCount === 1 ? '' : 'n'} — Citekeys nachnameJahrKurztitel. Dasselbe Set wie der Bericht.`
-              : 'Noch keine übernommenen Quellen. Erst auf dem Human Desk Übernehmen, dann die .bib für die Hausarbeit.'}
+              ? `${signedCount} übernommene Quelle${signedCount === 1 ? '' : 'n'}. BibTeX für Easy Writing, RIS für Citavi. Fehlende Angaben bleiben leer.`
+              : 'Noch keine übernommenen Quellen. Erst auf dem Human Desk Übernehmen, dann die Datei für die Hausarbeit.'}
           </p>
         )}
 
@@ -250,6 +250,26 @@ export default function ExportDialog({
           {kind === 'bibtex' && (
             <Button disabled={busy || bibEmpty} onClick={() => void runBibtex('copy')}>
               Kopieren
+            </Button>
+          )}
+          {kind === 'bibtex' && (
+            <Button
+              disabled={busy || bibEmpty}
+              onClick={() => {
+                setBusy(true)
+                void window.api
+                  .exportRis(state.project.id)
+                  .then((res) => {
+                    if (res.saved) {
+                      onDone(`Gespeichert: ${res.filePath}`)
+                      onClose()
+                    }
+                  })
+                  .catch((err: unknown) => onDone(err instanceof Error ? err.message : String(err)))
+                  .finally(() => setBusy(false))
+              }}
+            >
+              RIS
             </Button>
           )}
           <Button variant="primary" disabled={busy || destDisabled || bibEmpty} onClick={() => void submit()}>

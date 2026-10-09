@@ -284,6 +284,14 @@ export class Repo {
     authors_json?: string | null
     year?: number | null
     venue?: string | null
+    volume?: string | null
+    issue?: string | null
+    pages?: string | null
+    publisher?: string | null
+    place?: string | null
+    edition?: string | null
+    editors_json?: string | null
+    booktitle?: string | null
     entry_type?: BibEntryType | null
     citekey?: string | null
     source_kind?: SourceKind | null
@@ -297,10 +305,11 @@ export class Repo {
         `INSERT INTO sources (id, project_id, url, title, retrieval_method, accessed_at,
            reason, extraction, contribution, verbatim_quote, quote_locator,
            confidence, sub_question_id, document_id, quote_start, quote_end,
-           doi, authors_json, year, venue, entry_type, citekey, source_kind,
+           doi, authors_json, year, venue, volume, issue, pages, publisher, place, edition, editors_json, booktitle,
+           entry_type, citekey, source_kind,
            context_id, carrier_id,
            review_status, created_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
       .run(
         id,
@@ -323,6 +332,14 @@ export class Repo {
         input.authors_json ?? null,
         input.year ?? null,
         input.venue ?? null,
+        input.volume ?? null,
+        input.issue ?? null,
+        input.pages ?? null,
+        input.publisher ?? null,
+        input.place ?? null,
+        input.edition ?? null,
+        input.editors_json ?? null,
+        input.booktitle ?? null,
         input.entry_type ?? null,
         input.citekey ?? null,
         input.source_kind ?? null,
@@ -1676,6 +1693,14 @@ export class Repo {
       authors_json?: string | null
       year?: number | null
       venue?: string | null
+      volume?: string | null
+      issue?: string | null
+      pages?: string | null
+      publisher?: string | null
+      place?: string | null
+      edition?: string | null
+      editors_json?: string | null
+      booktitle?: string | null
       entry_type?: BibEntryType | null
       citekey?: string | null
       source_kind?: SourceKind | null
@@ -1690,6 +1715,14 @@ export class Repo {
            authors_json = COALESCE(?, authors_json),
            year = COALESCE(?, year),
            venue = COALESCE(?, venue),
+           volume = COALESCE(?, volume),
+           issue = COALESCE(?, issue),
+           pages = COALESCE(?, pages),
+           publisher = COALESCE(?, publisher),
+           place = COALESCE(?, place),
+           edition = COALESCE(?, edition),
+           editors_json = COALESCE(?, editors_json),
+           booktitle = COALESCE(?, booktitle),
            entry_type = COALESCE(?, entry_type),
            citekey = COALESCE(?, citekey),
            source_kind = COALESCE(?, source_kind)
@@ -1700,11 +1733,77 @@ export class Repo {
         patch.authors_json ?? null,
         patch.year ?? null,
         patch.venue ?? null,
+        patch.volume ?? null,
+        patch.issue ?? null,
+        patch.pages ?? null,
+        patch.publisher ?? null,
+        patch.place ?? null,
+        patch.edition ?? null,
+        patch.editors_json ?? null,
+        patch.booktitle ?? null,
         patch.entry_type ?? null,
         patch.citekey ?? null,
         patch.source_kind ?? null,
         sourceId
       )
+    return this.getSource(sourceId)!
+  }
+
+  /** Mensch auf dem Human Desk. Leere Felder werden geleert, der Citekey bleibt. */
+  setSourceImprint(
+    sourceId: string,
+    patch: {
+      authors_json: string | null
+      year: number | null
+      venue: string | null
+      volume: string | null
+      issue: string | null
+      pages: string | null
+      publisher: string | null
+      place: string | null
+      edition: string | null
+      editors_json: string | null
+      booktitle: string | null
+      entry_type: BibEntryType | null
+    },
+    actor: string
+  ): Source {
+    const src = this.getSource(sourceId)
+    if (!src) throw new Error(`source ${sourceId} not found`)
+    this.db
+      .prepare(
+        `UPDATE sources SET
+           authors_json = ?,
+           year = ?,
+           venue = ?,
+           volume = ?,
+           issue = ?,
+           pages = ?,
+           publisher = ?,
+           place = ?,
+           edition = ?,
+           editors_json = ?,
+           booktitle = ?,
+           entry_type = ?
+         WHERE id = ?`
+      )
+      .run(
+        patch.authors_json,
+        patch.year,
+        patch.venue,
+        patch.volume,
+        patch.issue,
+        patch.pages,
+        patch.publisher,
+        patch.place,
+        patch.edition,
+        patch.editors_json,
+        patch.booktitle,
+        patch.entry_type,
+        sourceId
+      )
+    this.logEvent(src.project_id, actor, 'source.imprint', { source_id: sourceId })
+    this.touchProject(src.project_id)
     return this.getSource(sourceId)!
   }
 

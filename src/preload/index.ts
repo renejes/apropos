@@ -179,8 +179,30 @@ const api = {
     ipcRenderer.invoke('export:copy', projectId, versionId),
   exportBibliography: (projectId: string, sourceIds?: string[] | null): Promise<{ saved: boolean; filePath?: string }> =>
     ipcRenderer.invoke('export:bibliography', projectId, sourceIds),
+  exportRis: (projectId: string, sourceIds?: string[] | null): Promise<{ saved: boolean; filePath?: string }> =>
+    ipcRenderer.invoke('export:ris', projectId, sourceIds),
   copyBibliography: (projectId: string, sourceIds?: string[] | null): Promise<{ copied: boolean }> =>
     ipcRenderer.invoke('export:copyBibliography', projectId, sourceIds),
+  saveSourceImprint: (input: {
+    source_id: string
+    entry_type: 'article' | 'book' | 'inproceedings' | 'misc' | null
+    authors: string[]
+    year: number | null
+    venue: string | null
+    volume: string | null
+    issue: string | null
+    pages: string | null
+    publisher: string | null
+    place: string | null
+    edition: string | null
+    editors: string[]
+    booktitle: string | null
+  }): Promise<Source> => ipcRenderer.invoke('biblio:imprint', input),
+  snowballLiterature: (projectId: string, sourceId: string): Promise<{ references: number; citing: number; hint: string }> =>
+    ipcRenderer.invoke('literature:snowball', projectId, sourceId),
+  zoteroStatus: (): Promise<{ running: boolean; message: string }> => ipcRenderer.invoke('zotero:status'),
+  exportToZotero: (projectId: string): Promise<{ created: number; already: number; skipped: number; hint: string }> =>
+    ipcRenderer.invoke('zotero:export', projectId),
   exportWritingPack: (input: {
     project_id: string
     visual_version_id?: string

@@ -5,7 +5,9 @@ import type { Repo } from './core/repo'
 import type { RunningHttpServer } from './mcp/http'
 import { reVerifyProject } from './core/enforce/verify'
 import { exportProjectMarkdown } from './core/export/markdown'
-import { acceptBiblioSuggestion, exportBibliography, rejectBiblioSuggestion } from './core/services/biblio'
+import { acceptBiblioSuggestion, exportBibliography, exportRis, rejectBiblioSuggestion, saveSourceImprint } from './core/services/biblio'
+import { snowballLiterature } from './core/services/literature'
+import { exportSignedToZotero, zoteroStatus } from './core/services/zotero'
 import { writeWritingPack } from './core/export/writing-pack'
 import { writeEasyWriting } from './core/export/easy-writing'
 import { seedDemoProject } from './core/seed'
@@ -158,9 +160,42 @@ export function registerIpc(deps: IpcDeps): void {
     repo.signSourceHuman(sourceId, verdict, note, HUMAN)
     return repo.getSource(sourceId)
   })
-  ipcMain.handle('biblio:accept', (_e, suggestionId: string) => {
+  ipcMain.handle('biblio:accept', async (_e, suggestionId: string) => {
     try {
-      return acceptBiblioSuggestion(repo, suggestionId, HUMAN)
+      return await acceptBiblioSuggestion(repo, suggestionId, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('biblio:imprint', (_e, input: unknown) => {
+    try {
+      return saveSourceImprint(repo, input, HUMAN)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('zotero:status', async () => {
+    try {
+      return await zoteroStatus()
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('zotero:export', async (_e, projectId: string) => {
+    try {
+      return await exportSignedToZotero(repo, projectId)
+    } catch (err) {
+      throw ipcError(err)
+    }
+  })
+  ipcMain.handle('literature:snowball', async (_e, projectId: string, sourceId: string) => {
+    try {
+      const result = await snowballLiterature(repo, { project_id: projectId, source_id: sourceId }, HUMAN)
+      return {
+        references: result.references.length,
+        citing: result.citing.length,
+        hint: result.hint,
+      }
     } catch (err) {
       throw ipcError(err)
     }
@@ -541,6 +576,21 @@ export function registerIpc(deps: IpcDeps): void {
     clipboard.writeText(exportBibliography(repo, projectId, sourceIds))
     repo.logEvent(projectId, 'human:ui', 'export.bibliography.copy', { count: sourceIds?.length ?? null })
     return { copied: true }
+  })
+
+  ipcMain.handle('export:ris', async (e, projectId: string, sourceIds?: string[] | null) => {
+    const state = repo.getProjectState(projectId)
+    const ris = exportRis(repo, projectId, sourceIds)
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+      title: 'RIS speichern',
+      defaultPath: `${state.project.title.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 60)}-references.ris`,
+      filters: [{ name: 'RIS', extensions: ['ris'] }],
+    })
+    if (canceled || !filePath) return { saved: false }
+    writeFileSync(filePath, ris, 'utf-8')
+    repo.logEvent(projectId, 'human:ui', 'export.ris', { file: filePath })
+    return { saved: true, filePath }
   })
 
   ipcMain.handle('dialog:pickDirectory', async (e, title: string) => {

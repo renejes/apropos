@@ -9,7 +9,8 @@ import { lookupBestOaUrl } from '../enforce/unpaywall'
 import { extractPdfText, isPdfMagic, MAX_PDF_BYTES } from '../enforce/pdf'
 import { htmlToText } from '../enforce/textmatch'
 import { listInboxFiles, localInboxUrl, projectWorkspace, registeredWorkspace, resolveInboxFile } from '../agent/workspace'
-import { enrichSourceBiblio } from './biblio'
+import { allocateCitekey, enrichSourceBiblio } from './biblio'
+import { citekeyPinnedOnDocument } from '../../../shared/zotero-ref'
 import { attachDocumentContext, assertCarrierAllowsSource, carrierHint } from './carriers'
 import {
   type ClaimSourceLink,
@@ -488,7 +489,7 @@ export function nextCoverageHint(repo: Repo, projectId: string): string {
   return 'Teilfragen zahlenmäßig bedient. Stopp-Regel und get_coverage_gaps prüfen — nur bei Widerspruch oder offener Lücke weiter holen.'
 }
 
-function assertUnreadWorkBuffer(repo: Repo, projectId: string): void {
+export function assertUnreadWorkBuffer(repo: Repo, projectId: string): void {
   const buf = unreadWorkBuffer(repo, projectId)
   if (buf.open < buf.cap) return
   const open = repo.listOpenDocuments(projectId)
@@ -1323,6 +1324,12 @@ export async function recordSource(repo: Repo, rawInput: unknown, actor: string)
     stored = await enrichSourceBiblio(repo, source, input.doi)
   } catch {
     stored = source
+  }
+  const pinned = doc ? citekeyPinnedOnDocument(doc.url) : null
+  if (pinned) {
+    const taken = repo.listCitekeys(stored.project_id).filter((key) => key !== stored.citekey)
+    const citekey = allocateCitekey(taken, pinned)
+    if (citekey !== stored.citekey) stored = repo.setSourceBiblio(stored.id, { citekey })
   }
 
   let check: { urlResolved: boolean | null; quoteVerified: boolean | null; quoteMatchScore: number | null; verdict: string; note: string }

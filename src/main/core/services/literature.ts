@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Repo } from '../repo'
+import { extractDoi } from '../enforce/fetchers'
 import { ServiceError, requireAdoptedBrief, requireSearchReflection, FETCH_PICK_HINT } from './research'
 import { contactUserAgent, resolveContactEmail } from '../contact-email'
 
@@ -152,6 +153,25 @@ function preferLanding(...candidates: Array<string | null | undefined>): string 
 
 // ------------------------------------------------------------------ Backends
 
+function mapOpenAlexWork(w: Record<string, any>): LiteratureHit {
+  const doi = cleanDoi(w.doi)
+  const landing = w.primary_location?.landing_page_url ?? w.best_oa_location?.landing_page_url ?? null
+  const oa = w.open_access?.oa_url ?? w.best_oa_location?.pdf_url ?? null
+  return {
+    title: String(w.display_name ?? w.title ?? '(ohne Titel)'),
+    authors: (w.authorships ?? []).slice(0, 12).map((a: any) => String(a?.author?.display_name ?? '')).filter(Boolean),
+    year: typeof w.publication_year === 'number' ? w.publication_year : null,
+    doi,
+    url: preferLanding(landing, doi ? `https://doi.org/${doi}` : null, oa),
+    oa_url: oa,
+    venue: w.primary_location?.source?.display_name ?? null,
+    abstract: fromInvertedIndex(w.abstract_inverted_index),
+    cited_by_count: typeof w.cited_by_count === 'number' ? w.cited_by_count : null,
+    is_open_access: w.open_access?.is_oa ?? null,
+    found_via: ['openalex'],
+  }
+}
+
 async function searchOpenAlex(q: string, limit: number, o: { yearFrom?: number; yearTo?: number; oaOnly?: boolean }): Promise<LiteratureHit[]> {
   const filters: string[] = []
   if (o.yearFrom) filters.push(`from_publication_date:${o.yearFrom}-01-01`)
@@ -163,24 +183,7 @@ async function searchOpenAlex(q: string, limit: number, o: { yearFrom?: number; 
     `&mailto=${encodeURIComponent(resolveContactEmail())}`
 
   const data = (await getJson(url)) as { results?: Array<Record<string, any>> }
-  return (data.results ?? []).map((w) => {
-    const doi = cleanDoi(w.doi)
-    const landing = w.primary_location?.landing_page_url ?? w.best_oa_location?.landing_page_url ?? null
-    const oa = w.open_access?.oa_url ?? w.best_oa_location?.pdf_url ?? null
-    return {
-      title: String(w.display_name ?? w.title ?? '(ohne Titel)'),
-      authors: (w.authorships ?? []).slice(0, 12).map((a: any) => String(a?.author?.display_name ?? '')).filter(Boolean),
-      year: typeof w.publication_year === 'number' ? w.publication_year : null,
-      doi,
-      url: preferLanding(landing, doi ? `https://doi.org/${doi}` : null, oa),
-      oa_url: oa,
-      venue: w.primary_location?.source?.display_name ?? null,
-      abstract: fromInvertedIndex(w.abstract_inverted_index),
-      cited_by_count: typeof w.cited_by_count === 'number' ? w.cited_by_count : null,
-      is_open_access: w.open_access?.is_oa ?? null,
-      found_via: ['openalex'] as LiteratureBackend[],
-    }
-  })
+  return (data.results ?? []).map((w) => mapOpenAlexWork(w))
 }
 
 async function searchCrossref(q: string, limit: number, o: { yearFrom?: number; yearTo?: number }): Promise<LiteratureHit[]> {
@@ -721,5 +724,154 @@ export async function searchLiterature(repo: Repo, rawInput: unknown, actor: str
       (brief?.discipline === 'psychology'
         ? ` Disziplin Psychologie: OpenAlex/Crossref/Europe PMC/Semantic Scholar/OpenAIRE (PubMed teilweise). PSYNDEX hat keine offene API (Institutszugang über EBSCO/Ovid; Einzelnutzer: PubPsych im Browser, https://www.pubpsych.eu — Query «${input.query}»). Treffer von dort mit fetch_source einlesen, das Portal nicht scrapen.`
         : ''),
+  }
+}
+
+export interface SnowballResult {
+  source_id: string
+  doi: string
+  references: LiteratureHit[]
+  citing: LiteratureHit[]
+  search_log_id: string
+  hint: string
+}
+
+export const snowballInputSchema = z.object({
+  project_id: z.string().min(1),
+  source_id: z.string().min(1),
+  limit: z.number().int().min(1).max(25).optional(),
+})
+
+function openAlexShortId(raw: string): string {
+  const trimmed = raw.trim()
+  const tail = trimmed.split('/').pop() ?? trimmed
+  return tail.replace(/^https?:\/\/openalex.org\//i, '')
+}
+
+function hitsFromWorks(works: Array<Record<string, any>>, seedDoi: string, limit: number): LiteratureHit[] {
+  return works
+    .map((w) => mapOpenAlexWork(w))
+    .filter((h) => h.doi?.toLowerCase() !== seedDoi.toLowerCase())
+    .sort((a, b) => (b.cited_by_count ?? -1) - (a.cited_by_count ?? -1))
+    .slice(0, limit)
+}
+
+function toScreening(hits: LiteratureHit[]) {
+  return hits.map((h) => ({
+    title: h.title,
+    authors: h.authors,
+    year: h.year,
+    doi: h.doi,
+    url: h.url,
+    oa_url: h.oa_url,
+    venue: h.venue,
+    abstract: h.abstract,
+    cited_by_count: h.cited_by_count,
+    is_open_access: h.is_open_access,
+    found_via: h.found_via,
+  }))
+}
+
+/**
+ * Rückwärts (Literaturverzeichnis) und vorwärts (wer zitiert) an einer übernommenen Quelle.
+ * Treffer landen auf dem Arbeitstisch, nicht als Quellen.
+ */
+export async function snowballLiterature(repo: Repo, rawInput: unknown, actor: string): Promise<SnowballResult> {
+  const parsed = snowballInputSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    throw new ServiceError(
+      'snowball_invalid',
+      'Eingabe ungültig — ' + parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+      'Korrigiere GENAU die oben genannten Felder und rufe snowball_literature erneut auf.'
+    )
+  }
+  const input = parsed.data
+  const source = repo.getSource(input.source_id)
+  if (!source || source.project_id !== input.project_id) {
+    throw new ServiceError(
+      'snowball_source_missing',
+      `Quelle ${input.source_id} liegt nicht in diesem Projekt.`,
+      'Nimm eine source_id aus get_project_state.'
+    )
+  }
+  if (source.review_status !== 'human_signed') {
+    throw new ServiceError(
+      'snowball_not_signed',
+      'Schneeball läuft nur an einer übernommenen Quelle.',
+      'Übernimm die Quelle auf dem Human Desk, dann snowball_literature mit dieser source_id.'
+    )
+  }
+  const doi = (source.doi ?? extractDoi(source.url) ?? '').replace(/^https?:\/\/doi.org\//i, '').trim()
+  if (!doi.startsWith('10.')) {
+    throw new ServiceError(
+      'snowball_needs_doi',
+      'Diese Quelle hat keine DOI. OpenAlex kann das Literaturverzeichnis daran nicht aufhängen.',
+      'DOI auf dem Human Desk über den Crossref-Vorschlag übernehmen, oder eine andere übernommene Quelle mit DOI wählen.'
+    )
+  }
+  requireAdoptedBrief(repo, input.project_id)
+  requireSearchReflection(repo, input.project_id)
+  const limit = input.limit ?? 12
+  const mail = encodeURIComponent(resolveContactEmail())
+  const query = `Schneeball ${doi}`
+
+  try {
+    const work = (await getJson(
+      `https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?select=id,doi,referenced_works,cited_by_api_url&mailto=${mail}`
+    )) as { id?: string; referenced_works?: string[]; cited_by_api_url?: string }
+    const refIds = (work.referenced_works ?? []).slice(0, 40).map(openAlexShortId).filter((id) => id.startsWith('W'))
+    let references: LiteratureHit[] = []
+    if (refIds.length > 0) {
+      const data = (await getJson(
+        `https://api.openalex.org/works?filter=${encodeURIComponent(`openalex_id:${refIds.join('|')}`)}&per-page=${refIds.length}&mailto=${mail}`
+      )) as { results?: Array<Record<string, any>> }
+      references = hitsFromWorks(data.results ?? [], doi, limit)
+    }
+    let citing: LiteratureHit[] = []
+    const citedBy = work.cited_by_api_url
+    if (citedBy) {
+      const join = citedBy.includes('?') ? '&' : '?'
+      const data = (await getJson(
+        `${citedBy}${join}per-page=${limit}&sort=cited_by_count:desc&mailto=${mail}`
+      )) as { results?: Array<Record<string, any>> }
+      citing = hitsFromWorks(data.results ?? [], doi, limit)
+    }
+    const hits = [...references, ...citing]
+    repo.upsertScreeningHits(input.project_id, toScreening(hits), { query, search_log_id: null, actor })
+    const log = repo.addSearchLog({
+      project_id: input.project_id,
+      query,
+      engine: 'OpenAlex Schneeball',
+      results_found: hits.length,
+      note: `${references.length} rückwärts, ${citing.length} vorwärts, von ${source.citekey ?? source.title}`,
+      actor,
+    })
+    return {
+      source_id: source.id,
+      doi,
+      references,
+      citing,
+      search_log_id: log.id,
+      hint:
+        `${references.length} Arbeiten aus dem Literaturverzeichnis, ${citing.length} spätere Zitationen. ` +
+        'Das sind Treffer, keine Quellen. Wenige passende mit fetch_source lesen, dann add_source. ' +
+        'Nicht die ganze Liste holen. Bevor du erneut suchst: reflect_search.',
+    }
+  } catch (err) {
+    if (err instanceof ServiceError) throw err
+    const message = err instanceof Error ? err.message : String(err)
+    repo.addSearchLog({
+      project_id: input.project_id,
+      query,
+      engine: 'OpenAlex Schneeball',
+      results_found: null,
+      note: `FEHLGESCHLAGEN: ${message}`,
+      actor,
+    })
+    throw new ServiceError(
+      'snowball_failed',
+      `OpenAlex liefert den Schneeball zu ${doi} nicht: ${message}`,
+      'Rufe snowball_literature in einem Moment erneut auf. Die Quelle selbst bleibt übernommen.'
+    )
   }
 }

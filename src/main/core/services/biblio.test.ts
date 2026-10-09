@@ -8,11 +8,13 @@ import {
   citekeyBase,
   enrichSourceBiblio,
   exportBibliography,
+  exportRis,
   formatLocator,
   proposeBiblio,
   acceptBiblioSuggestion,
   rejectBiblioSuggestion,
   rewriteCiteMarkers,
+  saveSourceImprint,
   searchBiblioForSource,
   sourceToBibtex,
   titleOverlap,
@@ -59,6 +61,111 @@ describe('Bibliografie (Phase F)', () => {
     expect(allocateCitekey(['vaswani2017attention'], 'vaswani2017attention')).toBe('vaswani2017attentiona')
   })
 
+  it('macht aus einem Crossref-Buchkapitel einen Sammelbandbeitrag', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: true,
+      json: async () => ({
+        message: {
+          DOI: '10.1007/chapter',
+          type: 'book-chapter',
+          title: ['Mikropolitischer Führungsansatz'],
+          author: [{ given: 'Rainhart', family: 'Lang' }],
+          editor: [{ given: 'Irma', family: 'Rybnikova' }],
+          issued: { 'date-parts': [[2014]] },
+          'container-title': ['Aktuelle Führungstheorien und -konzepte'],
+          page: '181-212',
+          publisher: 'Springer',
+          'publisher-location': 'Wiesbaden',
+        },
+      }),
+    }))
+    const src = add({ url: 'https://doi.org/10.1007/chapter', title: 'Mikropolitischer Führungsansatz' })
+    const enriched = await enrichSourceBiblio(repo, src)
+    expect(enriched.entry_type).toBe('book')
+    expect(enriched.booktitle).toBe('Aktuelle Führungstheorien und -konzepte')
+    expect(enriched.publisher).toBe('Springer')
+    expect(enriched.place).toBe('Wiesbaden')
+    expect(JSON.parse(enriched.editors_json ?? '[]')).toEqual(['Irma Rybnikova'])
+    repo.signSourceHuman(enriched.id, 'human_signed', 'übernommen', ACTOR)
+    expect(exportBibliography(repo, projectId)).toMatch(/@incollection\{/)
+  })
+
+  it('lässt ein Buch ohne DOI ein Buch und schreibt RIS mit Anfangs- und Endseite', () => {
+    const src = add({
+      url: 'https://example.org/lehrbuch',
+      title: 'Psychologie',
+      entry_type: 'book',
+      authors_json: JSON.stringify(['David Myers']),
+      year: 2014,
+      publisher: 'Springer',
+      place: 'Berlin',
+      edition: '3',
+      booktitle: 'Aktuelle Führungstheorien',
+      editors_json: JSON.stringify(['Rainhart Lang']),
+      pages: '181-212',
+    })
+    repo.signSourceHuman(src.id, 'human_signed', 'übernommen', ACTOR)
+    const stored = repo.getSource(src.id)!
+    const bib = sourceToBibtex(stored)
+    expect(bib).toMatch(/^@incollection\{/)
+    expect(bib).toMatch(/publisher = \{Springer\}/)
+    expect(bib).toMatch(/booktitle = \{Aktuelle Führungstheorien\}/)
+    expect(bib).not.toMatch(/Zugriff am/)
+    const ris = exportRis(repo, projectId)
+    expect(ris).toMatch(/TY  - CHAP/)
+    expect(ris).toMatch(/SP  - 181/)
+    expect(ris).toMatch(/EP  - 212/)
+    expect(ris).toMatch(/PB  - Springer/)
+    expect(ris).not.toMatch(/pages =/)
+  })
+
+  it('übernimmt Titelangaben vom Menschen und lehnt f. und ff. ab', () => {
+    const src = add()
+    const saved = saveSourceImprint(
+      repo,
+      {
+        source_id: src.id,
+        entry_type: 'article',
+        authors: ['Ashish Vaswani'],
+        year: 2017,
+        venue: 'NeurIPS',
+        volume: '30',
+        issue: null,
+        pages: '5998-6008',
+        publisher: null,
+        place: null,
+        edition: null,
+        editors: [],
+        booktitle: null,
+      },
+      ACTOR
+    )
+    expect(saved.volume).toBe('30')
+    expect(saved.pages).toBe('5998-6008')
+    expect(saved.citekey).toBe(src.citekey)
+    expect(() =>
+      saveSourceImprint(
+        repo,
+        {
+          source_id: src.id,
+          entry_type: 'article',
+          authors: [],
+          year: null,
+          venue: null,
+          volume: null,
+          issue: null,
+          pages: '12 ff.',
+          publisher: null,
+          place: null,
+          edition: null,
+          editors: [],
+          booktitle: null,
+        },
+        ACTOR
+      )
+    ).toThrow(/f\./)
+  })
+
   it('exportiert ohne DOI nur @misc mit URL und Zugriffsdatum, nie @article', () => {
     const src = add({ url: 'https://blog.example.org/meinung' })
     const enriched = { ...src, citekey: 'anonndattention', entry_type: 'misc' as const, doi: null }
@@ -83,6 +190,8 @@ describe('Bibliografie (Phase F)', () => {
             author: [{ given: 'Ashish', family: 'Vaswani' }],
             issued: { 'date-parts': [[2017]] },
             'container-title': ['NeurIPS'],
+            volume: '30',
+            page: '5998-6008',
           },
         }),
       }
@@ -93,6 +202,8 @@ describe('Bibliografie (Phase F)', () => {
     expect(enriched.year).toBe(2017)
     expect(enriched.citekey).toBe('vaswani2017attention')
     expect(enriched.entry_type).toBe('article')
+    expect(enriched.volume).toBe('30')
+    expect(enriched.pages).toBe('5998-6008')
     expect(JSON.parse(enriched.authors_json ?? '[]')).toContain('Ashish Vaswani')
     repo.signSourceHuman(enriched.id, 'human_signed', 'übernommen', ACTOR)
     const bib = exportBibliography(repo, projectId)
@@ -134,7 +245,12 @@ describe('Bibliografie (Phase F)', () => {
     expect(formatLocator('Seite 12')).toBe('p. 12')
     expect(formatLocator('pp. 12-14')).toBe('pp. 12–14')
     expect(formatLocator('Einleitung, erster Satz')).toBe('Einleitung, erster Satz')
+    expect(formatLocator('S. 12', 'dgps')).toBe('S. 12')
+    expect(formatLocator('pp. 12-14', 'dgps')).toBe('S. 12–14')
+    expect(formatLocator('12 f.')).toBe('p. 12')
+    expect(formatLocator('ff.')).toBeNull()
     expect(citeMarker({ ...withKey, quote_locator: 'S. 12' }, 3, true)).toBe('[@vaswani2017attention, p. 12]')
+    expect(citeMarker({ ...withKey, quote_locator: 'S. 12' }, 3, true, 'dgps')).toBe('[@vaswani2017attention, S. 12]')
     expect(citeMarker({ ...withKey, quote_locator: null }, 3, true)).toBe('[@vaswani2017attention]')
     expect(rewriteCiteMarkers('Siehe [S1].', [{ ...withKey, quote_locator: 'S. 12' }])).toBe(
       'Siehe [@vaswani2017attention, p. 12].'
@@ -198,7 +314,7 @@ describe('Bibliografie (Phase F)', () => {
     expect(proposed.suggestion.status).toBe('pending')
     expect(proposed.suggestion.proposed_year).toBe(2017)
 
-    const accepted = acceptBiblioSuggestion(repo, proposed.suggestion.id, 'human:ui')
+    const accepted = await acceptBiblioSuggestion(repo, proposed.suggestion.id, 'human:ui')
     expect(accepted.source.doi).toBe('10.5555/3295222.3295349')
     expect(accepted.source.citekey).toBe('vaswani2017attention')
     expect(accepted.source.entry_type).toBe('article')
@@ -235,7 +351,7 @@ describe('Bibliografie (Phase F)', () => {
       ACTOR
     )
     expect(proposed.suggestion.found_via).toBe('document_offset')
-    const accepted = acceptBiblioSuggestion(repo, proposed.suggestion.id, 'human:ui')
+    const accepted = await acceptBiblioSuggestion(repo, proposed.suggestion.id, 'human:ui')
     expect(accepted.source.doi).toBe('10.5555/3295222.3295349')
     expect(accepted.source.citekey).toBe('alt2024placeholder')
   })

@@ -4,6 +4,20 @@ import { extractDoi } from '../enforce/fetchers'
 import type { BibEntryType, BiblioFoundVia, BiblioSuggestion, Source, SourceKind } from '../../../shared/types'
 import { ServiceError } from './research'
 import { contactUserAgent, resolveContactEmail } from '../contact-email'
+import { sourceToBibtex, sourcesToRis } from './bibliography-format'
+
+export {
+  bibliographyType,
+  citeMarker,
+  formatLocator,
+  locatorStyleForLang,
+  rewriteCiteMarkers,
+  sourceToBibtex,
+  sourceToRis,
+  sourcesToRis,
+  splitWorkPages,
+} from './bibliography-format'
+export type { BibliographyType, LocatorStyle } from './bibliography-format'
 
 /**
  * Bibliografische Identität — Citekeys sind stabil (nachnameJahrKurztitel),
@@ -51,6 +65,14 @@ export interface BiblioMeta {
   title: string | null
   entry_type: BibEntryType
   source_kind: SourceKind
+  volume: string | null
+  issue: string | null
+  pages: string | null
+  publisher: string | null
+  place: string | null
+  edition: string | null
+  editors: string[]
+  booktitle: string | null
 }
 
 export function slugPart(raw: string): string {
@@ -92,6 +114,7 @@ function mapCrossrefType(type: string | undefined): { entry_type: BibEntryType; 
     case 'book':
     case 'monograph':
     case 'edited-book':
+    case 'book-chapter':
       return { entry_type: 'book', source_kind: 'textbook' }
     case 'proceedings-article':
     case 'proceedings':
@@ -102,6 +125,66 @@ function mapCrossrefType(type: string | undefined): { entry_type: BibEntryType; 
       return { entry_type: 'misc', source_kind: 'grey' }
     default:
       return { entry_type: 'misc', source_kind: 'web' }
+  }
+}
+
+function cleanText(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return null
+}
+
+function personNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .slice(0, 12)
+    .map((a) => {
+      const rec = a as { given?: string; family?: string; name?: string }
+      if (typeof rec.name === 'string' && rec.name.trim()) return rec.name.trim()
+      return [rec.given, rec.family].filter(Boolean).join(' ')
+    })
+    .filter(Boolean)
+}
+
+function imprintFromCrossref(it: Record<string, unknown>, entryType: BibEntryType): Pick<
+  BiblioMeta,
+  'volume' | 'issue' | 'pages' | 'publisher' | 'place' | 'edition' | 'editors' | 'booktitle' | 'venue'
+> {
+  const container = Array.isArray(it['container-title']) ? cleanText((it['container-title'] as unknown[])[0]) : null
+  const chapter = entryType === 'book' && it.type === 'book-chapter'
+  return {
+    volume: cleanText(it.volume),
+    issue: cleanText(it.issue),
+    pages: cleanText(it.page),
+    publisher: cleanText(it.publisher),
+    place: cleanText(it['publisher-location']),
+    edition: cleanText(it['edition-number']),
+    editors: personNames(it.editor),
+    booktitle: chapter ? container : null,
+    venue: chapter ? null : container,
+  }
+}
+
+function imprintFromOpenAlex(data: Record<string, unknown>): Pick<
+  BiblioMeta,
+  'volume' | 'issue' | 'pages' | 'publisher' | 'place' | 'edition' | 'editors' | 'booktitle'
+> {
+  const biblio = data.biblio as { volume?: unknown; issue?: unknown; first_page?: unknown; last_page?: unknown } | undefined
+  const first = cleanText(biblio?.first_page)
+  const last = cleanText(biblio?.last_page)
+  const pages = first && last && first !== last ? `${first}-${last}` : first
+  const workType = typeof data.type === 'string' ? data.type : ''
+  const source = (data.primary_location as { source?: { display_name?: string; host_organization_name?: string } } | undefined)?.source
+  const bookish = workType === 'book' || workType === 'book-chapter'
+  return {
+    volume: cleanText(biblio?.volume),
+    issue: cleanText(biblio?.issue),
+    pages,
+    publisher: bookish ? cleanText(source?.host_organization_name) : null,
+    place: null,
+    edition: null,
+    editors: [],
+    booktitle: workType === 'book-chapter' ? cleanText(source?.display_name) : null,
   }
 }
 
@@ -135,15 +218,23 @@ export async function lookupDoi(doi: string): Promise<BiblioMeta | null> {
       : []
     const mapped = mapCrossrefType(typeof it.type === 'string' ? it.type : undefined)
     const title = Array.isArray(it.title) ? String(it.title[0] ?? '') : null
-    const venue = Array.isArray(it['container-title']) ? String((it['container-title'] as string[])[0] ?? '') : null
+    const imprint = imprintFromCrossref(it, mapped.entry_type)
     return {
       doi: id,
       authors,
       year: typeof year === 'number' ? year : null,
-      venue,
+      venue: imprint.venue,
       title: title || null,
       entry_type: mapped.entry_type,
       source_kind: mapped.source_kind,
+      volume: imprint.volume,
+      issue: imprint.issue,
+      pages: imprint.pages,
+      publisher: imprint.publisher,
+      place: imprint.place,
+      edition: imprint.edition,
+      editors: imprint.editors,
+      booktitle: imprint.booktitle,
     }
   } catch {
     try {
@@ -156,14 +247,22 @@ export async function lookupDoi(doi: string): Promise<BiblioMeta | null> {
             .map((a) => String(a.author?.display_name ?? ''))
             .filter(Boolean)
         : []
+      const workType = typeof data.type === 'string' ? data.type : ''
+      const mapped =
+        workType === 'book' || workType === 'book-chapter'
+          ? { entry_type: 'book' as const, source_kind: 'textbook' as const }
+          : { entry_type: 'article' as const, source_kind: 'empirical' as const }
+      const imprint = imprintFromOpenAlex(data)
+      const venue = (data.primary_location as { source?: { display_name?: string } } | undefined)?.source?.display_name ?? null
       return {
         doi: id,
         authors,
         year: typeof data.publication_year === 'number' ? data.publication_year : null,
-        venue: (data.primary_location as { source?: { display_name?: string } } | undefined)?.source?.display_name ?? null,
+        venue: workType === 'book-chapter' ? null : venue,
         title: typeof data.display_name === 'string' ? data.display_name : null,
-        entry_type: 'article',
-        source_kind: 'empirical',
+        entry_type: mapped.entry_type,
+        source_kind: mapped.source_kind,
+        ...imprint,
       }
     } catch {
       return null
@@ -187,8 +286,7 @@ export function applyLookedUpBiblio(
   const authors = meta?.authors?.length ? meta.authors : []
   const year = meta?.year ?? source.year ?? null
   const title = meta?.title || source.title
-  const entryType: BibEntryType = meta?.entry_type ?? 'misc'
-  const honestType: BibEntryType = doi && entryType === 'article' ? 'article' : doi ? entryType : 'misc'
+  const entryType: BibEntryType = meta?.entry_type ?? source.entry_type ?? 'misc'
   const kind: SourceKind = source.source_kind ?? meta?.source_kind ?? (doi ? 'empirical' : 'web')
   const keep = Boolean(opts?.preserveCitekey && source.citekey)
   const citekey = keep
@@ -202,73 +300,21 @@ export function applyLookedUpBiblio(
     authors_json: authors.length ? JSON.stringify(authors) : source.authors_json,
     year,
     venue: meta?.venue ?? source.venue ?? null,
-    entry_type: honestType,
+    volume: meta?.volume ?? null,
+    issue: meta?.issue ?? null,
+    pages: meta?.pages ?? null,
+    publisher: meta?.publisher ?? null,
+    place: meta?.place ?? null,
+    edition: meta?.edition ?? null,
+    editors_json: meta?.editors?.length ? JSON.stringify(meta.editors) : null,
+    booktitle: meta?.booktitle ?? null,
+    entry_type: entryType,
     citekey,
     source_kind: kind,
   })
 }
 
-function bibField(value: string): string {
-  return value.replace(/[{}]/g, '')
-}
-
-function authorsBib(authorsJson: string | null): string {
-  if (!authorsJson) return ''
-  try {
-    const authors = JSON.parse(authorsJson) as string[]
-    return authors
-      .map((a) => {
-        const parts = a.trim().split(/\s+/)
-        if (parts.length === 1) return parts[0]
-        const family = parts[parts.length - 1]
-        const given = parts.slice(0, -1).join(' ')
-        return `${family}, ${given}`
-      })
-      .join(' and ')
-  } catch {
-    return ''
-  }
-}
-
-/** APA-Locator: Seite → `p. 12` / `pp. 12–14`. Ohne Zahl: Originaltext, nie ein erfundenes `p. 1`. */
-export function formatLocator(locator: string | null | undefined): string | null {
-  if (!locator?.trim()) return null
-  const t = locator.trim()
-  const range = t.match(/(?:(?:pp?|ss?|seiten?)\.?\s*)(\d+)\s*[–-]\s*(\d+)/i)
-  if (range) return `pp. ${range[1]}–${range[2]}`
-  const single = t.match(/(?:(?:pp?|ss?|seite)\.?\s*)(\d+)\b/i) || t.match(/^(\d+)$/)
-  if (single) return `p. ${single[1]}`
-  return t
-}
-
-export function citeMarker(source: Pick<Source, 'citekey' | 'quote_locator'>, fallbackIndex?: number, withLocator = false): string {
-  if (source.citekey) {
-    const loc = withLocator ? formatLocator(source.quote_locator) : null
-    return loc ? `[@${source.citekey}, ${loc}]` : `[@${source.citekey}]`
-  }
-  return fallbackIndex != null ? `[S${fallbackIndex}]` : '[S?]'
-}
-
-export function sourceToBibtex(source: Source): string {
-  const key = source.citekey || `src${source.id.slice(0, 8)}`
-  const type = source.entry_type && source.doi ? source.entry_type : 'misc'
-  const fields: string[] = []
-  const author = authorsBib(source.authors_json)
-  if (author) fields.push(`  author = {${bibField(author)}}`)
-  fields.push(`  title = {${bibField(source.title)}}`)
-  if (type === 'article' && source.venue) fields.push(`  journal = {${bibField(source.venue)}}`)
-  else if (source.venue) fields.push(`  howpublished = {${bibField(source.venue)}}`)
-  if (source.year) fields.push(`  year = {${source.year}}`)
-  if (source.doi) fields.push(`  doi = {${bibField(source.doi)}}`)
-  fields.push(`  url = {${source.url}}`)
-  if (type === 'misc' || !source.doi) {
-    const accessed = source.accessed_at.slice(0, 10)
-    fields.push(`  note = {Zugriff am ${accessed}}`)
-  }
-  return `@${type}{${key},\n${fields.join(',\n')}\n}`
-}
-
-export function exportBibliography(repo: Repo, projectId: string, sourceIds?: string[] | null): string {
+function signedExportSources(repo: Repo, projectId: string, sourceIds?: string[] | null): Source[] {
   if (!repo.getProject(projectId)) {
     throw new ServiceError(
       'project_not_found',
@@ -281,18 +327,17 @@ export function exportBibliography(repo: Repo, projectId: string, sourceIds?: st
     const want = new Set(sourceIds)
     sources = sources.filter((s) => want.has(s.id))
   }
+  return sources
+}
+
+export function exportBibliography(repo: Repo, projectId: string, sourceIds?: string[] | null): string {
+  const sources = signedExportSources(repo, projectId, sourceIds)
   if (sources.length === 0) return '% keine übernommenen Quellen\n'
   return sources.map(sourceToBibtex).join('\n\n') + '\n'
 }
 
-export function rewriteCiteMarkers(markdown: string, sources: Source[]): string {
-  const byIndex = new Map<number, Source>()
-  sources.forEach((s, i) => byIndex.set(i + 1, s))
-  return markdown.replace(/\[S(\d+)\]/g, (full, n) => {
-    const src = byIndex.get(Number(n))
-    if (!src?.citekey) return full
-    return citeMarker(src, Number(n), true)
-  })
+export function exportRis(repo: Repo, projectId: string, sourceIds?: string[] | null): string {
+  return sourcesToRis(signedExportSources(repo, projectId, sourceIds))
 }
 
 function parseOrThrow<T extends z.ZodTypeAny>(schema: T, input: unknown, code: string): z.infer<T> {
@@ -356,15 +401,23 @@ function parseCrossrefItem(it: Record<string, unknown>): BiblioMeta | null {
     : []
   const mapped = mapCrossrefType(typeof it.type === 'string' ? it.type : undefined)
   const title = Array.isArray(it.title) ? String(it.title[0] ?? '') : null
-  const venue = Array.isArray(it['container-title']) ? String((it['container-title'] as string[])[0] ?? '') : null
+  const imprint = imprintFromCrossref(it, mapped.entry_type)
   return {
     doi,
     authors,
     year: typeof year === 'number' ? year : null,
-    venue,
+    venue: imprint.venue,
     title: title || null,
     entry_type: mapped.entry_type,
     source_kind: mapped.source_kind,
+    volume: imprint.volume,
+    issue: imprint.issue,
+    pages: imprint.pages,
+    publisher: imprint.publisher,
+    place: imprint.place,
+    edition: imprint.edition,
+    editors: imprint.editors,
+    booktitle: imprint.booktitle,
   }
 }
 
@@ -527,7 +580,65 @@ export async function proposeBiblio(
   }
 }
 
-export function acceptBiblioSuggestion(repo: Repo, suggestionId: string, actor: string): { source: Source; suggestion: BiblioSuggestion } {
+const imprintText = z.string().trim().max(300)
+
+export const sourceImprintSchema = z.object({
+  source_id: z.string().min(1),
+  entry_type: z.enum(['article', 'book', 'inproceedings', 'misc']).nullable(),
+  authors: z.array(z.string().trim().min(1).max(200)).max(12),
+  year: z.number().int().min(1000).max(2100).nullable(),
+  venue: imprintText.nullable(),
+  volume: imprintText.nullable(),
+  issue: imprintText.nullable(),
+  pages: imprintText.nullable(),
+  publisher: imprintText.nullable(),
+  place: imprintText.nullable(),
+  edition: imprintText.nullable(),
+  editors: z.array(z.string().trim().min(1).max(200)).max(12),
+  booktitle: imprintText.nullable(),
+})
+
+function blankToNull(value: string | null): string | null {
+  const t = value?.trim() ?? ''
+  return t.length > 0 ? t : null
+}
+
+/** Felder, die Crossref nicht hatte. Nur der Mensch, nie das Modell. */
+export function saveSourceImprint(repo: Repo, raw: unknown, actor: string): Source {
+  const input = parseOrThrow(sourceImprintSchema, raw, 'imprint_invalid')
+  const source = assertResearchSource(repo, input.source_id)
+  if (input.pages && /\bf{1,2}\.?\s*$/i.test(input.pages)) {
+    throw new ServiceError(
+      'imprint_pages',
+      'Seitenbereich ohne „f.“ oder „ff.“. Anfang und Ende angeben, zum Beispiel 12-18.',
+      'Trag den Seitenbereich des Artikels oder Beitrags ein, nicht die Fundstelle des Zitats.'
+    )
+  }
+  return repo.setSourceImprint(
+    source.id,
+    {
+      authors_json: input.authors.length ? JSON.stringify(input.authors) : null,
+      year: input.year,
+      venue: blankToNull(input.venue),
+      volume: blankToNull(input.volume),
+      issue: blankToNull(input.issue),
+      pages: blankToNull(input.pages),
+      publisher: blankToNull(input.publisher),
+      place: blankToNull(input.place),
+      edition: blankToNull(input.edition),
+      editors_json: input.editors.length ? JSON.stringify(input.editors) : null,
+      booktitle: blankToNull(input.booktitle),
+      entry_type: input.entry_type,
+    },
+    actor
+  )
+}
+
+export async function acceptBiblioSuggestion(
+  repo: Repo,
+  suggestionId: string,
+  actor: string
+): Promise<{ source: Source; suggestion: BiblioSuggestion }> {
   const suggestion = repo.getBiblioSuggestion(suggestionId)
   if (!suggestion) {
     throw new ServiceError(
@@ -544,7 +655,8 @@ export function acceptBiblioSuggestion(repo: Repo, suggestionId: string, actor: 
     )
   }
   const source = assertResearchSource(repo, suggestion.source_id)
-  const meta: BiblioMeta = {
+  const looked = await lookupDoi(suggestion.proposed_doi)
+  const meta: BiblioMeta = looked ?? {
     doi: suggestion.proposed_doi,
     authors: suggestion.proposed_authors,
     year: suggestion.proposed_year,
@@ -552,6 +664,14 @@ export function acceptBiblioSuggestion(repo: Repo, suggestionId: string, actor: 
     title: suggestion.proposed_title,
     entry_type: suggestion.proposed_entry_type ?? 'article',
     source_kind: suggestion.proposed_source_kind ?? 'empirical',
+    volume: null,
+    issue: null,
+    pages: null,
+    publisher: null,
+    place: null,
+    edition: null,
+    editors: [],
+    booktitle: null,
   }
   const preserveCitekey = source.review_status === 'human_signed' && Boolean(source.citekey)
   const updated = applyLookedUpBiblio(repo, source, meta, suggestion.proposed_doi, { preserveCitekey })

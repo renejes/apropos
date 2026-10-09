@@ -118,7 +118,7 @@ describe('Schreibpaket (Phase G)', () => {
     expect(svg).toContain('<svg')
     expect(svg).toContain('Beispielquelle')
     const claims = readFileSync(join(pack.dir, 'claims.md'), 'utf-8')
-    expect(claims).toMatch(/\[@muster2020beispiel, p\. 12\]/)
+    expect(claims).toMatch(/\[@muster2020beispiel, S\. 12\]/)
     expect(claims).not.toMatch(/p\. 1[^\d]/)
   })
 

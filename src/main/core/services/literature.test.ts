@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, type DB } from '../db'
 import { Repo } from '../repo'
-import { searchLiterature } from './literature'
-import { ServiceError } from './research'
+import { searchLiterature, snowballLiterature } from './literature'
+import { requireSearchReflection, ServiceError } from './research'
 import { adoptMinimalBrief, adoptResearchBrief, MINIMAL_BRIEF_INPUT } from './brief'
 
 /**
@@ -374,5 +374,66 @@ describe('Literatursuche über offene Register', () => {
     expect(res.hits[0].found_via.sort()).toEqual(['openaire', 'openalex'])
     expect(res.hits[0].graph_edges?.some((e) => e.kind === 'project')).toBe(true)
     expect(res.hits[0].oa_url).toBe('https://arxiv.org/pdf/1706.03762')
+  })
+
+  it('hängt den Schneeball an eine übernommene DOI und macht daraus keine Quellen', async () => {
+    const src = repo.addSource({
+      project_id: projectId,
+      url: 'https://doi.org/10.5555/seed',
+      title: 'Seed Paper For The Snowball',
+      retrieval_method: 'test',
+      accessed_at: '2026-08-20T12:00:00.000Z',
+      reason: 'Zentrale Quelle, von der aus weitergesucht wird.',
+      extraction: 'Der Artikel belegt den Ausgangsbefund der Teilfrage.',
+      contribution: 'Startpunkt für vorwärts und rückwärts.',
+      verbatim_quote: 'A sentence long enough to count as the stored quotation.',
+      doi: '10.5555/seed',
+      actor: ACTOR,
+    })
+    await expect(snowballLiterature(repo, { project_id: projectId, source_id: src.id }, ACTOR)).rejects.toThrow(/übernommen/)
+    repo.signSourceHuman(src.id, 'human_signed', 'übernommen', ACTOR)
+    vi.stubGlobal('fetch', async (url: string) => {
+      const u = String(url)
+      const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => '' })
+      if (u.includes('/works/doi:')) {
+        return json({
+          id: 'https://openalex.org/W1',
+          doi: 'https://doi.org/10.5555/seed',
+          referenced_works: ['https://openalex.org/W2'],
+          cited_by_api_url: 'https://api.openalex.org/works?filter=cites:W1',
+        })
+      }
+      if (u.includes('openalex_id')) {
+        return json({
+          results: [
+            openAlexWork({
+              doi: 'https://doi.org/10.5555/ref',
+              display_name: 'Referenced Paper',
+              cited_by_count: 4,
+              primary_location: { source: { display_name: 'Journal A' }, landing_page_url: 'https://example.org/ref' },
+            }),
+          ],
+        })
+      }
+      if (u.includes('cites%3AW1') || u.includes('cites:W1')) {
+        return json({
+          results: [
+            openAlexWork({
+              doi: 'https://doi.org/10.5555/cite',
+              display_name: 'Citing Paper',
+              cited_by_count: 2,
+              primary_location: { source: { display_name: 'Journal B' }, landing_page_url: 'https://example.org/cite' },
+            }),
+          ],
+        })
+      }
+      throw new Error('unerwartete URL: ' + u)
+    })
+    const res = await snowballLiterature(repo, { project_id: projectId, source_id: src.id }, ACTOR)
+    expect(res.references.map((h) => h.doi)).toEqual(['10.5555/ref'])
+    expect(res.citing.map((h) => h.doi)).toEqual(['10.5555/cite'])
+    expect(repo.listSources(projectId)).toHaveLength(1)
+    expect(repo.listScreeningCandidates(projectId)).toHaveLength(2)
+    expect(() => requireSearchReflection(repo, projectId)).toThrow(/Lage/)
   })
 })

@@ -135,6 +135,8 @@ describe('Recherchetiefe (Teilfragen, Abdeckung, Runden)', () => {
     expect(migrated.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
     const colsAfter = (migrated.pragma('table_info(sources)') as Array<{ name: string }>).map((c) => c.name)
     expect(colsAfter).toContain('sub_question_id')
+    expect(colsAfter).toContain('volume')
+    expect(colsAfter).toContain('booktitle')
 
     const migRepo = new Repo(migrated)
     expect(migRepo.listSources('p1')).toHaveLength(1)

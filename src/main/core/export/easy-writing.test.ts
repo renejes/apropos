@@ -214,7 +214,7 @@ describe('Easy-Writing-Export', () => {
     expect(index).not.toMatch(/^# /m)
     const mdx = readFileSync(join(result.dir, 'research.mdx'), 'utf-8')
     expect(mdx).toMatch(/Research-Dossier/)
-    expect(mdx).toMatch(/\[@muster2020beispiel/)
+    expect(mdx).toMatch(/\[@muster2020beispiel, S\. 12\]/)
     expect(mdx).toMatch(/<Figure src="assets\/research-karte\.jpg"/)
     const jsx = mdx.match(/<[A-Z][a-zA-Z]+/g) ?? []
     expect(jsx.every((tag) => tag === '<Figure')).toBe(true)
@@ -245,6 +245,8 @@ describe('Easy-Writing-Export', () => {
     expect(manifest.type).toBe('paper')
     expect(manifest.chapters).toContain('research.mdx')
     expect(manifest.chapters).toContain('chapters/02-einleitung.mdx')
+    expect(manifest.citation?.csl).toBe('deutsche-gesellschaft-fur-psychologie')
+    expect(existsSync(join(result.dir, 'references.ris'))).toBe(true)
   })
 
   it('schreibt in einen bestehenden Ordner, ohne index.mdx zu ändern, und merget die Bib', () => {

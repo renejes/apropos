@@ -119,6 +119,7 @@ export default function DeskTab({
   const [filter, setFilter] = useState<DeskPile | 'all'>('open')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [range, setRange] = useState<{ start: number; end: number } | null>(null)
+  const [zoteroNote, setZoteroNote] = useState<string | null>(null)
 
   useEffect(() => {
     if (!focus?.sourceId && !focus?.documentId) return
@@ -196,16 +197,32 @@ export default function DeskTab({
           </button>
         ))}
         {surface === 'human' && state.sources.some((s) => s.review_status === 'human_signed') && (
-          <span className="ml-auto">
+          <span className="ml-auto flex gap-2">
             <Button
               title="BibTeX nur aus übernommenen Quellen"
               onClick={() => void window.api.exportBibliography(state.project.id)}
             >
               BibTeX
             </Button>
+            <Button title="RIS für Citavi, nur übernommene Quellen" onClick={() => void window.api.exportRis(state.project.id)}>
+              RIS
+            </Button>
+            <Button
+              title="Übernommene Quellen in die lokale Zotero-Bibliothek"
+              onClick={() => {
+                setZoteroNote(null)
+                void window.api.exportToZotero(state.project.id).then(
+                  (result) => setZoteroNote(result.hint),
+                  (err: unknown) => setZoteroNote(err instanceof Error ? err.message : String(err))
+                )
+              }}
+            >
+              Nach Zotero
+            </Button>
           </span>
         )}
       </div>
+      {zoteroNote && <p className="shrink-0 border-b border-hairline px-5 py-2 text-[12px] leading-relaxed text-muted">{zoteroNote}</p>}
       {surface === 'agent' && (
         <p className="shrink-0 border-b border-hairline px-5 py-2 text-[12px] leading-relaxed text-muted">
           Nur zum Zuschauen, während die KI sucht und liest. Übernehmen passiert auf dem Human Desk.
@@ -358,8 +375,11 @@ function FolderOpen({
                 <span className="font-mono text-[13px]">{source.citekey || 'noch ohne Citekey'}</span>
               </Field>
               <Field label="Typ">
-                {entryTypeLabel(source.entry_type)}
-                {source.entry_type ? ` (@${source.doi ? source.entry_type : 'misc'})` : ''}
+                {source.entry_type === 'book' && source.booktitle?.trim()
+                  ? 'Beitrag (@incollection)'
+                  : source.entry_type
+                    ? `${entryTypeLabel(source.entry_type)} (@${source.entry_type})`
+                    : 'noch offen'}
               </Field>
               <Field label="DOI">
                 {source.doi ? (
@@ -371,6 +391,12 @@ function FolderOpen({
                 )}
               </Field>
               {sourceAuthors(source) && <Field label="Autor:innen">{sourceAuthors(source)}</Field>}
+              {!watchOnly && (
+                <ImprintForm
+                  source={source}
+                  onSaved={onReload}
+                />
+              )}
               <Field label="Warum relevant">{source.reason}</Field>
               <Field label="Einschätzung">{source.extraction}</Field>
               <Field label="Beitrag">{source.contribution}</Field>
@@ -476,6 +502,9 @@ function FolderOpen({
                     >
                       Ablehnen
                     </Button>
+                    {source.review_status === 'human_signed' && source.doi && (
+                      <SnowballButton projectId={state.project.id} sourceId={source.id} onDone={onReload} />
+                    )}
                   </div>
                 ) : (
                   <p className="text-[12px] leading-relaxed text-muted">
@@ -511,6 +540,191 @@ function FolderOpen({
           )}
         </section>
       </div>
+    </div>
+  )
+}
+
+function jsonLines(raw: string | null): string {
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string').join('\n') : ''
+  } catch {
+    return ''
+  }
+}
+
+function splitLines(raw: string): string[] {
+  return raw
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function ImprintForm({ source, onSaved }: { source: Source; onSaved: () => void }) {
+  const [entryType, setEntryType] = useState(source.entry_type ?? '')
+  const [authors, setAuthors] = useState(jsonLines(source.authors_json))
+  const [year, setYear] = useState(source.year ? String(source.year) : '')
+  const [venue, setVenue] = useState(source.venue ?? '')
+  const [booktitle, setBooktitle] = useState(source.booktitle ?? '')
+  const [volume, setVolume] = useState(source.volume ?? '')
+  const [issue, setIssue] = useState(source.issue ?? '')
+  const [pages, setPages] = useState(source.pages ?? '')
+  const [publisher, setPublisher] = useState(source.publisher ?? '')
+  const [place, setPlace] = useState(source.place ?? '')
+  const [edition, setEdition] = useState(source.edition ?? '')
+  const [editors, setEditors] = useState(jsonLines(source.editors_json))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEntryType(source.entry_type ?? '')
+    setAuthors(jsonLines(source.authors_json))
+    setYear(source.year ? String(source.year) : '')
+    setVenue(source.venue ?? '')
+    setBooktitle(source.booktitle ?? '')
+    setVolume(source.volume ?? '')
+    setIssue(source.issue ?? '')
+    setPages(source.pages ?? '')
+    setPublisher(source.publisher ?? '')
+    setPlace(source.place ?? '')
+    setEdition(source.edition ?? '')
+    setEditors(jsonLines(source.editors_json))
+    setError(null)
+  }, [source])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    const yearNum = year.trim() ? Number(year.trim()) : null
+    if (year.trim() && !Number.isInteger(yearNum)) {
+      setError('Jahr als Zahl, oder leer lassen.')
+      setBusy(false)
+      return
+    }
+    try {
+      await window.api.saveSourceImprint({
+        source_id: source.id,
+        entry_type: entryType === '' ? null : (entryType as BibEntryType),
+        authors: splitLines(authors),
+        year: yearNum,
+        venue: venue.trim() || null,
+        volume: volume.trim() || null,
+        issue: issue.trim() || null,
+        pages: pages.trim() || null,
+        publisher: publisher.trim() || null,
+        place: place.trim() || null,
+        edition: edition.trim() || null,
+        editors: splitLines(editors),
+        booktitle: booktitle.trim() || null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mb-3 border border-hairline p-3">
+      <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">Titelangaben</div>
+      <p className="mb-2 text-[12px] leading-relaxed text-muted">
+        Was Crossref nicht geliefert hat. Leer bleibt leer. Seiten hier sind der Umfang des Werks, nicht die Fundstelle des Zitats.
+      </p>
+      <label className="mb-2 block text-xs text-muted">
+        Typ
+        <select className="field mt-1 w-full text-sm" value={entryType} onChange={(e) => setEntryType(e.target.value)}>
+          <option value="">offen</option>
+          <option value="article">Artikel</option>
+          <option value="book">Buch</option>
+          <option value="inproceedings">Tagungsbeitrag</option>
+          <option value="misc">Sonstiges</option>
+        </select>
+      </label>
+      <label className="mb-2 block text-xs text-muted">
+        Autor:innen, eine Zeile je Name
+        <textarea className="field mt-1 w-full text-sm" rows={2} value={authors} onChange={(e) => setAuthors(e.target.value)} />
+      </label>
+      <div className="mb-2 grid grid-cols-2 gap-2">
+        <label className="text-xs text-muted">
+          Jahr
+          <input className="field mt-1 w-full text-sm" value={year} onChange={(e) => setYear(e.target.value)} />
+        </label>
+        <label className="text-xs text-muted">
+          Auflage
+          <input className="field mt-1 w-full text-sm" value={edition} onChange={(e) => setEdition(e.target.value)} />
+        </label>
+        <label className="text-xs text-muted">
+          Band
+          <input className="field mt-1 w-full text-sm" value={volume} onChange={(e) => setVolume(e.target.value)} />
+        </label>
+        <label className="text-xs text-muted">
+          Heft
+          <input className="field mt-1 w-full text-sm" value={issue} onChange={(e) => setIssue(e.target.value)} />
+        </label>
+      </div>
+      <label className="mb-2 block text-xs text-muted">
+        Zeitschrift
+        <input className="field mt-1 w-full text-sm" value={venue} onChange={(e) => setVenue(e.target.value)} />
+      </label>
+      <label className="mb-2 block text-xs text-muted">
+        Titel des Sammelbands
+        <input className="field mt-1 w-full text-sm" value={booktitle} onChange={(e) => setBooktitle(e.target.value)} />
+      </label>
+      <label className="mb-2 block text-xs text-muted">
+        Seiten des Werks, z. B. 12-18
+        <input className="field mt-1 w-full text-sm" value={pages} onChange={(e) => setPages(e.target.value)} />
+      </label>
+      <div className="mb-2 grid grid-cols-2 gap-2">
+        <label className="text-xs text-muted">
+          Verlag
+          <input className="field mt-1 w-full text-sm" value={publisher} onChange={(e) => setPublisher(e.target.value)} />
+        </label>
+        <label className="text-xs text-muted">
+          Ort
+          <input className="field mt-1 w-full text-sm" value={place} onChange={(e) => setPlace(e.target.value)} />
+        </label>
+      </div>
+      <label className="mb-2 block text-xs text-muted">
+        Herausgeber:innen, eine Zeile je Name
+        <textarea className="field mt-1 w-full text-sm" rows={2} value={editors} onChange={(e) => setEditors(e.target.value)} />
+      </label>
+      {booktitle.trim() && entryType === 'book' && (
+        <p className="mb-2 text-[12px] text-muted">Export als Beitrag in einem Sammelband.</p>
+      )}
+      <Button onClick={() => void save()} disabled={busy}>
+        Titelangaben speichern
+      </Button>
+      {error && <p className="mt-2 text-xs text-warn">{error}</p>}
+    </div>
+  )
+}
+
+function SnowballButton({ projectId, sourceId, onDone }: { projectId: string; sourceId: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  const run = async () => {
+    setBusy(true)
+    setNote(null)
+    try {
+      const result = await window.api.snowballLiterature(projectId, sourceId)
+      setNote(`${result.references} im Literaturverzeichnis, ${result.citing} spätere Zitationen. Treffer liegen auf dem Agent-Desk.`)
+      onDone()
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 w-full">
+      <Button icon="account_tree" onClick={() => void run()} disabled={busy} title="Literaturverzeichnis und spätere Zitationen">
+        Schneeball
+      </Button>
+      {note && <p className="mt-2 text-[12px] leading-relaxed text-muted">{note}</p>}
     </div>
   )
 }

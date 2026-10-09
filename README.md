@@ -37,13 +37,15 @@ Hochgeladene PDFs sind **Seed-Quellen** im selben Korpus — sie bleiben im Proj
 Nach der Research geht es so weiter:
 
 1. **Recherchieren und prüfen** — diese Plattform
-2. **Schreiben** — [Easy Writing](https://github.com/renejes/easy-writing) (Ordnerprojekt, Markdown/MDX, `[@citekey]` / `[@citekey, p. 12]`, Fußnoten)
-3. **Setzen und gestalten** — [Penwright](https://github.com/renejes/penwright) (Typst-WYSIWYG: Layout, Preview, Print-PDF)
+2. **Bibliothek** — [Zotero](https://www.zotero.org) mit Better BibTeX. Übernommene Quellen gehen dorthin, PDFs bleiben eine Datei (verknüpft, z. B. in Dropbox).
+3. **Schreiben und setzen** — [Easy Writing](https://github.com/renejes/easy-writing) oder direkt [Penwright](https://github.com/renejes/penwright). Deutsch `[@citekey, S. 12]`, englisch `p. 12`. Den Artikel schreibt diese App nicht.
 
 ```mermaid
 flowchart LR
-    R[apROPos] -->|Easy Writing<br/>research.mdx · .bib · Karte| E[Easy Writing]
-    E -->|MDX-Export<br/>ohne research.mdx| P[Penwright]
+    R[apROPos] -->|übernommene Quellen| Z[Zotero]
+    R -->|Easy Writing<br/>research.mdx · .bib · .ris| E[Easy Writing]
+    Z -->|Better BibTeX| P[Penwright]
+    E -->|MDX ohne research.mdx| P
 ```
 
 Easy Writing öffnet denselben Ordner: `research.mdx` ist das Dossier, `index.mdx` bzw. die Paper-Kapitel bleiben zum Schreiben. Citekeys in der `.bib` stimmen. Beim Export dort `research.mdx` abwählen.
@@ -65,7 +67,7 @@ Brief entwerfen → du bestätigst  (Tab Plan)
 Teilfragen aus dem Brief
         │
         ▼
-Suche  (Korpus und verwandte Projekte, dann Literaturregister + WebSearch)
+Suche  (Korpus, verwandte Projekte, Zotero, dann Literaturregister + WebSearch)
         │
         ▼
 Lage nach jeder Welle  (reflect_search)
@@ -80,7 +82,7 @@ Server misst Lücken gegen den Plan  — „ich bin fertig“ zählt nicht
 Human Desk: Übernehmen; fehlende DOI als Crossref-Vorschlag extra
         │
         ▼
-Export  (Markdown · BibTeX nur übernommen · Easy Writing)
+Export  (Markdown · BibTeX und RIS nur übernommen · Zotero · Easy Writing)
 ```
 
 Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen Brief. WebSearch **darf entdecken**; was in den Bericht soll, muss als Quelltext in der Datenbank liegen. Berichte und BibTeX zitieren nur Quellen, die du übernommen hast. Die `.bib` schreibt der Server aus Crossref — nicht das Modell.
@@ -92,7 +94,9 @@ Ohne adoptierten Brief lehnen Suche und Quellenabruf ab. Uploads brauchen keinen
 | **Verwandte Research** | Andere Projekte verknüpfen. Die KI darf dort lesen; was hier zitiert werden soll, kopiert sie her — du übernimmst erneut. |
 | **Arbeitsnotizen** | Eine `NOTES.md` unter Plan. Die KI hängt Querverweise und Sackgassen an; du liest und kürzt. Kein Beleg — Bericht und BibTeX ignorieren die Datei. |
 | **Arbeitstisch** | Agent-Desk zum Zuschauen, Human Desk zum Übernehmen. Citekey und Typ stehen in der Akte. Sign-off nur du. |
-| **Bibliografie** | Die `.bib` schreibt der Server, nur aus übernommenen Quellen. Ohne DOI (Campus-PDF, graue Literatur) schlägt die KI Crossref vor; **Metadaten übernehmen** ist extra, nicht dasselbe wie die Quelle zu übernehmen. Signierte Citekeys bleiben. |
+| **Bibliografie** | Die `.bib` und die `.ris` schreibt der Server, nur aus übernommenen Quellen. Band, Heft, Seiten, Verlag, Ort, Auflage und Herausgeber kommen aus Crossref oder von dir auf dem Human Desk. Ein gesetzter Typ bleibt auch ohne DOI. Fehlende Felder bleiben leer. |
+| **Zotero** | Nach Korpus und verwandten Projekten durchsucht die KI die lokale Bibliothek und holt vorhandene PDFs in den Korpus, ohne sie zu kopieren. Die Citekey aus Zotero bleibt. **Nach Zotero** legt nur Übernommene ab (Schlagwort `apROPos`). Zotero muss laufen. |
+| **Schneeball** | An einer übernommenen Quelle mit DOI: Literaturverzeichnis und spätere Zitationen aus OpenAlex. Treffer, keine Quellen. |
 | **Such-Lage** | Nach jeder Welle: was getroffen ist, was fehlt, was als Nächstes passiert. |
 | **Messbare Tiefe** | Teilfragen und Lückenliste, keine globale Stückzahl. |
 
@@ -195,9 +199,12 @@ stdio (Claude Desktop) als Fallback in den Einstellungen. Alle Clients teilen di
 | `save_note` / `list_notes` / `update_note` | Notebook-Notizen (Offsets schneidet der Server) |
 | `list_artifacts` | Dateien unter `artifacts/` |
 | `plan_research` / `get_coverage_gaps` / `next_round` | Teilfragen, Lücken, Sättigung |
+| `search_zotero` / `ingest_zotero_pdf` | Lokale Zotero-Bibliothek; PDF in den Korpus, Citekey bleibt |
 | `search_literature` | OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE |
+| `snowball_literature` | Rückwärts und vorwärts an einer übernommenen DOI |
 | `reflect_search` | Lage nach einer Suchwelle |
-| `export_bibliography` | BibTeX nur aus `human_signed` |
+| `export_bibliography` | BibTeX oder RIS nur aus `human_signed` |
+| `export_to_zotero` | Übernommene Quellen in die lokale Bibliothek |
 | `export_easy_writing` / `export_writing_pack` | Easy-Writing-Ordner bzw. Markdown-Schreibpaket |
 
 Prompts sind zusätzlich als Werkzeuge gespiegelt (`start_transparent_research` …), weil die meisten Clients Prompts nicht ausführen.

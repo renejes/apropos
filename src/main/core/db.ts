@@ -12,7 +12,7 @@ import type { JournalMode } from '../../shared/types'
 export type DB = Database.Database
 
 /** Exportiert, damit Tests gegen den tatsächlichen Stand prüfen statt gegen eine abgeschriebene Zahl. */
-export const SCHEMA_VERSION = 20 // v20 bibliografische Vorschläge (DOI nachschlagen, Mensch übernimmt)
+export const SCHEMA_VERSION = 21 // v21 Impressum der Quelle (Band, Heft, Seiten, Verlag, Ort, Auflage, Herausgeber, Bandtitel)
 
 const SCHEMA = /* sql */ `
 CREATE TABLE IF NOT EXISTS projects (
@@ -706,6 +706,15 @@ function migrate(db: DB): void {
       // v20: bibliografische Vorschläge (CREATE IF NOT EXISTS in SCHEMA).
       db.exec(`CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_source ON biblio_suggestions(source_id, status, created_at)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_biblio_suggestions_project ON biblio_suggestions(project_id, status)`)
+      // v21: Impressum. Leer bleibt leer — der Export erfindet Verlag und Seiten nicht.
+      addColumnIfMissing(db, 'sources', 'volume', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'issue', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'pages', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'publisher', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'place', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'edition', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'editors_json', 'TEXT')
+      addColumnIfMissing(db, 'sources', 'booktitle', 'TEXT')
       // FTS5 mit external content: Wurde der Index je neu angelegt (oder lief er aus dem
       // Tritt), zerstört der erste UPDATE-Trigger die Datei mit "database disk image is
       // malformed", weil er eine nicht indizierte Zeile löschen will. Ein Rebuild nach

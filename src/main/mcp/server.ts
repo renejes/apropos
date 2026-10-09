@@ -42,11 +42,12 @@ import {
   prepareView,
   toggleMark,
 } from '../core/services/visual'
-import { searchLiterature, LITERATURE_BACKENDS } from '../core/services/literature'
+import { searchLiterature, snowballLiterature, LITERATURE_BACKENDS } from '../core/services/literature'
+import { exportSignedToZotero, ingestZoteroPdf, searchZotero } from '../core/services/zotero'
 import { includeScreeningInProject, listScreeningDesk, waitForScreening } from '../core/services/screening'
 import { assessCarrier } from '../core/services/carriers'
 import { adoptResearchBrief, draftResearchBrief, getResearchBrief } from '../core/services/brief'
-import { exportBibliography, proposeBiblio, searchBiblioForSource } from '../core/services/biblio'
+import { exportBibliography, exportRis, proposeBiblio, searchBiblioForSource } from '../core/services/biblio'
 import { writeWritingPack } from '../core/export/writing-pack'
 import { writeEasyWriting } from '../core/export/easy-writing'
 import type { Source } from '../../shared/types'
@@ -792,6 +793,78 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 
   defineTool(
     server,
+    'snowball_literature',
+    {
+      title: 'Schneeball an einer übernommenen Quelle',
+      description:
+        'Holt zu EINER human_signed Quelle mit DOI das Literaturverzeichnis (rückwärts) und spätere Zitationen (vorwärts) aus OpenAlex. ' +
+        'Treffer landen als Ordner auf dem Arbeitstisch, nicht als Quellen. Wenige passende danach mit fetch_source lesen. ' +
+        'Nicht die ganze Liste. Zählt als Suchwelle: danach reflect_search, bevor erneut gesucht wird. ' +
+        'Ohne DOI oder ohne Übernehmen lehnt der Server ab.',
+      inputSchema: {
+        project_id: z.string(),
+        source_id: z.string().describe('Übernommene Quelle mit DOI'),
+        limit: z.number().int().min(1).max(25).optional().describe('Treffer je Richtung, Standard 12'),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(await snowballLiterature(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'search_zotero',
+    {
+      title: 'In der Zotero-Bibliothek suchen',
+      description:
+        'Durchsucht die lokale Zotero-Bibliothek (Zotero muss laufen). Treffer landen auf dem Arbeitstisch, nicht als Quellen. ' +
+        'Hat ein Treffer has_pdf, hol das PDF mit ingest_zotero_pdf. Ohne PDF kein Beleg. Abstracts sind keine Quelle. ' +
+        'Zählt als Suchwelle: danach reflect_search. Vor den offenen Registern nutzen, wenn die Bibliothek die gelesenen PDFs enthält.',
+      inputSchema: {
+        project_id: z.string(),
+        query: z.string().min(2).describe('Suchtext: Titel, Autor, DOI oder Stichwort aus dem PDF'),
+        limit: z.number().int().min(1).max(25).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(await searchZotero(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
+    'ingest_zotero_pdf',
+    {
+      title: 'PDF aus Zotero in den Korpus holen',
+      description:
+        'Kopiert das PDF eines Zotero-Eintrags in den Korpus und gibt ein Textfenster mit Offsets zurück. ' +
+        'zotero_key aus search_zotero. Danach add_source mit document_id und quote_start/quote_end. ' +
+        'Die Citekey aus Zotero bleibt an der Quelle hängen. Ohne PDF lehnt der Server ab.',
+      inputSchema: {
+        project_id: z.string(),
+        zotero_key: z.string().describe('8-stelliger Schlüssel aus search_zotero'),
+      },
+    },
+    async (args) => {
+      try {
+        return ok(await ingestZoteroPdf(repo, args, actor()))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
     'list_screening',
     {
       title: 'Identifizierte Treffer lesen',
@@ -1492,7 +1565,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         document_id: z.string().optional().describe('ID aus fetch_source'),
         quote_start: z.number().int().min(0).optional().describe('Startposition im Dokument (Zeichen, absolut)'),
         quote_end: z.number().int().min(1).optional().describe('Endposition im Dokument (Zeichen, absolut)'),
-        quote_locator: z.string().optional().describe('Fundstelle, z. B. Abschnitt/Seite — wird als [@citekey, p. 12] exportiert, nie als erfundenes p. 1'),
+        quote_locator: z
+          .string()
+          .optional()
+          .describe('Fundstelle, z. B. Abschnitt oder Seite. Deutscher Export: S. 12, englischer: p. 12. Nie f. oder ff., nie eine erfundene Seite.'),
         source_kind: z
           .enum(['empirical', 'review', 'textbook', 'grey', 'web'])
           .optional()
@@ -1632,21 +1708,48 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 
   defineTool(
     server,
+    'export_to_zotero',
+    {
+      title: 'Übernommene Quellen nach Zotero legen',
+      description:
+        'Importiert nur human_signed Quellen mit Citekey in die lokale Zotero-Bibliothek. Gleiche DOI oder Citekey wird nicht doppelt angelegt. ' +
+        'Schlagwort apROPos. Better BibTeX behält die Citekey für Penwright. Zotero muss laufen. Setzt keinen Sign-off.',
+      inputSchema: { project_id: z.string() },
+    },
+    async ({ project_id }) => {
+      try {
+        return ok(await exportSignedToZotero(repo, project_id))
+      } catch (err) {
+        return failFrom(err)
+      }
+    }
+  )
+
+  defineTool(
+    server,
     'export_bibliography',
     {
-      title: 'Bibliografie als BibTeX exportieren',
+      title: 'Bibliografie exportieren',
       description:
-        'Liefert references.bib nur aus übernommenen Quellen (review_status human_signed) — dieselbe Menge wie der Bericht. ' +
-        'Citekeys sind stabil (nachnameJahrKurztitel), nicht [S#]. ' +
-        'Ohne DOI nur ehrliches @misc mit URL und Zugriffsdatum — nie ein gefälschtes @article. ' +
-        'Optional source_ids schränkt weiter ein, nie auf offene oder abgelehnte Ordner.',
+        'Liefert die Bibliografie nur aus übernommenen Quellen (review_status human_signed). ' +
+        'format=bibtex ist die .bib für Easy Writing. format=ris ist die Datei für Citavi (Anfangs- und Endseite als eigene Felder). ' +
+        'Der gesetzte Typ bleibt auch ohne DOI. Fehlende Felder bleiben leer — Verlag, Band und Seiten werden nicht erfunden. ' +
+        'Ein Buch mit Bandtitel wird @incollection / CHAP. Optional source_ids schränkt weiter ein, nie auf offene Ordner.',
       inputSchema: {
         project_id: z.string(),
         source_ids: z.array(z.string()).optional(),
+        format: z.enum(['bibtex', 'ris']).optional().describe('Standard bibtex. ris für den Citavi-Import.'),
       },
     },
-    async ({ project_id, source_ids }) => {
+    async ({ project_id, source_ids, format }) => {
       try {
+        if (format === 'ris') {
+          const ris = exportRis(repo, project_id, source_ids)
+          return ok({
+            ris,
+            next_action: 'In Citavi: Hinzufügen → aus einer Textdatei, Standardfilter. Den Zitationsstil dort auf DGPs oder APA stellen.',
+          })
+        }
         const bibtex = exportBibliography(repo, project_id, source_ids)
         return ok({
           bibtex,
@@ -2145,8 +2248,9 @@ ${
 `
                 : ''
             }4. WÄHREND DER RECHERCHE — die Kernregel: **Dokumentiere im Moment des Lesens, nie rückwirkend aus dem Gedächtnis.** Arbeite Teilfrage für Teilfrage. Jede Suche nennt ein Ziel aus dem Brief. Treffer, die den Plan nicht treffen: exclude_source, nicht ablegen.
-   - Bei wissenschaftlichen Fragen ZUERST search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Abstracts sind keine Quelle. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
-   - Nach JEDER Suchwelle (search_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt — aber nicht alle Treffer abarbeiten. Hole wenige passende mit fetch_source, assess_carrier, add_source — Ordner auf den Arbeitstisch. Nicht wait_for_screening.
+   - Bei wissenschaftlichen Fragen zuerst den eigenen Korpus, dann search_zotero (lokale Bibliothek, PDF mit ingest_zotero_pdf). Danach search_literature (OpenAlex, Crossref, Europe PMC, Semantic Scholar, OpenAIRE parallel; arXiv auf Wunsch): liefert DOI, Autoren, Jahr, Journal und wo vorhanden einen frei zugänglichen Volltext-Link. Abstracts sind keine Quelle. Diese Suchen protokollieren sich selbst — danach KEIN log_search mehr für sie.
+   - An einer übernommenen Quelle mit DOI: snowball_literature für Literaturverzeichnis und spätere Zitationen. Das sind Treffer, keine Quellen. Danach reflect_search.
+   - Nach JEDER Suchwelle (search_zotero, search_literature, snowball_literature, search_documents, WebSearch) ZUERST reflect_search, BEVOR du erneut suchst: covered, underrepresented (vs Brief/Ziel, keine Stückzahl), next_action search|read|enough. Die nächste Query kommt aus dieser Lage. Lesen (read_document) ist dazwischen erlaubt — aber nicht alle Treffer abarbeiten. Hole wenige passende mit fetch_source, assess_carrier, add_source — Ordner auf den Arbeitstisch. Nicht wait_for_screening.
    - WebSearch darf danach AUCH für Wissenschaft entdecken (Instituts-PDFs, deutschsprachige Fassungen, sehr neue Preprints, die Register schlecht indexieren). Graue Literatur/News/Behörden ebenfalls WebSearch. Das Suchprotokoll kommt vom Hook. Was in den Bericht soll: fetch_source, nicht WebFetch. Snippets sind keine Quelle.
    - Quellen aus dem Netz liest du mit fetch_source (nicht mit WebFetch): Es speichert den Text und gibt ein Fenster mit Zeichenpositionen. PDF auf einer Website: parent_url der Fundstelle. Danach assess_carrier (carrier_id), dann SOFORT add_source mit document_id + quote_start + quote_end sowie der sub_question_id. Der Server schneidet das Zitat selbst heraus. Direkt-PDF ohne Landing: evidence_basis=insufficient, kein erfundenes Impressum.
    - Hochgeladene PDFs/Texte des Menschen sind Seed-Quellen: ZUERST list_corpus und search_documents, dann read_document (nicht WebFetch, nicht file://). Danach SOFORT add_source mit Offsets.

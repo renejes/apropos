@@ -3,7 +3,7 @@ import { join } from 'path'
 import { z } from 'zod'
 import type { Repo } from '../repo'
 import { ServiceError } from '../services/research'
-import { exportBibliography } from '../services/biblio'
+import { exportBibliography, exportRis } from '../services/biblio'
 import { graphToSvg } from './graph-svg'
 import { graphToJpeg } from './graph-jpeg'
 import { appDataDir } from '../paths'
@@ -63,9 +63,11 @@ export function writeWritingPack(repo: Repo, rawInput: unknown, actor: string): 
 
   const briefMd = packed.state.researchBrief?.markdown ?? '# Research-Plan\n\n_Kein adoptierter Brief._\n'
   write('RESEARCH-PLAN.md', briefMd)
-  write('references.bib', exportBibliography(repo, input.project_id, packed.sources.map((s) => s.id)))
-  write('claims.md', renderClaimsMd(packed.state, packed.claimIds, packed.sources))
-  write('bericht.md', renderBericht(packed.state, packed.claims, packed.sources, packed.visualVersionId))
+  const ids = packed.sources.map((s) => s.id)
+  write('references.bib', exportBibliography(repo, input.project_id, ids))
+  write('references.ris', exportRis(repo, input.project_id, ids))
+  write('claims.md', renderClaimsMd(packed.state, packed.claimIds, packed.sources, 'dgps'))
+  write('bericht.md', renderBericht(packed.state, packed.claims, packed.sources, packed.visualVersionId, 'dgps'))
   write('do-not-claim.md', renderDoNotClaim(packed.state, packed.sources))
 
   if (packed.graph) {

@@ -65,6 +65,16 @@ export interface Source {
   authors_json: string | null
   year: number | null
   venue: string | null
+  /** Seitenbereich des Werks (Artikel/Beitrag), nicht die Fundstelle des Zitats. */
+  volume: string | null
+  issue: string | null
+  pages: string | null
+  publisher: string | null
+  place: string | null
+  edition: string | null
+  editors_json: string | null
+  /** Titel des Sammelbands. Gesetzter Wert exportiert ein Buch als @incollection. */
+  booktitle: string | null
   entry_type: BibEntryType | null
   citekey: string | null
   /** Semantik der Quelle (Schema v10) — steuert Coverage, nicht Wahrheit. */

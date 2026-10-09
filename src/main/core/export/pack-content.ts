@@ -2,7 +2,7 @@ import type { Repo } from '../repo'
 import type { Claim, ProjectState, Source, VisualGraph } from '../../../shared/types'
 import { ServiceError } from '../services/research'
 import { getVisualVersion, buildVisualGraph } from '../services/visual'
-import { citeMarker, rewriteCiteMarkers } from '../services/biblio'
+import { citeMarker, rewriteCiteMarkers, type LocatorStyle } from '../services/biblio'
 
 export interface WritingScope {
   state: ProjectState
@@ -88,7 +88,12 @@ export function resolveWritingScope(
   }
 }
 
-export function renderClaimsMd(state: ProjectState, claimIds: string[], sources: Source[]): string {
+export function renderClaimsMd(
+  state: ProjectState,
+  claimIds: string[],
+  sources: Source[],
+  style: LocatorStyle = 'apa'
+): string {
   const lines = ['# Aussagen dieser Sicht', '']
   const set = new Set(claimIds)
   const claims = state.claims.filter((c) => set.has(c.id))
@@ -108,7 +113,7 @@ export function renderClaimsMd(state: ProjectState, claimIds: string[], sources:
     for (const link of links) {
       const src = sources.find((s) => s.id === link.source_id)
       const idx = src ? sources.indexOf(src) + 1 : undefined
-      lines.push(`- ${src ? citeMarker(src, idx, true) : '[S?]'} ${link.support_type} · ${link.verification_status}`)
+      lines.push(`- ${src ? citeMarker(src, idx, true, style) : '[S?]'} ${link.support_type} · ${link.verification_status}`)
       lines.push(`  > ${link.quote_span}`)
     }
     lines.push('')
@@ -158,18 +163,24 @@ export function renderDoNotClaim(state: ProjectState, sources: Source[]): string
   return lines.join('\n') + '\n'
 }
 
-export function renderBericht(state: ProjectState, claims: Claim[], sources: Source[], visualVersionId: string | null): string {
+export function renderBericht(
+  state: ProjectState,
+  claims: Claim[],
+  sources: Source[],
+  visualVersionId: string | null,
+  style: LocatorStyle = 'apa'
+): string {
   const bound = visualVersionId
     ? [...state.reportVersions].reverse().find((v) => v.visual_version_id === visualVersionId)
     : [...state.reportVersions].reverse().find((v) => v.mark_scope === 1)
-  if (bound) return rewriteCiteMarkers(bound.content_markdown, sources)
+  if (bound) return rewriteCiteMarkers(bound.content_markdown, sources, style)
   const lines = ['# Bericht dieser Sicht', '', '_Kein an diese Sicht gebundener Bericht — Aussagen aus der Karte:_', '']
   for (const c of claims) {
     const links = state.links.filter((l) => l.claim_id === c.id && l.support_type === 'supports')
     const markers = links
       .map((l) => {
         const s = sources.find((x) => x.id === l.source_id)
-        return s ? citeMarker(s, undefined, true) : null
+        return s ? citeMarker(s, undefined, true, style) : null
       })
       .filter(Boolean)
     lines.push(`- ${c.claim_text} ${markers.join(' ')}`.trim())
